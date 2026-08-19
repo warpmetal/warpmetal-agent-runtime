@@ -95,4 +95,5 @@ systemctl daemon-reload
 systemctl reload ssh.service 2>/dev/null || systemctl reload sshd.service
 
 /usr/local/sbin/warpmetald register --api "$api_origin" --server "$server_id"
-systemctl enable --now warpmetald.service
+systemctl enable warpmetald.service
+systemctl restart warpmetald.service
