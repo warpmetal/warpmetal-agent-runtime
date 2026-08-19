@@ -196,12 +196,25 @@ func readHostKeys() ([]model.HostKey, error) {
 		if len(fields) < 2 {
 			return nil, fmt.Errorf("invalid SSH host key %s", path)
 		}
+		if !supportedHostKeyAlgorithm(fields[0]) {
+			continue
+		}
 		keys = append(keys, model.HostKey{PublicKey: fields[0] + " " + fields[1]})
 	}
 	if len(keys) == 0 {
-		return nil, errors.New("no SSH host public keys were found")
+		return nil, errors.New("no supported SSH host public keys were found")
 	}
 	return keys, nil
+}
+
+func supportedHostKeyAlgorithm(algorithm string) bool {
+	switch algorithm {
+	case "ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256",
+		"ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521":
+		return true
+	default:
+		return false
+	}
 }
 
 func bounded(value string) string {
