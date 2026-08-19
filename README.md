@@ -25,8 +25,12 @@ Security boundaries:
 - Temporary expiry uses the local SQLite clock state and continues during a
   control-plane outage.
 - Workspace images live outside the root-only supervisor state directory. The
-  runtime user's subordinate UID/GID ranges and lingering user manager are
-  provisioned explicitly so Podman remains rootless after reboot.
+  runtime user's subordinate UID/GID ranges and a dedicated, delegated Podman
+  service keep container lifecycle operations rootless after reboot. Its Unix
+  socket is mode `0600` inside a runtime-user-owned `0700` directory.
+- The root supervisor performs ext4 mount operations through PID 1's host mount
+  namespace so the separate rootless engine sees only the intended workspace
+  mounts; the rest of the supervisor stays inside its hardened mount namespace.
 
 Build and test on Linux with Go 1.25 or newer:
 
@@ -61,7 +65,13 @@ Only install a release through an authenticated WarpMetal runtime-install
 session. The installer requires root because it creates the dedicated runtime
 and SSH gateway accounts, installs host firewall rules, and enables the
 supervisor service. Supported hosts are Ubuntu 24.04 and Debian 12 with systemd
-and cgroups v2.
+and cgroups v2. The installer also installs the distribution `runc` package.
+On Ubuntu it installs the supported generic kernel; if a reboot is pending, it
+exits with status 75 and `runtime_reboot_required` before consuming the
+bootstrap token. Reboot the server and retry the same verified installer.
+Upgrading from the preview's former user-manager layout resets only the
+dedicated Podman container/image metadata; desired sandboxes are recreated and
+their separately mounted workspace data is preserved.
 
 The fixed userspace image is maintained separately in
 [`warpmetal/warpmetal-agent-sandbox`](https://github.com/warpmetal/warpmetal-agent-sandbox).

@@ -59,6 +59,8 @@ jobs:
           go build -trimpath -ldflags "-s -w" -o "$stage/warpmetal-sandbox-gateway" ./cmd/warpmetal-sandbox-gateway
           go build -trimpath -ldflags "-s -w" -o "$stage/warpmetal-sandbox-shell" ./cmd/warpmetal-sandbox-shell
           install -m 0755 packaging/install/install.sh "$stage/install.sh"
+          install -m 0755 packaging/systemd/warpmetal-podman-service "$stage/warpmetal-podman-service"
+          install -m 0644 packaging/systemd/warpmetal-podman.service "$stage/warpmetal-podman.service"
           install -m 0644 packaging/systemd/warpmetald.service "$stage/warpmetald.service"
           install -m 0644 packaging/sshd/warpmetal-sandbox.conf "$stage/warpmetal-sandbox.conf"
           tar -C dist -czf "dist/${archive}" "$(basename "$stage")"

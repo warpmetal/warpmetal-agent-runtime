@@ -1,6 +1,7 @@
 package containers
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 
@@ -25,6 +26,7 @@ func TestCreateArgumentsKeepRootlessIdentityAndIsolation(t *testing.T) {
 		{"--memory", "1024m"},
 		{"--memory-swap", "1024m"},
 		{"--pids-limit", "256"},
+		{"--cgroup-parent", "warpmetal-podman.service"},
 		{"--cap-drop", "ALL"},
 		{"--security-opt", "no-new-privileges"},
 		{"--network", "slirp4netns:allow_host_loopback=false"},
@@ -45,5 +47,34 @@ func TestCreateArgumentsKeepRootlessIdentityAndIsolation(t *testing.T) {
 		if slices.Contains(arguments, forbidden) {
 			t.Fatalf("unsafe Podman argument %q was present", forbidden)
 		}
+	}
+}
+
+func TestPodmanInvocationUsesPinnedLocalRuntime(t *testing.T) {
+	got := podmanInvocation("runtime-user", "/srv/runtime", false, "create", "sandbox")
+	want := []string{
+		"-u", "runtime-user", "--", "env",
+		"HOME=/srv/runtime",
+		"XDG_RUNTIME_DIR=/run/warpmetal-podman",
+		"/usr/bin/podman", "--runroot", "/run/warpmetal-podman/containers",
+		"--runtime", "runc", "--cgroup-manager", "cgroupfs",
+		"create", "sandbox",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("local invocation mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+}
+
+func TestPodmanInvocationUsesPrivateServiceForLifecycle(t *testing.T) {
+	got := podmanInvocation("runtime-user", "/srv/runtime", true, "start", "sandbox")
+	want := []string{
+		"-u", "runtime-user", "--", "env",
+		"HOME=/srv/runtime",
+		"XDG_RUNTIME_DIR=/run/warpmetal-podman",
+		"/usr/bin/podman", "--remote", "--url", "unix:///run/warpmetal-podman/podman.sock",
+		"start", "sandbox",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("remote invocation mismatch:\n got: %#v\nwant: %#v", got, want)
 	}
 }

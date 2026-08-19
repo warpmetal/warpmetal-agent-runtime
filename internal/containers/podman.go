@@ -27,6 +27,12 @@ type Podman struct {
 	RuntimeUser string
 }
 
+const (
+	podmanRuntimeDirectory = "/run/warpmetal-podman"
+	podmanRunRoot          = "/run/warpmetal-podman/containers"
+	podmanSocket           = "unix:///run/warpmetal-podman/podman.sock"
+)
+
 func (p Podman) Ensure(
 	ctx context.Context,
 	sandbox model.Sandbox,
@@ -45,7 +51,7 @@ func (p Podman) Ensure(
 }
 
 func (p Podman) Start(ctx context.Context, id string) error {
-	return p.run(ctx, nil, "start", containerName(id))
+	return p.runRemote(ctx, "start", containerName(id))
 }
 
 func (p Podman) Stop(ctx context.Context, id string) error {
@@ -57,7 +63,7 @@ func (p Podman) Stop(ctx context.Context, id string) error {
 }
 
 func (p Podman) Restart(ctx context.Context, id string) error {
-	return p.run(ctx, nil, "restart", "--time", "10", containerName(id))
+	return p.runRemote(ctx, "restart", "--time", "10", containerName(id))
 }
 
 func (p Podman) Remove(ctx context.Context, id string) error {
@@ -93,8 +99,18 @@ func (p Podman) Exec(
 func (p Podman) run(ctx context.Context, stdin io.Reader, args ...string) error {
 	var output strings.Builder
 	err := p.runStreams(ctx, stdin, &output, &output, args...)
+	return podmanError(args, output.String(), err)
+}
+
+func (p Podman) runRemote(ctx context.Context, args ...string) error {
+	var output strings.Builder
+	err := p.runRemoteStreams(ctx, nil, &output, &output, args...)
+	return podmanError(args, output.String(), err)
+}
+
+func podmanError(args []string, output string, err error) error {
 	if err != nil {
-		message := strings.TrimSpace(output.String())
+		message := strings.TrimSpace(output)
 		if len(message) > 300 {
 			message = message[:300]
 		}
@@ -110,6 +126,27 @@ func (p Podman) runStreams(
 	stderr io.Writer,
 	args ...string,
 ) error {
+	return p.runAsRuntimeUser(ctx, false, stdin, stdout, stderr, args...)
+}
+
+func (p Podman) runRemoteStreams(
+	ctx context.Context,
+	stdin io.Reader,
+	stdout io.Writer,
+	stderr io.Writer,
+	args ...string,
+) error {
+	return p.runAsRuntimeUser(ctx, true, stdin, stdout, stderr, args...)
+}
+
+func (p Podman) runAsRuntimeUser(
+	ctx context.Context,
+	remote bool,
+	stdin io.Reader,
+	stdout io.Writer,
+	stderr io.Writer,
+	args ...string,
+) error {
 	runtimeUser := p.RuntimeUser
 	if runtimeUser == "" {
 		runtimeUser = "warpmetal-runtime"
@@ -118,16 +155,8 @@ func (p Podman) runStreams(
 	if err != nil {
 		return fmt.Errorf("lookup runtime user: %w", err)
 	}
-	runtimeDirectory := "/run/user/" + identity.Uid
-	argv := []string{
-		"-u", runtimeUser, "--", "env",
-		"HOME=" + identity.HomeDir,
-		"XDG_RUNTIME_DIR=" + runtimeDirectory,
-		"DBUS_SESSION_BUS_ADDRESS=unix:path=" + runtimeDirectory + "/bus",
-		"podman",
-	}
-	argv = append(argv, args...)
-	cmd := exec.CommandContext(ctx, "runuser", argv...)
+	argv := podmanInvocation(runtimeUser, identity.HomeDir, remote, args...)
+	cmd := exec.CommandContext(ctx, "/usr/sbin/runuser", argv...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
@@ -140,6 +169,24 @@ func (p Podman) runStreams(
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	return cmd.Run()
+}
+
+func podmanInvocation(runtimeUser, home string, remote bool, args ...string) []string {
+	argv := []string{
+		"-u", runtimeUser, "--", "env",
+		"HOME=" + home,
+		"XDG_RUNTIME_DIR=" + podmanRuntimeDirectory,
+	}
+	if remote {
+		argv = append(argv, "/usr/bin/podman", "--remote", "--url", podmanSocket)
+	} else {
+		argv = append(
+			argv,
+			"/usr/bin/podman", "--runroot", podmanRunRoot,
+			"--runtime", "runc", "--cgroup-manager", "cgroupfs",
+		)
+	}
+	return append(argv, args...)
 }
 
 func createArguments(
@@ -161,6 +208,7 @@ func createArguments(
 		"--memory", memory,
 		"--memory-swap", memory,
 		"--pids-limit", strconv.Itoa(sandbox.Resources.PIDs),
+		"--cgroup-parent", "warpmetal-podman.service",
 		"--cap-drop", "ALL",
 		"--security-opt", "no-new-privileges",
 		"--network", "slirp4netns:allow_host_loopback=false",

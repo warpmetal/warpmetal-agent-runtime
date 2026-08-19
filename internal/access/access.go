@@ -54,7 +54,7 @@ func (r Renderer) Write(grants []state.LocalGrant) error {
 	if content != "" {
 		content += "\n"
 	}
-	return atomicWrite(r.Path, []byte(content), 0600)
+	return atomicWrite(r.Path, []byte(content), 0640)
 }
 
 func normalizePublicKey(value string) (string, error) {
