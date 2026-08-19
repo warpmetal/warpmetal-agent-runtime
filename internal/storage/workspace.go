@@ -63,6 +63,9 @@ func (w Workspace) Ensure(ctx context.Context, id string, sizeGiB int) (string, 
 			return "", err
 		}
 	}
+	if err := removeLostAndFound(ctx, mountpoint); err != nil {
+		return "", err
+	}
 	owner := strconv.Itoa(ownerUID) + ":" + strconv.Itoa(ownerGID)
 	if err := hostMountCommand(ctx, "/usr/bin/chown", owner, mountpoint); err != nil {
 		return "", fmt.Errorf("own workspace mountpoint: %w", err)
@@ -71,6 +74,21 @@ func (w Workspace) Ensure(ctx context.Context, id string, sizeGiB int) (string, 
 		return "", fmt.Errorf("protect workspace mountpoint: %w", err)
 	}
 	return mountpoint, nil
+}
+
+func removeLostAndFound(ctx context.Context, mountpoint string) error {
+	path := filepath.Join(mountpoint, "lost+found")
+	exists, err := hostPathExists(ctx, path)
+	if err != nil {
+		return fmt.Errorf("inspect workspace lost+found: %w", err)
+	}
+	if !exists {
+		return nil
+	}
+	if err := hostMountCommand(ctx, "/usr/bin/rmdir", path); err != nil {
+		return fmt.Errorf("remove workspace lost+found: %w", err)
+	}
+	return nil
 }
 
 func (w Workspace) Destroy(ctx context.Context, id string) error {
@@ -164,6 +182,27 @@ func isMounted(ctx context.Context, path string) (bool, error) {
 		}
 	}
 	return false, fmt.Errorf("check workspace mount: %w", err)
+}
+
+func hostPathExists(ctx context.Context, path string) (bool, error) {
+	cmd := exec.CommandContext(
+		ctx,
+		nsenterCommand,
+		"--mount=/proc/1/ns/mnt",
+		"--",
+		"/usr/bin/test",
+		"-e",
+		path,
+	)
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("check host path: %w", err)
 }
 
 func hostMountCommand(ctx context.Context, name string, args ...string) error {

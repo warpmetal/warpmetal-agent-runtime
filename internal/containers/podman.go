@@ -213,7 +213,7 @@ func createArguments(
 		"--security-opt", "no-new-privileges",
 		"--network", "slirp4netns:allow_host_loopback=false",
 		"--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=256m",
-		"--volume", workspace + ":/home/agent:rw,nodev,nosuid",
+		"--volume", workspace + ":/home/agent:rw,nodev,nosuid,Z",
 		"--workdir", "/home/agent",
 		"--entrypoint", "/bin/sh",
 		imageDigest,

@@ -30,6 +30,7 @@ func TestCreateArgumentsKeepRootlessIdentityAndIsolation(t *testing.T) {
 		{"--cap-drop", "ALL"},
 		{"--security-opt", "no-new-privileges"},
 		{"--network", "slirp4netns:allow_host_loopback=false"},
+		{"--volume", "/var/lib/warpmetal-workspaces/sandboxes/sbx_example123/workspace:/home/agent:rw,nodev,nosuid,Z"},
 	}
 	for _, pair := range wantPairs {
 		found := false
