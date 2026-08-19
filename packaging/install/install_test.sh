@@ -32,10 +32,14 @@ grep -Fq 'usermod --home "$gateway_home" warpmetal-sandbox' "$script"
 ! grep -Fq '/nonexistent' "$script"
 grep -Fq 'runtime_cgroup=/sys/fs/cgroup/system.slice/warpmetal-podman.service' "$script"
 grep -Fq "info --format '{{.Store.RunRoot}}'" "$script"
-test "$(grep -Fc 'podman --runroot /run/warpmetal-podman/containers' "$script")" -eq 2
-test "$(grep -Fc -- '--runtime runc' "$script")" -eq 2
-test "$(grep -Fc -- '--cgroup-manager cgroupfs' "$script")" -eq 2
-test "$(grep -Fc 'cd /var/lib/warpmetal-runtime' "$script")" -eq 2
+grep -Fq 'legacy_runroot="/run/user/${runtime_uid}/containers"' "$script"
+grep -Fq 'podman --runroot "$legacy_runroot"' "$script"
+grep -Fq 'if [ "$legacy_current_runroot" = "$legacy_runroot" ]; then' "$script"
+grep -Fq 'reset_runroot=$legacy_runroot' "$script"
+grep -Fq 'podman --runroot "$reset_runroot"' "$script"
+test "$(grep -Fc -- '--runtime runc' "$script")" -eq 3
+test "$(grep -Fc -- '--cgroup-manager cgroupfs' "$script")" -eq 3
+test "$(grep -Fc 'cd /var/lib/warpmetal-runtime' "$script")" -eq 3
 grep -Fq 'system reset --force' "$script"
 test "$(grep -Fc 'install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podman' "$script")" -eq 2
 grep -Fq "printf '[Service]\\nBindPaths=%s" "$script"

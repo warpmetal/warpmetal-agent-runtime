@@ -95,6 +95,7 @@ install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podm
 if [ -f /var/lib/warpmetal-runtime/.local/share/containers/storage/libpod/bolt_state.db ] || \
    [ -f /var/lib/warpmetal-runtime/.local/share/containers/storage/db.sql ]; then
   install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 "/run/user/${runtime_uid}"
+  legacy_runroot="/run/user/${runtime_uid}/containers"
   current_runroot=$(
     cd /var/lib/warpmetal-runtime
     runuser -u warpmetal-runtime -- env \
@@ -109,12 +110,26 @@ if [ -f /var/lib/warpmetal-runtime/.local/share/containers/storage/libpod/bolt_s
     systemctl stop warpmetald.service 2>/dev/null || true
     systemctl stop warpmetal-podman.service 2>/dev/null || true
     install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podman
+    reset_runroot=/run/warpmetal-podman/containers
+    legacy_current_runroot=$(
+      cd /var/lib/warpmetal-runtime
+      runuser -u warpmetal-runtime -- env \
+        HOME=/var/lib/warpmetal-runtime \
+        XDG_RUNTIME_DIR="/run/user/${runtime_uid}" \
+        podman --runroot "$legacy_runroot" \
+          --runtime runc \
+          --cgroup-manager cgroupfs \
+          info --format '{{.Store.RunRoot}}' 2>/dev/null || true
+    )
+    if [ "$legacy_current_runroot" = "$legacy_runroot" ]; then
+      reset_runroot=$legacy_runroot
+    fi
     (
       cd /var/lib/warpmetal-runtime
       runuser -u warpmetal-runtime -- env \
         HOME=/var/lib/warpmetal-runtime \
-        XDG_RUNTIME_DIR=/run/warpmetal-podman \
-        podman --runroot /run/warpmetal-podman/containers \
+        XDG_RUNTIME_DIR="$(dirname "$reset_runroot")" \
+        podman --runroot "$reset_runroot" \
           --runtime runc \
           --cgroup-manager cgroupfs \
           system reset --force
