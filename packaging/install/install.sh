@@ -31,22 +31,27 @@ case "$bundle_name" in ''|*[!A-Za-z0-9_-]*) echo "invalid_bundle_path" >&2; exit
 
 . /etc/os-release
 case "${ID:-}:${VERSION_ID:-}" in
-  ubuntu:24.04|debian:12) ;;
+  ubuntu:24.04|debian:12) package_manager=apt ;;
+  almalinux:9|almalinux:9.*|rocky:9|rocky:9.*) package_manager=dnf ;;
   *) echo "unsupported_runtime_os" >&2; exit 1 ;;
 esac
 
 test -d /run/systemd/system || { echo "systemd_required" >&2; exit 1; }
 test -f /sys/fs/cgroup/cgroup.controllers || { echo "cgroups_v2_required" >&2; exit 1; }
 
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq podman runc uidmap fuse-overlayfs slirp4netns e2fsprogs iptables util-linux
-if [ "$ID" = ubuntu ]; then
-  apt-get install -y -qq linux-generic
-fi
-if [ -f /var/run/reboot-required ]; then
-  echo "runtime_reboot_required" >&2
-  exit 75
+if [ "$package_manager" = apt ]; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y -qq podman runc uidmap fuse-overlayfs slirp4netns e2fsprogs iptables util-linux
+  if [ "$ID" = ubuntu ]; then
+    apt-get install -y -qq linux-generic
+  fi
+  if [ -f /var/run/reboot-required ]; then
+    echo "runtime_reboot_required" >&2
+    exit 75
+  fi
+else
+  dnf install -y -q podman runc shadow-utils fuse-overlayfs slirp4netns e2fsprogs iptables util-linux
 fi
 
 getent passwd warpmetal-runtime >/dev/null 2>&1 || \

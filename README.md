@@ -64,11 +64,13 @@ cosign verify-blob \
 Only install a release through an authenticated WarpMetal runtime-install
 session. The installer requires root because it creates the dedicated runtime
 and SSH gateway accounts, installs host firewall rules, and enables the
-supervisor service. Supported hosts are Ubuntu 24.04 and Debian 12 with systemd
-and cgroups v2. The installer also installs the distribution `runc` package.
-On Ubuntu it installs the supported generic kernel; if a reboot is pending, it
-exits with status 75 and `runtime_reboot_required` before consuming the
-bootstrap token. Reboot the server and retry the same verified installer.
+supervisor service. Supported hosts are AlmaLinux 9, Debian 12, Rocky Linux 9,
+and Ubuntu 24.04 with systemd and cgroups v2. The installer uses the host's
+`apt` or `dnf` packages and installs the distribution `runc` package. Workspace
+mounts receive a private Podman SELinux label on enforcing hosts. On Ubuntu it
+installs the supported generic kernel; if a reboot is pending, it exits with
+status 75 and `runtime_reboot_required` before consuming the bootstrap token.
+Reboot the server and retry the same verified installer.
 Upgrading from the preview's former user-manager layout resets only the
 dedicated Podman container/image metadata; desired sandboxes are recreated and
 their separately mounted workspace data is preserved.
