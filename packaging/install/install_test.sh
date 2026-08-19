@@ -28,8 +28,12 @@ grep -Fq 'install -d -o root -g root -m 0755 "$gateway_home"' "$script"
 grep -Fq 'usermod --home "$gateway_home" warpmetal-sandbox' "$script"
 ! grep -Fq '/nonexistent' "$script"
 grep -Fq 'runtime_cgroup=/sys/fs/cgroup/system.slice/warpmetal-podman.service' "$script"
-grep -Fq "podman info --format '{{.Store.RunRoot}}'" "$script"
-grep -Fq 'podman system reset --force' "$script"
+grep -Fq "info --format '{{.Store.RunRoot}}'" "$script"
+test "$(grep -Fc 'podman --runroot /run/warpmetal-podman/containers' "$script")" -eq 2
+test "$(grep -Fc -- '--runtime runc' "$script")" -eq 2
+test "$(grep -Fc -- '--cgroup-manager cgroupfs' "$script")" -eq 2
+grep -Fq 'system reset --force' "$script"
+test "$(grep -Fc 'install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podman' "$script")" -eq 2
 grep -Fq "printf '[Service]\\nBindPaths=%s" "$script"
 grep -Fq 'ReadWritePaths=/run/warpmetal-podman %s' "$script"
 grep -Fq 'test -S /run/warpmetal-podman/podman.sock' "$script"

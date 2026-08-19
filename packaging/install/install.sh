@@ -93,14 +93,21 @@ if [ -f /var/lib/warpmetal-runtime/.local/share/containers/storage/libpod/bolt_s
   current_runroot=$(runuser -u warpmetal-runtime -- env \
     HOME=/var/lib/warpmetal-runtime \
     XDG_RUNTIME_DIR=/run/warpmetal-podman \
-    podman info --format '{{.Store.RunRoot}}' 2>/dev/null || true)
+    podman --runroot /run/warpmetal-podman/containers \
+      --runtime runc \
+      --cgroup-manager cgroupfs \
+      info --format '{{.Store.RunRoot}}' 2>/dev/null || true)
   if [ "$current_runroot" != /run/warpmetal-podman/containers ]; then
     systemctl stop warpmetald.service 2>/dev/null || true
     systemctl stop warpmetal-podman.service 2>/dev/null || true
+    install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podman
     runuser -u warpmetal-runtime -- env \
       HOME=/var/lib/warpmetal-runtime \
       XDG_RUNTIME_DIR=/run/warpmetal-podman \
-      podman system reset --force
+      podman --runroot /run/warpmetal-podman/containers \
+        --runtime runc \
+        --cgroup-manager cgroupfs \
+        system reset --force
   fi
 fi
 
