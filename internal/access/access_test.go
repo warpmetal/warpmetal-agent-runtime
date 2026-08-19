@@ -96,4 +96,11 @@ func TestPackagedSSHMatchBlockReturnsToGlobalScope(t *testing.T) {
 		!strings.HasSuffix(strings.TrimSpace(text), "Match all") {
 		t.Fatalf("SSH match block is not closed or fully restricted: %s", text)
 	}
+	matchStart := strings.Index(text, "Match User warpmetal-sandbox")
+	matchEnd := strings.Index(text, "Match all")
+	permitUserEnvironment := strings.Index(text, "PermitUserEnvironment no")
+	if permitUserEnvironment == -1 || matchStart == -1 || matchEnd == -1 ||
+		permitUserEnvironment > matchStart || matchStart > matchEnd {
+		t.Fatalf("PermitUserEnvironment must be global, before the sandbox Match block: %s", text)
+	}
 }
