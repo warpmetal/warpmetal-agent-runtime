@@ -32,6 +32,7 @@ grep -Fq "info --format '{{.Store.RunRoot}}'" "$script"
 test "$(grep -Fc 'podman --runroot /run/warpmetal-podman/containers' "$script")" -eq 2
 test "$(grep -Fc -- '--runtime runc' "$script")" -eq 2
 test "$(grep -Fc -- '--cgroup-manager cgroupfs' "$script")" -eq 2
+test "$(grep -Fc 'cd /var/lib/warpmetal-runtime' "$script")" -eq 2
 grep -Fq 'system reset --force' "$script"
 test "$(grep -Fc 'install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podman' "$script")" -eq 2
 grep -Fq "printf '[Service]\\nBindPaths=%s" "$script"

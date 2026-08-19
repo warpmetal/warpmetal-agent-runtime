@@ -90,24 +90,30 @@ install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podm
 if [ -f /var/lib/warpmetal-runtime/.local/share/containers/storage/libpod/bolt_state.db ] || \
    [ -f /var/lib/warpmetal-runtime/.local/share/containers/storage/db.sql ]; then
   install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 "/run/user/${runtime_uid}"
-  current_runroot=$(runuser -u warpmetal-runtime -- env \
-    HOME=/var/lib/warpmetal-runtime \
-    XDG_RUNTIME_DIR=/run/warpmetal-podman \
-    podman --runroot /run/warpmetal-podman/containers \
-      --runtime runc \
-      --cgroup-manager cgroupfs \
-      info --format '{{.Store.RunRoot}}' 2>/dev/null || true)
-  if [ "$current_runroot" != /run/warpmetal-podman/containers ]; then
-    systemctl stop warpmetald.service 2>/dev/null || true
-    systemctl stop warpmetal-podman.service 2>/dev/null || true
-    install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podman
+  current_runroot=$(
+    cd /var/lib/warpmetal-runtime
     runuser -u warpmetal-runtime -- env \
       HOME=/var/lib/warpmetal-runtime \
       XDG_RUNTIME_DIR=/run/warpmetal-podman \
       podman --runroot /run/warpmetal-podman/containers \
         --runtime runc \
         --cgroup-manager cgroupfs \
-        system reset --force
+        info --format '{{.Store.RunRoot}}' 2>/dev/null || true
+  )
+  if [ "$current_runroot" != /run/warpmetal-podman/containers ]; then
+    systemctl stop warpmetald.service 2>/dev/null || true
+    systemctl stop warpmetal-podman.service 2>/dev/null || true
+    install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podman
+    (
+      cd /var/lib/warpmetal-runtime
+      runuser -u warpmetal-runtime -- env \
+        HOME=/var/lib/warpmetal-runtime \
+        XDG_RUNTIME_DIR=/run/warpmetal-podman \
+        podman --runroot /run/warpmetal-podman/containers \
+          --runtime runc \
+          --cgroup-manager cgroupfs \
+          system reset --force
+    )
   fi
 fi
 
