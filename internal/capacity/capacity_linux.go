@@ -25,12 +25,7 @@ func Detect(stateRoot string) (model.Resources, error) {
 		return model.Resources{}, err
 	}
 	diskGiB := int((filesystem.Blocks * uint64(filesystem.Bsize)) / (1024 * 1024 * 1024))
-	return model.Resources{
-		CPUMillicores:    max(0, runtime.NumCPU()*1000-500),
-		MemoryMiB:        max(0, memoryMiB-1024),
-		WorkspaceDiskGiB: max(0, diskGiB-10),
-		PIDs:             32768,
-	}, nil
+	return allocatable(runtime.NumCPU(), memoryMiB, diskGiB), nil
 }
 
 func totalMemoryMiB() (int, error) {
@@ -48,11 +43,4 @@ func totalMemoryMiB() (int, error) {
 		}
 	}
 	return 0, errors.New("MemTotal is unavailable")
-}
-
-func max(left, right int) int {
-	if left > right {
-		return left
-	}
-	return right
 }
