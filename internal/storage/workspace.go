@@ -14,6 +14,7 @@ import (
 )
 
 var sandboxID = regexp.MustCompile(`^sbx_[A-Za-z0-9_-]{8,60}$`)
+var nsenterCommand = "/usr/bin/nsenter"
 
 type Workspace struct {
 	Root  string
@@ -56,14 +57,17 @@ func (w Workspace) Ensure(ctx context.Context, id string, sizeGiB int) (string, 
 		return "", err
 	}
 	if !mounted {
-		if err := command(ctx, "mount", "-o", "loop,nodev,nosuid", image, mountpoint); err != nil {
+		if err := hostMountCommand(
+			ctx, "/usr/bin/mount", "-o", "loop,nodev,nosuid", image, mountpoint,
+		); err != nil {
 			return "", err
 		}
 	}
-	if err := os.Chown(mountpoint, ownerUID, ownerGID); err != nil {
+	owner := strconv.Itoa(ownerUID) + ":" + strconv.Itoa(ownerGID)
+	if err := hostMountCommand(ctx, "/usr/bin/chown", owner, mountpoint); err != nil {
 		return "", fmt.Errorf("own workspace mountpoint: %w", err)
 	}
-	if err := os.Chmod(mountpoint, 0700); err != nil {
+	if err := hostMountCommand(ctx, "/usr/bin/chmod", "0700", mountpoint); err != nil {
 		return "", fmt.Errorf("protect workspace mountpoint: %w", err)
 	}
 	return mountpoint, nil
@@ -80,7 +84,7 @@ func (w Workspace) Destroy(ctx context.Context, id string) error {
 		return err
 	}
 	if mounted {
-		if err := command(ctx, "umount", mountpoint); err != nil {
+		if err := hostMountCommand(ctx, "/usr/bin/umount", mountpoint); err != nil {
 			return err
 		}
 	}
@@ -139,7 +143,15 @@ func (w Workspace) path(id string) (string, error) {
 }
 
 func isMounted(ctx context.Context, path string) (bool, error) {
-	cmd := exec.CommandContext(ctx, "mountpoint", "-q", path)
+	cmd := exec.CommandContext(
+		ctx,
+		nsenterCommand,
+		"--mount=/proc/1/ns/mnt",
+		"--",
+		"/usr/bin/mountpoint",
+		"-q",
+		path,
+	)
 	err := cmd.Run()
 	if err == nil {
 		return true, nil
@@ -152,6 +164,12 @@ func isMounted(ctx context.Context, path string) (bool, error) {
 		}
 	}
 	return false, fmt.Errorf("check workspace mount: %w", err)
+}
+
+func hostMountCommand(ctx context.Context, name string, args ...string) error {
+	arguments := []string{"--mount=/proc/1/ns/mnt", "--", name}
+	arguments = append(arguments, args...)
+	return command(ctx, nsenterCommand, arguments...)
 }
 
 func command(ctx context.Context, name string, args ...string) error {

@@ -99,7 +99,7 @@ func serve(arguments []string) error {
 	socketPath := flags.String("socket", "/run/warpmetal/supervisor.sock", "gateway socket")
 	accessPath := flags.String(
 		"authorized-keys",
-		"/etc/ssh/warpmetal_sandbox_authorized_keys",
+		"/etc/ssh/warpmetal-runtime/authorized_keys",
 		"generated gateway key map",
 	)
 	poll := flags.Duration("poll", 10*time.Second, "control-plane poll interval")

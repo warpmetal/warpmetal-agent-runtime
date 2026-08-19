@@ -40,13 +40,23 @@ test -f /sys/fs/cgroup/cgroup.controllers || { echo "cgroups_v2_required" >&2; e
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq podman uidmap fuse-overlayfs slirp4netns e2fsprogs iptables
+apt-get install -y -qq podman runc uidmap fuse-overlayfs slirp4netns e2fsprogs iptables util-linux
+if [ "$ID" = ubuntu ]; then
+  apt-get install -y -qq linux-generic
+fi
+if [ -f /var/run/reboot-required ]; then
+  echo "runtime_reboot_required" >&2
+  exit 75
+fi
 
 getent passwd warpmetal-runtime >/dev/null 2>&1 || \
   useradd --system --create-home --home-dir /var/lib/warpmetal-runtime --shell /usr/sbin/nologin warpmetal-runtime
+gateway_home=/var/empty/warpmetal-sandbox
+install -d -o root -g root -m 0755 "$gateway_home"
 getent passwd warpmetal-sandbox >/dev/null 2>&1 || \
-  useradd --system --no-create-home --home-dir /nonexistent --shell /usr/libexec/warpmetal-sandbox-shell warpmetal-sandbox
+  useradd --system --no-create-home --home-dir "$gateway_home" --shell /usr/libexec/warpmetal-sandbox-shell warpmetal-sandbox
 usermod --lock warpmetal-sandbox
+usermod --home "$gateway_home" warpmetal-sandbox
 usermod --shell /usr/libexec/warpmetal-sandbox-shell warpmetal-sandbox
 
 install -d -m 0700 /var/lib/warpmetal
@@ -74,28 +84,56 @@ ensure_subid_range() {
 
 ensure_subid_range /etc/subuid --add-subuids
 ensure_subid_range /etc/subgid --add-subgids
-loginctl enable-linger warpmetal-runtime
+
 runtime_uid=$(id -u warpmetal-runtime)
-systemctl start "user@${runtime_uid}.service"
-runtime_cgroup=/sys/fs/cgroup/user.slice/user-${runtime_uid}.slice/user@${runtime_uid}.service
-test -d "$runtime_cgroup" || { echo "runtime_cgroup_unavailable" >&2; exit 1; }
-install -d -m 0755 /etc/systemd/system/warpmetald.service.d
-printf '[Service]\nBindPaths=/run/user/%s %s\nReadWritePaths=/run/user/%s %s\n' \
-  "$runtime_uid" "$runtime_cgroup" "$runtime_uid" "$runtime_cgroup" > \
-  /etc/systemd/system/warpmetald.service.d/10-runtime-user.conf
+install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podman
+if [ -f /var/lib/warpmetal-runtime/.local/share/containers/storage/libpod/bolt_state.db ] || \
+   [ -f /var/lib/warpmetal-runtime/.local/share/containers/storage/db.sql ]; then
+  install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 "/run/user/${runtime_uid}"
+  current_runroot=$(runuser -u warpmetal-runtime -- env \
+    HOME=/var/lib/warpmetal-runtime \
+    XDG_RUNTIME_DIR=/run/warpmetal-podman \
+    podman info --format '{{.Store.RunRoot}}' 2>/dev/null || true)
+  if [ "$current_runroot" != /run/warpmetal-podman/containers ]; then
+    systemctl stop warpmetald.service 2>/dev/null || true
+    systemctl stop warpmetal-podman.service 2>/dev/null || true
+    runuser -u warpmetal-runtime -- env \
+      HOME=/var/lib/warpmetal-runtime \
+      XDG_RUNTIME_DIR=/run/warpmetal-podman \
+      podman system reset --force
+  fi
+fi
 
 install -d -m 0755 /usr/libexec
 install -m 0755 "$bundle_dir/warpmetald" /usr/local/sbin/warpmetald
 install -m 0755 "$bundle_dir/warpmetal-agentctl" /usr/local/sbin/warpmetal-agentctl
 install -m 0755 "$bundle_dir/warpmetal-sandbox-gateway" /usr/libexec/warpmetal-sandbox-gateway
 install -m 0755 "$bundle_dir/warpmetal-sandbox-shell" /usr/libexec/warpmetal-sandbox-shell
+install -m 0755 "$bundle_dir/warpmetal-podman-service" /usr/libexec/warpmetal-podman-service
+install -m 0644 "$bundle_dir/warpmetal-podman.service" /etc/systemd/system/warpmetal-podman.service
 install -m 0644 "$bundle_dir/warpmetald.service" /etc/systemd/system/warpmetald.service
 install -m 0644 "$bundle_dir/warpmetal-sandbox.conf" /etc/ssh/sshd_config.d/90-warpmetal-sandbox.conf
-install -o root -g warpmetal-sandbox -m 0640 /dev/null /etc/ssh/warpmetal_sandbox_authorized_keys
+install -d -o root -g warpmetal-sandbox -m 0750 /etc/ssh/warpmetal-runtime
+install -o root -g warpmetal-sandbox -m 0640 /dev/null /etc/ssh/warpmetal-runtime/authorized_keys
+
+install -d -m 0755 /etc/systemd/system/warpmetald.service.d
+runtime_cgroup=/sys/fs/cgroup/system.slice/warpmetal-podman.service
+printf '[Service]\nBindPaths=%s\nReadWritePaths=/run/warpmetal-podman %s\n' \
+  "$runtime_cgroup" "$runtime_cgroup" > \
+  /etc/systemd/system/warpmetald.service.d/10-runtime-user.conf
 
 /usr/sbin/sshd -t
 systemctl daemon-reload
 systemctl reload ssh.service 2>/dev/null || systemctl reload sshd.service
+systemctl enable warpmetal-podman.service
+systemctl restart warpmetal-podman.service
+
+attempt=0
+while [ ! -S /run/warpmetal-podman/podman.sock ] && [ "$attempt" -lt 50 ]; do
+  attempt=$((attempt + 1))
+  sleep 0.1
+done
+test -S /run/warpmetal-podman/podman.sock || { echo "runtime_podman_unavailable" >&2; exit 1; }
 
 /usr/local/sbin/warpmetald register --api "$api_origin" --server "$server_id"
 systemctl enable warpmetald.service

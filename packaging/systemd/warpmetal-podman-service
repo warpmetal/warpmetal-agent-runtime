@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+cgroup_path=/sys/fs/cgroup/system.slice/warpmetal-podman.service
+/usr/bin/mkdir "$cgroup_path/manager"
+printf '%s\n' "$$" > "$cgroup_path/manager/cgroup.procs"
+
+exec /usr/bin/podman \
+  --runroot /run/warpmetal-podman/containers \
+  --runtime runc \
+  --cgroup-manager cgroupfs \
+  system service \
+  --time=0 \
+  unix:///run/warpmetal-podman/podman.sock

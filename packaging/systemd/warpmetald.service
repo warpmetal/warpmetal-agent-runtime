@@ -1,7 +1,8 @@
 [Unit]
 Description=WarpMetal Agent Runtime supervisor
-After=network-online.target ssh.service
+After=network-online.target ssh.service warpmetal-podman.service
 Wants=network-online.target
+Requires=warpmetal-podman.service
 
 [Service]
 Type=simple
@@ -31,12 +32,12 @@ ProtectKernelModules=yes
 ProtectKernelTunables=yes
 ProtectControlGroups=yes
 ProtectSystem=strict
-ReadWritePaths=/var/lib/warpmetal /var/lib/warpmetal-runtime /var/lib/warpmetal-workspaces /run/warpmetal /etc/ssh/warpmetal_sandbox_authorized_keys
+ReadWritePaths=/var/lib/warpmetal /var/lib/warpmetal-runtime /var/lib/warpmetal-workspaces /run/warpmetal /run/warpmetal-podman /etc/ssh/warpmetal-runtime
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 RestrictNamespaces=no
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
-CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_ADMIN CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SETGID CAP_SETUID CAP_KILL
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_SYS_CHROOT CAP_SYS_PTRACE CAP_NET_ADMIN CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SETGID CAP_SETUID CAP_KILL
 AmbientCapabilities=
 
 [Install]

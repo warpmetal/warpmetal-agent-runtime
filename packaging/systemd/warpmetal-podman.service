@@ -1,0 +1,27 @@
+[Unit]
+Description=WarpMetal delegated rootless Podman service
+After=network-online.target
+Wants=network-online.target
+Before=warpmetald.service
+
+[Service]
+Type=simple
+User=warpmetal-runtime
+Group=warpmetal-runtime
+Environment=HOME=/var/lib/warpmetal-runtime
+Environment=XDG_RUNTIME_DIR=/run/warpmetal-podman
+RuntimeDirectory=warpmetal-podman
+RuntimeDirectoryMode=0700
+ExecStart=/usr/libexec/warpmetal-podman-service
+Restart=on-failure
+RestartSec=2s
+Delegate=yes
+KillMode=mixed
+UMask=0077
+NoNewPrivileges=no
+PrivateTmp=no
+ProtectControlGroups=no
+RestrictNamespaces=no
+
+[Install]
+WantedBy=multi-user.target

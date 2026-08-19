@@ -44,6 +44,13 @@ func TestRendererForcesOneGrantAndStripsComment(t *testing.T) {
 	if strings.Contains(text, "agent-comment") {
 		t.Fatal("untrusted public-key comment was retained")
 	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0640 {
+		t.Fatalf("authorized keys mode = %o, want 640", info.Mode().Perm())
+	}
 }
 
 func TestRendererRejectsOptionInjection(t *testing.T) {
