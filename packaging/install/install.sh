@@ -77,8 +77,11 @@ ensure_subid_range /etc/subgid --add-subgids
 loginctl enable-linger warpmetal-runtime
 runtime_uid=$(id -u warpmetal-runtime)
 systemctl start "user@${runtime_uid}.service"
+runtime_cgroup=/sys/fs/cgroup/user.slice/user-${runtime_uid}.slice/user@${runtime_uid}.service
+test -d "$runtime_cgroup" || { echo "runtime_cgroup_unavailable" >&2; exit 1; }
 install -d -m 0755 /etc/systemd/system/warpmetald.service.d
-printf '[Service]\nBindPaths=/run/user/%s\n' "$runtime_uid" > \
+printf '[Service]\nBindPaths=/run/user/%s %s\nReadWritePaths=/run/user/%s %s\n' \
+  "$runtime_uid" "$runtime_cgroup" "$runtime_uid" "$runtime_cgroup" > \
   /etc/systemd/system/warpmetald.service.d/10-runtime-user.conf
 
 install -d -m 0755 /usr/libexec
