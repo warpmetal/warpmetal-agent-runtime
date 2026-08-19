@@ -124,6 +124,8 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 		ServerID:          serverID,
 		AppliedRevision:   revision,
 		SupervisorVersion: version,
+		Sandboxes:         make([]model.SandboxReport, 0),
+		AccessGrants:      make([]model.GrantReport, 0),
 	}
 	for _, value := range sandboxes {
 		item := model.SandboxReport{
