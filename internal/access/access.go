@@ -3,7 +3,9 @@ package access
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -124,8 +126,9 @@ type gatewayRequest struct {
 }
 
 type gatewayResponse struct {
-	OK    bool   `json:"ok"`
-	Error string `json:"error,omitempty"`
+	OK         bool   `json:"ok"`
+	Error      string `json:"error,omitempty"`
+	ExitMarker string `json:"exitMarker,omitempty"`
 }
 
 func (g *Gateway) Serve(ctx context.Context, socketPath string) error {
@@ -184,10 +187,15 @@ func (g *Gateway) serveConnection(parent context.Context, connection net.Conn) {
 		cancel()
 		g.finishSession(grant.ID, sessionID)
 	}()
-	if err := writeGatewayResponse(connection, gatewayResponse{OK: true}); err != nil {
+	exitMarker, err := newExitMarker()
+	if err != nil {
+		writeGatewayResponse(connection, gatewayResponse{Error: "sandbox_gateway_unavailable"})
 		return
 	}
-	_ = g.Engine.Exec(
+	if err := writeGatewayResponse(connection, gatewayResponse{OK: true, ExitMarker: exitMarker}); err != nil {
+		return
+	}
+	execError := g.Engine.Exec(
 		ctx,
 		sandbox.ID,
 		request.Command,
@@ -196,6 +204,29 @@ func (g *Gateway) serveConnection(parent context.Context, connection net.Conn) {
 		connection,
 		connection,
 	)
+	_, _ = fmt.Fprintf(connection, "\x00warpmetal-exit:%s:%d\n", exitMarker, sessionExitCode(execError))
+}
+
+func newExitMarker() (string, error) {
+	value := make([]byte, 16)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(value), nil
+}
+
+func sessionExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var exit interface{ ExitCode() int }
+	if errors.As(err, &exit) {
+		code := exit.ExitCode()
+		if code > 0 && code <= 255 {
+			return code
+		}
+	}
+	return 1
 }
 
 func (g *Gateway) TerminateGrant(ctx context.Context, id string) error {

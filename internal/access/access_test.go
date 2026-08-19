@@ -2,6 +2,8 @@ package access
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,11 @@ import (
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 )
+
+type testExitError struct{ code int }
+
+func (e testExitError) Error() string { return "test exit" }
+func (e testExitError) ExitCode() int { return e.code }
 
 func TestRendererForcesOneGrantAndStripsComment(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "authorized_keys")
@@ -90,6 +97,32 @@ func TestGrantTerminationWaitsForTheTrackedSession(t *testing.T) {
 	gateway.finishSession("grant_test12345", sessionID)
 	if err := <-terminated; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSessionExitCodePreservesWrappedContainerStatus(t *testing.T) {
+	if got := sessionExitCode(nil); got != 0 {
+		t.Fatalf("nil status = %d, want 0", got)
+	}
+	if got := sessionExitCode(fmt.Errorf("wrapped: %w", testExitError{code: 42})); got != 42 {
+		t.Fatalf("wrapped status = %d, want 42", got)
+	}
+	if got := sessionExitCode(errors.New("transport failed")); got != 1 {
+		t.Fatalf("transport status = %d, want 1", got)
+	}
+}
+
+func TestNewExitMarkerIsUnpredictableHex(t *testing.T) {
+	first, err := newExitMarker()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := newExitMarker()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 32 || len(second) != 32 || first == second {
+		t.Fatalf("invalid exit markers %q and %q", first, second)
 	}
 }
 
