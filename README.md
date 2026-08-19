@@ -1,7 +1,7 @@
 # WarpMetal Agent Runtime
 
 `warpmetald` is the optional, outbound-only supervisor installed on a customer's
-VPS by the official `warpmetal runtime install` command. It reconciles the
+server by the official `warpmetal runtime install` command. It reconciles the
 server-scoped manifest, runs fixed-image rootless Podman sandboxes, enforces
 resource and ext4 workspace limits, expires temporary workspaces locally, and
 renders the forced-command SSH access map.
@@ -9,7 +9,7 @@ renders the forced-command SSH access map.
 This repository is the canonical public source for the supervisor, installer,
 systemd unit, and restricted SSH gateway. The WarpMetal control plane and
 billing system are separate: this runtime manages only the sandboxes belonging
-to the owner of one VPS.
+to the owner of one server.
 
 Security boundaries:
 
@@ -68,6 +68,6 @@ The fixed userspace image is maintained separately in
 That repository publishes `ghcr.io/warpmetal/warpmetal-agent-sandbox` for
 `linux/amd64` and `linux/arm64` with SBOM, provenance, and a keyless signature.
 Production must use the complete registry digest emitted by that workflow, and
-the package must permit unauthenticated pulls from customer VPSes. A new
+the package must permit unauthenticated pulls from customer servers. A new
 default digest applies only to newly created sandboxes; existing sandboxes
 remain pinned to their creation image.
