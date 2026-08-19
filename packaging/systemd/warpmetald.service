@@ -1,0 +1,42 @@
+[Unit]
+Description=WarpMetal Agent Runtime supervisor
+After=network-online.target ssh.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=warpmetal-sandbox
+ExecStartPre=-/usr/sbin/iptables -w -D OUTPUT -m owner --uid-owner warpmetal-runtime -d 169.254.0.0/16 -j REJECT
+ExecStartPre=/usr/sbin/iptables -w -I OUTPUT 1 -m owner --uid-owner warpmetal-runtime -d 169.254.0.0/16 -j REJECT
+ExecStartPre=-/usr/sbin/ip6tables -w -D OUTPUT -m owner --uid-owner warpmetal-runtime -d fe80::/10 -j REJECT
+ExecStartPre=/usr/sbin/ip6tables -w -I OUTPUT 1 -m owner --uid-owner warpmetal-runtime -d fe80::/10 -j REJECT
+ExecStartPre=-/usr/sbin/ip6tables -w -D OUTPUT -m owner --uid-owner warpmetal-runtime -d fd00:ec2::254/128 -j REJECT
+ExecStartPre=/usr/sbin/ip6tables -w -I OUTPUT 1 -m owner --uid-owner warpmetal-runtime -d fd00:ec2::254/128 -j REJECT
+ExecStart=/usr/local/sbin/warpmetald
+Restart=on-failure
+RestartSec=5s
+UMask=0027
+RuntimeDirectory=warpmetal
+RuntimeDirectoryMode=0750
+StateDirectory=warpmetal
+StateDirectoryMode=0700
+Delegate=yes
+NoNewPrivileges=no
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/warpmetal /var/lib/warpmetal-runtime /var/lib/warpmetal-workspaces /run/warpmetal /etc/ssh/warpmetal_sandbox_authorized_keys
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=no
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_ADMIN CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SETGID CAP_SETUID CAP_KILL
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
