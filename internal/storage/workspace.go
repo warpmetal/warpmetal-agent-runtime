@@ -145,8 +145,11 @@ func isMounted(ctx context.Context, path string) (bool, error) {
 		return true, nil
 	}
 	var exit *exec.ExitError
-	if errors.As(err, &exit) && exit.ExitCode() == 1 {
-		return false, nil
+	if errors.As(err, &exit) {
+		code := exit.ExitCode()
+		if code == 1 || code == 32 {
+			return false, nil
+		}
 	}
 	return false, fmt.Errorf("check workspace mount: %w", err)
 }
