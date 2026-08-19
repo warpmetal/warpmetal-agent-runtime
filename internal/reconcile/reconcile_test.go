@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,28 @@ func (f *fakeSessions) TerminateGrant(context.Context, string) error {
 func (f *fakeSessions) TerminateSandbox(context.Context, string) error {
 	f.terminated++
 	return nil
+}
+
+func TestEmptyReportUsesArraysOnTheWire(t *testing.T) {
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	reconciler := &Reconciler{Store: store}
+	report, err := reconciler.Report(context.Background(), "srv_test12345", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := string(payload)
+	if !strings.Contains(encoded, `"sandboxes":[]`) ||
+		!strings.Contains(encoded, `"accessGrants":[]`) {
+		t.Fatalf("empty report collections must be JSON arrays: %s", encoded)
+	}
 }
 
 func TestTemporarySandboxExpiresLocallyDuringControlPlaneOutage(t *testing.T) {
