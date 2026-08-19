@@ -22,6 +22,7 @@ jobs:
           set -eu
           test -z "$(gofmt -l .)"
           sh -n packaging/install/install.sh
+          sh packaging/install/install_test.sh
           go test -race ./...
           go vet ./...
 
