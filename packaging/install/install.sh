@@ -10,6 +10,15 @@ fail_install() {
   exit "${2:-1}"
 }
 
+is_warpmetal_podman_service_process() {
+  process_id=$1
+  [ -n "$warpmetal_podman_pid" ] || return 1
+  [ "$process_id" = "$warpmetal_podman_pid" ] && return 0
+  [ -r "/proc/$process_id/cgroup" ] || return 1
+  grep -Eq '^0::/system[.]slice/warpmetal-podman[.]service(/|$)' \
+    "/proc/$process_id/cgroup"
+}
+
 snapshot_host_workloads() {
   process_snapshot_unsorted="$install_state_dir/processes.unsorted"
   process_snapshot="$install_state_dir/processes.before"
@@ -33,8 +42,10 @@ snapshot_host_workloads() {
         ;;
       podman)
         # Restarting WarpMetal's own API service is an allowed installer action.
-        # Its sandbox processes remain protected independently through conmon.
-        [ "$process_id" = "$warpmetal_podman_pid" ] && continue
+        # Podman may fork a child inside the same service cgroup. Exempt only
+        # those Podman processes; sandbox processes remain protected through
+        # their separately inventoried conmon processes.
+        is_warpmetal_podman_service_process "$process_id" && continue
         ;;
       *)
         continue

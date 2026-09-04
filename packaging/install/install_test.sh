@@ -53,7 +53,9 @@ grep -Fq -- "--format '{{.Id}} {{.State.Pid}} {{.State.StartedAt}} {{.State.Runn
 ! grep -Eq '\{\{\.(Name|Config|Image|Mounts)' "$script"
 test "$(grep -Ec '^[[:space:]]*assert_host_workloads_unchanged$' "$script")" -eq 4
 grep -Fq 'systemctl show --property MainPID --value warpmetal-podman.service' "$script"
-grep -Fq '[ "$process_id" = "$warpmetal_podman_pid" ] && continue' "$script"
+grep -Fq 'is_warpmetal_podman_service_process "$process_id" && continue' "$script"
+grep -Fq "grep -Eq '^0::/system[.]slice/warpmetal-podman[.]service(/|$)'" "$script"
+grep -Fq '"/proc/$process_id/cgroup"' "$script"
 grep -Fq 'xargs -n 128' "$script"
 grep -Fq 'package_apply_status=$?' "$script"
 test "$(grep -Fc 'package_apply_status=$?' "$script")" -eq 2
