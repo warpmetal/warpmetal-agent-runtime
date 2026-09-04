@@ -47,7 +47,7 @@ func (c Client) Register(
 	err := c.request(
 		ctx,
 		http.MethodPost,
-		"/api/internal/runtime/register",
+		"/internal/runtime/register",
 		bootstrap,
 		registration,
 		&result,
@@ -66,7 +66,7 @@ func (c Client) Manifest(ctx context.Context) (model.Manifest, error) {
 	err := c.request(
 		ctx,
 		http.MethodGet,
-		"/api/internal/runtime/manifest",
+		"/internal/runtime/manifest",
 		c.NodeToken,
 		nil,
 		&result,
@@ -81,7 +81,7 @@ func (c Client) Report(ctx context.Context, report model.Report) error {
 	if err := c.request(
 		ctx,
 		http.MethodPost,
-		"/api/internal/runtime/report",
+		"/internal/runtime/report",
 		c.NodeToken,
 		report,
 		&response,
