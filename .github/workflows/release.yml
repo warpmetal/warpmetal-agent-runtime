@@ -93,4 +93,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" dist/* \
             --verify-tag \
             --title "$GITHUB_REF_NAME" \
+            --prerelease \
             --generate-notes
