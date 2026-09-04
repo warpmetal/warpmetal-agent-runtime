@@ -7,7 +7,7 @@ printf '%s\n' "$$" > "$cgroup_path/manager/cgroup.procs"
 
 exec /usr/bin/podman \
   --runroot /run/warpmetal-podman/containers \
-  --runtime runc \
+  --runtime crun \
   --cgroup-manager cgroupfs \
   system service \
   --time=0 \
