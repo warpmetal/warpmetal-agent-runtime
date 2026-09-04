@@ -49,6 +49,12 @@ Tagged releases provide static Linux binaries for `amd64` and `arm64`. Each
 archive has a SHA-256 checksum and a detached Cosign signature. The signing
 public key is committed as [`cosign.pub`](cosign.pub).
 
+The tag workflow initially publishes those exact artifacts as a prerelease.
+Promote the existing release only after the signed asset passes the provider
+canary and rollback gates; never rebuild or replace an asset during promotion.
+Backend activation must use the tested asset URL, checksum, signature, and
+version.
+
 The official CLI verifies the configured checksum and signature before it runs
 the root installer. To verify a downloaded release manually:
 

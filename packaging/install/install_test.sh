@@ -5,6 +5,7 @@ script=packaging/install/install.sh
 service=packaging/systemd/warpmetald.service
 podman_service=packaging/systemd/warpmetal-podman.service
 podman_launcher=packaging/systemd/warpmetal-podman-service
+release_workflow=.github/workflows/release.yml
 register_line=$(grep -n '^/usr/local/sbin/warpmetald register ' "$script" | cut -d: -f1)
 podman_restart_line=$(grep -n '^systemctl restart warpmetal-podman.service$' "$script" | cut -d: -f1)
 enable_line=$(grep -n '^systemctl enable warpmetald.service$' "$script" | cut -d: -f1)
@@ -103,3 +104,4 @@ grep -Fqx "printf '%s\\n' \"\$\$\" > \"\$cgroup_path/manager/cgroup.procs\"" "$p
 grep -Fq -- '--runtime crun' "$podman_launcher"
 ! grep -Fq -- '--runtime runc' "$podman_launcher"
 grep -Fq -- '--cgroup-manager cgroupfs' "$podman_launcher"
+grep -Fq -- '--prerelease' "$release_workflow"
