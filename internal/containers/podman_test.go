@@ -58,7 +58,7 @@ func TestPodmanInvocationUsesPinnedLocalRuntime(t *testing.T) {
 		"HOME=/srv/runtime",
 		"XDG_RUNTIME_DIR=/run/warpmetal-podman",
 		"/usr/bin/podman", "--runroot", "/run/warpmetal-podman/containers",
-		"--runtime", "runc", "--cgroup-manager", "cgroupfs",
+		"--runtime", "crun", "--cgroup-manager", "cgroupfs",
 		"create", "sandbox",
 	}
 	if !reflect.DeepEqual(got, want) {

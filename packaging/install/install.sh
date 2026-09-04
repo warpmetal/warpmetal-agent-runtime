@@ -1,6 +1,255 @@
 #!/bin/sh
 set -eu
 
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+LC_ALL=C
+export PATH LC_ALL
+
+fail_install() {
+  echo "$1" >&2
+  exit "${2:-1}"
+}
+
+snapshot_host_workloads() {
+  process_snapshot_unsorted="$install_state_dir/processes.unsorted"
+  process_snapshot="$install_state_dir/processes.before"
+  : > "$process_snapshot_unsorted"
+  docker_process_present=0
+  warpmetal_podman_pid=$(
+    systemctl show --property MainPID --value warpmetal-podman.service 2>/dev/null || true
+  )
+  case "$warpmetal_podman_pid" in
+    ''|0|*[!0-9]*) warpmetal_podman_pid= ;;
+  esac
+  for process_dir in /proc/[0-9]*; do
+    [ -r "$process_dir/comm" ] && [ -r "$process_dir/stat" ] || continue
+    process_id=${process_dir#/proc/}
+    IFS= read -r process_name < "$process_dir/comm" || continue
+    case "$process_name" in
+      dockerd)
+        docker_process_present=1
+        ;;
+      containerd|containerd-shim*|conmon|crio|kubelet|lxc-start|lxd|incusd)
+        ;;
+      podman)
+        # Restarting WarpMetal's own API service is an allowed installer action.
+        # Its sandbox processes remain protected independently through conmon.
+        [ "$process_id" = "$warpmetal_podman_pid" ] && continue
+        ;;
+      *)
+        continue
+        ;;
+    esac
+    process_start=$(awk '{print $22}' "$process_dir/stat" 2>/dev/null) || continue
+    [ -n "$process_start" ] || continue
+    printf '%s %s %s\n' "$process_id" "$process_start" "$process_name" >> "$process_snapshot_unsorted"
+  done
+  sort -n "$process_snapshot_unsorted" > "$process_snapshot"
+
+  docker_inventory_enabled=0
+  docker_cli=$(command -v docker 2>/dev/null || true)
+  docker_socket=/var/run/docker.sock
+  if [ "$docker_process_present" -eq 1 ] || [ -S "$docker_socket" ]; then
+    [ -n "$docker_cli" ] || fail_install runtime_workload_state_unverifiable
+    if ! DOCKER_HOST="unix://$docker_socket" "$docker_cli" info >/dev/null 2>&1; then
+      fail_install runtime_workload_state_unverifiable
+    fi
+    docker_inventory_enabled=1
+  elif [ -n "$docker_cli" ] && \
+       DOCKER_HOST="unix://$docker_socket" "$docker_cli" info >/dev/null 2>&1; then
+    docker_inventory_enabled=1
+  fi
+
+  : > "$install_state_dir/docker.ids"
+  : > "$install_state_dir/docker.before"
+  if [ "$docker_inventory_enabled" -eq 1 ]; then
+    if ! docker_ids=$(DOCKER_HOST="unix://$docker_socket" "$docker_cli" ps --quiet --no-trunc); then
+      fail_install runtime_workload_state_unverifiable
+    fi
+    if [ -n "$docker_ids" ]; then
+      printf '%s\n' "$docker_ids" > "$install_state_dir/docker.ids"
+      if grep -Ev '^[a-f0-9]{64}$' "$install_state_dir/docker.ids" >/dev/null; then
+        fail_install runtime_workload_state_unverifiable
+      fi
+      # Docker IDs contain only lowercase hexadecimal characters, validated above.
+      # One inspect call keeps the snapshot fast without collecting application data.
+      if ! DOCKER_HOST="unix://$docker_socket" xargs -n 128 \
+        "$docker_cli" inspect \
+        --format '{{.Id}} {{.State.Pid}} {{.State.StartedAt}} {{.State.Running}}' \
+        < "$install_state_dir/docker.ids" > "$install_state_dir/docker.unsorted"; then
+        fail_install runtime_workload_state_unverifiable
+      fi
+      sort "$install_state_dir/docker.unsorted" > "$install_state_dir/docker.before"
+    fi
+  fi
+}
+
+assert_host_workloads_unchanged() {
+  while read -r process_id process_start process_name; do
+    [ -n "$process_id" ] || continue
+    [ -r "/proc/$process_id/comm" ] && [ -r "/proc/$process_id/stat" ] || \
+      fail_install runtime_workload_drift_detected
+    IFS= read -r current_name < "/proc/$process_id/comm" || \
+      fail_install runtime_workload_drift_detected
+    current_start=$(awk '{print $22}' "/proc/$process_id/stat" 2>/dev/null) || \
+      fail_install runtime_workload_drift_detected
+    [ "$current_name" = "$process_name" ] && [ "$current_start" = "$process_start" ] || \
+      fail_install runtime_workload_drift_detected
+  done < "$install_state_dir/processes.before"
+
+  if [ "$docker_inventory_enabled" -eq 1 ]; then
+    if ! DOCKER_HOST="unix://$docker_socket" "$docker_cli" info >/dev/null 2>&1; then
+      fail_install runtime_workload_drift_detected
+    fi
+    : > "$install_state_dir/docker.after"
+    if [ -s "$install_state_dir/docker.ids" ]; then
+      if ! DOCKER_HOST="unix://$docker_socket" xargs -n 128 \
+        "$docker_cli" inspect \
+        --format '{{.Id}} {{.State.Pid}} {{.State.StartedAt}} {{.State.Running}}' \
+        < "$install_state_dir/docker.ids" > "$install_state_dir/docker.unsorted"; then
+        fail_install runtime_workload_drift_detected
+      fi
+      sort "$install_state_dir/docker.unsorted" > "$install_state_dir/docker.after"
+    fi
+    cmp -s "$install_state_dir/docker.before" "$install_state_dir/docker.after" || \
+      fail_install runtime_workload_drift_detected
+  fi
+}
+
+apt_protected_packages='apt apt-utils dpkg docker-ce docker-ce-cli docker-ce-rootless-extras containerd.io docker-buildx-plugin docker-compose-plugin docker.io docker-compose docker-compose-v2 containerd runc podman crun conmon buildah netavark aardvark-dns containernetworking-plugins cri-o cri-tools kubelet moby-engine moby-cli moby-buildx moby-compose moby-containerd moby-runc lxc lxc-utils lxd lxd-client incus fuse-overlayfs slirp4netns iptables nftables'
+rpm_protected_packages='dnf dnf5 rpm rpm-libs libdnf libdnf5 docker-ce docker-ce-cli containerd.io containerd docker-buildx-plugin docker-compose-plugin docker-ce-rootless-extras moby-engine moby-cli moby-buildx moby-compose moby-containerd moby-runc docker podman crun runc conmon buildah netavark aardvark-dns containernetworking-plugins cri-o cri-tools kubelet lxc lxc-libs lxcfs lxd incus fuse-overlayfs slirp4netns iptables iptables-nft iptables-libs nftables'
+
+snapshot_apt_protected_packages() {
+  : > "$install_state_dir/protected.before"
+  for package in $apt_protected_packages; do
+    package_status=$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)
+    [ "$package_status" = 'install ok installed' ] || continue
+    package_version=$(dpkg-query -W -f='${Version}' "$package")
+    printf '%s\t%s\n' "$package" "$package_version" >> "$install_state_dir/protected.before"
+  done
+  sort -o "$install_state_dir/protected.before" "$install_state_dir/protected.before"
+}
+
+verify_apt_protected_packages() {
+  tab=$(printf '\t')
+  while IFS="$tab" read -r package expected_version; do
+    [ -n "$package" ] || continue
+    package_status=$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)
+    [ "$package_status" = 'install ok installed' ] || \
+      fail_install runtime_package_postcondition_failed
+    package_version=$(dpkg-query -W -f='${Version}' "$package")
+    [ "$package_version" = "$expected_version" ] || \
+      fail_install runtime_package_postcondition_failed
+  done < "$install_state_dir/protected.before"
+}
+
+install_apt_packages() {
+  snapshot_apt_protected_packages
+  export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=l
+  if ! apt-get update -qq > "$install_state_dir/package-index.log" 2>&1; then
+    fail_install runtime_package_index_failed
+  fi
+
+  apt_packages='podman crun uidmap fuse-overlayfs slirp4netns e2fsprogs iptables util-linux'
+  set --
+  for package in $apt_packages; do
+    set -- "$@" "$package"
+  done
+  tab=$(printf '\t')
+  while IFS="$tab" read -r package package_version; do
+    [ -n "$package" ] || continue
+    set -- "$@" "$package"
+  done < "$install_state_dir/protected.before"
+
+  if ! apt-get --simulate --no-remove --no-upgrade --no-install-recommends \
+    install "$@" > "$install_state_dir/package.plan" 2>&1; then
+    fail_install runtime_package_plan_unsafe
+  fi
+  if grep -Eq '^(Remv|Purg) ' "$install_state_dir/package.plan"; then
+    fail_install runtime_package_plan_unsafe
+  fi
+  while IFS="$tab" read -r package package_version; do
+    [ -n "$package" ] || continue
+    if grep -Eq "^Inst ${package}(:[^ ]+)? \[" "$install_state_dir/package.plan"; then
+      fail_install runtime_package_plan_unsafe
+    fi
+  done < "$install_state_dir/protected.before"
+
+  package_apply_status=0
+  apt-get install -y --no-remove --no-upgrade --no-install-recommends \
+    "$@" > "$install_state_dir/package.apply" 2>&1 || package_apply_status=$?
+  verify_apt_protected_packages
+  if [ "$package_apply_status" -ne 0 ]; then
+    assert_host_workloads_unchanged
+    fail_install runtime_package_apply_failed
+  fi
+}
+
+snapshot_rpm_protected_packages() {
+  : > "$install_state_dir/protected.before"
+  for package in $rpm_protected_packages; do
+    rpm -q "$package" >/dev/null 2>&1 || continue
+    rpm -q --qf '%{NAME}.%{ARCH}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}.%{ARCH}\n' \
+      "$package" >> "$install_state_dir/protected.before"
+  done
+  sort -o "$install_state_dir/protected.before" "$install_state_dir/protected.before"
+}
+
+verify_rpm_protected_packages() {
+  tab=$(printf '\t')
+  while IFS="$tab" read -r package_arch expected_version; do
+    [ -n "$package_arch" ] || continue
+    package_version=$(rpm -q --qf '%{EPOCHNUM}:%{VERSION}-%{RELEASE}.%{ARCH}' \
+      "$package_arch" 2>/dev/null || true)
+    [ "$package_version" = "$expected_version" ] || \
+      fail_install runtime_package_postcondition_failed
+  done < "$install_state_dir/protected.before"
+}
+
+install_dnf_packages() {
+  snapshot_rpm_protected_packages
+  dnf_packages='podman crun shadow-utils fuse-overlayfs slirp4netns e2fsprogs iptables util-linux'
+  set -- install
+  missing_package_count=0
+  for package in $dnf_packages; do
+    if [ "$package" = iptables ] && \
+       [ -x /usr/sbin/iptables ] && [ -x /usr/sbin/ip6tables ]; then
+      continue
+    fi
+    if ! rpm -q "$package" >/dev/null 2>&1; then
+      set -- "$@" "$package"
+      missing_package_count=$((missing_package_count + 1))
+    fi
+  done
+
+  if [ "$missing_package_count" -gt 0 ]; then
+    protected_exclude=$(cut -f1 "$install_state_dir/protected.before" | paste -sd, -)
+    if [ -n "$protected_exclude" ]; then
+      set -- "--exclude=$protected_exclude" "$@"
+    fi
+    if ! dnf -y --setopt=install_weak_deps=False --setopt=obsoletes=False \
+      --setopt=tsflags=test "$@" \
+      > "$install_state_dir/package.plan" 2>&1; then
+      fail_install runtime_package_plan_unsafe
+    fi
+    if grep -Eq '^(Removing|Downgrading|Replacing)( [^:]*)?:$|^[[:space:]]*(Remove|Downgrade)[[:space:]]+[0-9]+ Package' \
+      "$install_state_dir/package.plan"; then
+      fail_install runtime_package_plan_unsafe
+    fi
+    package_apply_status=0
+    dnf -y -q --setopt=install_weak_deps=False --setopt=obsoletes=False \
+      "$@" \
+      > "$install_state_dir/package.apply" 2>&1 || package_apply_status=$?
+    verify_rpm_protected_packages
+    if [ "$package_apply_status" -ne 0 ]; then
+      assert_host_workloads_unchanged
+      fail_install runtime_package_apply_failed
+    fi
+  fi
+  verify_rpm_protected_packages
+}
+
 if [ "$(id -u)" -ne 0 ]; then
   echo "installer_requires_root" >&2
   exit 1
@@ -29,6 +278,7 @@ case "$bundle_dir" in /tmp/warpmetal-runtime-*) ;; *) echo "invalid_bundle_path"
 bundle_name=${bundle_dir#/tmp/warpmetal-runtime-}
 case "$bundle_name" in ''|*[!A-Za-z0-9_-]*) echo "invalid_bundle_path" >&2; exit 2 ;; esac
 
+# shellcheck source=/dev/null
 . /etc/os-release
 case "${ID:-}:${VERSION_ID:-}" in
   ubuntu:24.04|debian:12) package_manager=apt ;;
@@ -39,20 +289,34 @@ esac
 test -d /run/systemd/system || { echo "systemd_required" >&2; exit 1; }
 test -f /sys/fs/cgroup/cgroup.controllers || { echo "cgroups_v2_required" >&2; exit 1; }
 
-if [ "$package_manager" = apt ]; then
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq
-  apt-get install -y -qq podman runc uidmap fuse-overlayfs slirp4netns e2fsprogs iptables util-linux
-  if [ "$ID" = ubuntu ]; then
-    apt-get install -y -qq linux-generic
-  fi
-  if [ -f /var/run/reboot-required ]; then
-    echo "runtime_reboot_required" >&2
-    exit 75
-  fi
-else
-  dnf install -y -q podman runc shadow-utils fuse-overlayfs slirp4netns e2fsprogs iptables util-linux
+if [ -f /var/run/reboot-required ]; then
+  fail_install runtime_reboot_required 75
 fi
+
+command -v flock >/dev/null 2>&1 || fail_install runtime_install_lock_unavailable
+test -d /run/lock || fail_install runtime_install_lock_unavailable
+umask 077
+install_state_dir=$(mktemp -d /run/warpmetal-install.XXXXXX) || \
+  fail_install runtime_install_state_unavailable
+cleanup_install_state() {
+  case "$install_state_dir" in
+    /run/warpmetal-install.*) rm -rf -- "$install_state_dir" ;;
+  esac
+}
+trap cleanup_install_state 0
+trap 'exit 130' 1 2 15
+exec 9>/run/lock/warpmetal-runtime-install.lock
+flock -n 9 || fail_install runtime_install_in_progress
+
+snapshot_host_workloads
+if [ "$package_manager" = apt ]; then
+  install_apt_packages
+else
+  install_dnf_packages
+fi
+assert_host_workloads_unchanged
+command -v podman >/dev/null 2>&1 || fail_install runtime_podman_unavailable
+command -v crun >/dev/null 2>&1 || fail_install runtime_oci_runtime_unavailable
 
 getent passwd warpmetal-runtime >/dev/null 2>&1 || \
   useradd --system --create-home --home-dir /var/lib/warpmetal-runtime --shell /usr/sbin/nologin warpmetal-runtime
@@ -90,50 +354,21 @@ ensure_subid_range() {
 ensure_subid_range /etc/subuid --add-subuids
 ensure_subid_range /etc/subgid --add-subgids
 
-runtime_uid=$(id -u warpmetal-runtime)
 install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podman
 if [ -f /var/lib/warpmetal-runtime/.local/share/containers/storage/libpod/bolt_state.db ] || \
    [ -f /var/lib/warpmetal-runtime/.local/share/containers/storage/db.sql ]; then
-  install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 "/run/user/${runtime_uid}"
-  legacy_runroot="/run/user/${runtime_uid}/containers"
   current_runroot=$(
     cd /var/lib/warpmetal-runtime
     runuser -u warpmetal-runtime -- env \
       HOME=/var/lib/warpmetal-runtime \
       XDG_RUNTIME_DIR=/run/warpmetal-podman \
       podman --runroot /run/warpmetal-podman/containers \
-        --runtime runc \
+        --runtime crun \
         --cgroup-manager cgroupfs \
         info --format '{{.Store.RunRoot}}' 2>/dev/null || true
   )
   if [ "$current_runroot" != /run/warpmetal-podman/containers ]; then
-    systemctl stop warpmetald.service 2>/dev/null || true
-    systemctl stop warpmetal-podman.service 2>/dev/null || true
-    install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podman
-    reset_runroot=/run/warpmetal-podman/containers
-    legacy_current_runroot=$(
-      cd /var/lib/warpmetal-runtime
-      runuser -u warpmetal-runtime -- env \
-        HOME=/var/lib/warpmetal-runtime \
-        XDG_RUNTIME_DIR="/run/user/${runtime_uid}" \
-        podman --runroot "$legacy_runroot" \
-          --runtime runc \
-          --cgroup-manager cgroupfs \
-          info --format '{{.Store.RunRoot}}' 2>/dev/null || true
-    )
-    if [ "$legacy_current_runroot" = "$legacy_runroot" ]; then
-      reset_runroot=$legacy_runroot
-    fi
-    (
-      cd /var/lib/warpmetal-runtime
-      runuser -u warpmetal-runtime -- env \
-        HOME=/var/lib/warpmetal-runtime \
-        XDG_RUNTIME_DIR="$(dirname "$reset_runroot")" \
-        podman --runroot "$reset_runroot" \
-          --runtime runc \
-          --cgroup-manager cgroupfs \
-          system reset --force
-    )
+    fail_install runtime_legacy_migration_required
   fi
 fi
 
@@ -168,6 +403,7 @@ while [ ! -S /run/warpmetal-podman/podman.sock ] && [ "$attempt" -lt 50 ]; do
 done
 test -S /run/warpmetal-podman/podman.sock || { echo "runtime_podman_unavailable" >&2; exit 1; }
 
+assert_host_workloads_unchanged
 /usr/local/sbin/warpmetald register --api "$api_origin" --server "$server_id"
 systemctl enable warpmetald.service
 systemctl restart warpmetald.service

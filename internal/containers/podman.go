@@ -183,7 +183,7 @@ func podmanInvocation(runtimeUser, home string, remote bool, args ...string) []s
 		argv = append(
 			argv,
 			"/usr/bin/podman", "--runroot", podmanRunRoot,
-			"--runtime", "runc", "--cgroup-manager", "cgroupfs",
+			"--runtime", "crun", "--cgroup-manager", "cgroupfs",
 		)
 	}
 	return append(argv, args...)

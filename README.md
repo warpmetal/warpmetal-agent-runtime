@@ -66,14 +66,37 @@ session. The installer requires root because it creates the dedicated runtime
 and SSH gateway accounts, installs host firewall rules, and enables the
 supervisor service. Supported hosts are AlmaLinux 9, Debian 12, Rocky Linux 9,
 and Ubuntu 24.04 with systemd and cgroups v2. The installer uses the host's
-`apt` or `dnf` packages and installs the distribution `runc` package. Workspace
-mounts receive a private Podman SELinux label on enforcing hosts. On Ubuntu it
-installs the supported generic kernel; if a reboot is pending, it exits with
-status 75 and `runtime_reboot_required` before consuming the bootstrap token.
-Reboot the server and retry the same verified installer.
-Upgrading from the preview's former user-manager layout resets only the
-dedicated Podman container/image metadata; desired sandboxes are recreated and
-their separately mounted workspace data is preserved.
+`apt` or `dnf` packages and explicitly selects the distribution `crun` package
+for WarpMetal's private rootless Podman service. It never requests the distro
+`runc` package, because that package conflicts with Docker CE's
+`containerd.io` bundle on Debian-family hosts.
+
+Before package mutation, the installer takes a root-only metadata snapshot of
+recognized container-runtime processes and any running Docker container IDs,
+init PIDs, and start timestamps. It does not collect container names, images,
+environment variables, mounts, or logs. APT runs a simulated transaction and
+then applies it with `--no-remove`; DNF runs an RPM transaction test without
+`--allowerasing`. Both paths preserve the exact versions of an installed
+known Docker/containerd/Podman and package-manager components and verify that
+stack after the package action. Package apply failures run the same package and
+workload postconditions before returning. The workload snapshot is checked
+again immediately before registration. Package-plan conflicts, uninspectable
+Docker state, or workload drift fail closed with a stable `runtime_*` error
+before the supervisor is registered. Docker receives container-level checks;
+other recognized engines receive process-level checks and require separate
+certification before WarpMetal claims container-level coexistence.
+
+Workspace mounts receive a private Podman SELinux label on enforcing hosts.
+The ordinary installer does not install or replace a kernel. If a reboot is
+already pending, it exits with status 75 and `runtime_reboot_required` before
+updating package indexes or consuming the bootstrap token. Reboot only as a
+separately authorized maintenance action, then retry the same verified
+installer.
+
+The ordinary installer also never runs `podman system reset`. A preview install
+whose Podman state still points at the former user-manager run root exits with
+`runtime_legacy_migration_required`; preserve that host and use a separately
+reviewed migration procedure instead of deleting container metadata implicitly.
 
 The fixed userspace image is maintained separately in
 [`warpmetal/warpmetal-agent-sandbox`](https://github.com/warpmetal/warpmetal-agent-sandbox).
