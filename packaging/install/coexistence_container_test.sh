@@ -71,22 +71,37 @@ docker run -d \
   --network-alias sentinel-server \
   -p 127.0.0.1:18080:8080 \
   --restart unless-stopped \
+  --health-cmd 'wget -qO- http://127.0.0.1:8080' \
+  --health-interval 1s \
+  --health-timeout 1s \
+  --health-retries 30 \
   busybox:1.36 \
   sh -c 'mkdir -p /www && printf ok > /www/index.html && exec httpd -f -p 8080 -h /www' \
   >/dev/null
 client_container=$(docker run -d \
   --network warpmetal-coexistence \
   --restart unless-stopped \
+  --health-cmd true \
+  --health-interval 1s \
+  --health-timeout 1s \
+  --health-retries 30 \
   busybox:1.36 sleep 600)
 sentinel=3
 while [ "$sentinel" -le 9 ]; do
   docker run -d --network none --restart unless-stopped \
+    --health-cmd true \
+    --health-interval 1s \
+    --health-timeout 1s \
+    --health-retries 30 \
     busybox:1.36 sleep 600 >/dev/null
   sentinel=$((sentinel + 1))
 done
 
 test "$(curl -fsS http://127.0.0.1:18080)" = ok
 test "$(docker exec "$client_container" wget -qO- http://sentinel-server:8080)" = ok
+
+# Normal Docker healthcheck exec activity is not workload drift. Container IDs,
+# init PIDs, start timestamps, and running state remain the protected snapshot.
 
 docker ps --quiet --no-trunc > /tmp/warpmetal-docker-ids.before
 test "$(wc -l < /tmp/warpmetal-docker-ids.before)" -eq 9

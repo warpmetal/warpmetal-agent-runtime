@@ -7,7 +7,7 @@ podman_service=packaging/systemd/warpmetal-podman.service
 podman_launcher=packaging/systemd/warpmetal-podman-service
 release_workflow=.github/workflows/release.yml
 register_line=$(grep -n '^/usr/local/sbin/warpmetald register ' "$script" | cut -d: -f1)
-podman_restart_line=$(grep -n '^systemctl restart warpmetal-podman.service$' "$script" | cut -d: -f1)
+podman_start_line=$(grep -n '^systemctl start warpmetal-podman.service$' "$script" | cut -d: -f1)
 enable_line=$(grep -n '^systemctl enable warpmetald.service$' "$script" | cut -d: -f1)
 restart_line=$(grep -n '^systemctl restart warpmetald.service$' "$script" | cut -d: -f1)
 snapshot_line=$(grep -n '^snapshot_host_workloads$' "$script" | cut -d: -f1)
@@ -16,20 +16,22 @@ runtime_user_line=$(grep -n '^getent passwd warpmetal-runtime ' "$script" | cut 
 last_workload_assert_line=$(grep -n '^[[:space:]]*assert_host_workloads_unchanged$' "$script" | tail -n 1 | cut -d: -f1)
 
 test -n "$register_line"
-test -n "$podman_restart_line"
+test -n "$podman_start_line"
 test -n "$enable_line"
 test -n "$restart_line"
 test -n "$snapshot_line"
 test -n "$package_line"
 test -n "$runtime_user_line"
 test -n "$last_workload_assert_line"
-test "$podman_restart_line" -lt "$register_line"
+test "$podman_start_line" -lt "$register_line"
 test "$register_line" -lt "$enable_line"
 test "$enable_line" -lt "$restart_line"
 test "$snapshot_line" -lt "$package_line"
 test "$package_line" -lt "$runtime_user_line"
 test "$last_workload_assert_line" -lt "$register_line"
 ! grep -F 'systemctl enable --now warpmetald.service' "$script"
+! grep -Fq 'systemctl restart warpmetal-podman.service' "$script"
+grep -Fq 'systemctl start warpmetal-podman.service' "$script"
 grep -Fq "apt_packages='podman crun uidmap" "$script"
 grep -Fq "dnf_packages='podman crun shadow-utils" "$script"
 grep -Fq 'iptables util-linux' "$script"
