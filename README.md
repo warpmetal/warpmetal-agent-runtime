@@ -117,3 +117,14 @@ Production must use the complete registry digest emitted by that workflow, and
 the package must permit unauthenticated pulls from customer servers. A new
 default digest applies only to newly created sandboxes; existing sandboxes
 remain pinned to their creation image.
+
+An existing sandbox changes images only when its authenticated manifest names
+an explicit immutable per-sandbox digest and advances that sandbox's
+generation. The runtime pulls the target before interruption, terminates active
+gateway sessions, and replaces only the container root filesystem. The external
+`/home/agent` workspace, sandbox identity, lifetime, and original start time are
+preserved. Running sandboxes return to running and stopped sandboxes remain
+stopped. The old container is retained under a deterministic backup name until
+the replacement reaches its desired state, allowing a failed or interrupted
+refresh to roll back or resume safely. A refresh therefore causes a brief
+connection interruption but is not a workspace migration or deletion.

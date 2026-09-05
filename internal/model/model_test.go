@@ -70,3 +70,21 @@ func TestValidateManifestRejectsMutableImageReference(t *testing.T) {
 		t.Fatal("expected mutable image reference rejection")
 	}
 }
+
+func TestValidateManifestRejectsMutablePerSandboxImageReference(t *testing.T) {
+	manifest := Manifest{
+		ServerID:        "srv_test12345",
+		DesiredRevision: 1,
+		ImageDigest:     testImageDigest("a"),
+		Capacity:        Resources{CPUMillicores: 500, MemoryMiB: 1024, WorkspaceDiskGiB: 10},
+		Sandboxes: []Sandbox{{
+			ID: "sbx_test12345", Name: "main",
+			Resources:   Resources{CPUMillicores: 500, MemoryMiB: 1024, WorkspaceDiskGiB: 10, PIDs: 256},
+			ImageDigest: "registry.example/sandbox:latest",
+			Lifetime:    "persistent", DesiredState: "running", Generation: 1,
+		}},
+	}
+	if err := ValidateManifest(manifest, manifest.ServerID, 0); err == nil {
+		t.Fatal("expected mutable per-sandbox image to be rejected")
+	}
+}

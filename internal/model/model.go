@@ -47,6 +47,7 @@ type Sandbox struct {
 	Name             string     `json:"name"`
 	Size             string     `json:"size"`
 	Resources        Resources  `json:"resources"`
+	ImageDigest      string     `json:"imageDigest,omitempty"`
 	Lifetime         string     `json:"lifetime"`
 	ExpiresInSeconds *int       `json:"expiresInSeconds"`
 	StartedAt        *time.Time `json:"startedAt"`
@@ -139,6 +140,9 @@ func ValidateManifest(manifest Manifest, expectedServer string, lastRevision int
 		sandboxStates[sandbox.ID] = sandbox.DesiredState
 		if !validDesired[sandbox.DesiredState] || sandbox.Generation < 1 {
 			return fmt.Errorf("invalid desired state for %s", sandbox.ID)
+		}
+		if sandbox.ImageDigest != "" && !imagePattern.MatchString(sandbox.ImageDigest) {
+			return fmt.Errorf("invalid image digest for %s", sandbox.ID)
 		}
 		if sandbox.Resources.CPUMillicores < 1 || sandbox.Resources.MemoryMiB < 1 ||
 			sandbox.Resources.WorkspaceDiskGiB < 1 || sandbox.Resources.PIDs < 1 {
