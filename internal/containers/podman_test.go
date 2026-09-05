@@ -26,7 +26,7 @@ func TestCreateArgumentsKeepRootlessIdentityAndIsolation(t *testing.T) {
 		{"--memory", "1024m"},
 		{"--memory-swap", "1024m"},
 		{"--pids-limit", "256"},
-		{"--cgroup-parent", "warpmetal-podman.service"},
+		{"--cgroup-parent", "/system.slice/warpmetal-podman.service"},
 		{"--cap-drop", "ALL"},
 		{"--security-opt", "no-new-privileges"},
 		{"--network", "slirp4netns:allow_host_loopback=false"},

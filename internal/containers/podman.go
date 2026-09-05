@@ -31,6 +31,7 @@ const (
 	podmanRuntimeDirectory = "/run/warpmetal-podman"
 	podmanRunRoot          = "/run/warpmetal-podman/containers"
 	podmanSocket           = "unix:///run/warpmetal-podman/podman.sock"
+	podmanCgroupParent     = "/system.slice/warpmetal-podman.service"
 )
 
 func (p Podman) Ensure(
@@ -208,7 +209,7 @@ func createArguments(
 		"--memory", memory,
 		"--memory-swap", memory,
 		"--pids-limit", strconv.Itoa(sandbox.Resources.PIDs),
-		"--cgroup-parent", "warpmetal-podman.service",
+		"--cgroup-parent", podmanCgroupParent,
 		"--cap-drop", "ALL",
 		"--security-opt", "no-new-privileges",
 		"--network", "slirp4netns:allow_host_loopback=false",
