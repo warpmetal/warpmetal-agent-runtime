@@ -29,3 +29,8 @@ restart, or replace a third-party runtime. Docker receives container-level
 checks; other recognized engines receive process-level checks. Legacy
 WarpMetal Podman state that would require a reset is refused for separate
 operator review.
+
+The installer also treats existing persistent WarpMetal sandboxes as protected
+upgrade state. It starts the private Podman service when needed but does not
+restart an already-active service, avoiding a systemd cgroup teardown of live
+sandboxes during a supervisor upgrade.

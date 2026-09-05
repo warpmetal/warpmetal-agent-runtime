@@ -92,6 +92,11 @@ before the supervisor is registered. Docker receives container-level checks;
 other recognized engines receive process-level checks and require separate
 certification before WarpMetal claims container-level coexistence.
 
+On an upgrade, an already-active private WarpMetal Podman service is preserved
+instead of restarted. This keeps persistent Agent Runtime sandboxes and their
+delegated cgroups running while the supervisor binaries are replaced. A fresh
+install, or an inactive service, is still started before registration.
+
 Workspace mounts receive a private Podman SELinux label on enforcing hosts.
 The ordinary installer does not install or replace a kernel. If a reboot is
 already pending, it exits with status 75 and `runtime_reboot_required` before

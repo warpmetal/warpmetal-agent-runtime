@@ -405,7 +405,11 @@ printf '[Service]\nBindPaths=%s\nReadWritePaths=/run/warpmetal-podman %s\n' \
 systemctl daemon-reload
 systemctl reload ssh.service 2>/dev/null || systemctl reload sshd.service
 systemctl enable warpmetal-podman.service
-systemctl restart warpmetal-podman.service
+# Starting an already-active service is intentionally a no-op. Runtime
+# upgrades must not stop its delegated cgroup because systemd would also stop
+# the persistent sandbox processes that live below it. Fresh installs and
+# failed/inactive services are still started here.
+systemctl start warpmetal-podman.service
 
 attempt=0
 while [ ! -S /run/warpmetal-podman/podman.sock ] && [ "$attempt" -lt 50 ]; do
