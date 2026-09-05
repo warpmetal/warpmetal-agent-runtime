@@ -79,3 +79,22 @@ func TestPodmanInvocationUsesPrivateServiceForLifecycle(t *testing.T) {
 		t.Fatalf("remote invocation mismatch:\n got: %#v\nwant: %#v", got, want)
 	}
 }
+
+func TestPodmanInvocationUsesPrivateServiceForExec(t *testing.T) {
+	got := podmanInvocation(
+		"runtime-user",
+		"/srv/runtime",
+		true,
+		"exec", "-i", "sandbox", "/bin/sh", "-lc", "id",
+	)
+	want := []string{
+		"-u", "runtime-user", "--", "env",
+		"HOME=/srv/runtime",
+		"XDG_RUNTIME_DIR=/run/warpmetal-podman",
+		"/usr/bin/podman", "--remote", "--url", "unix:///run/warpmetal-podman/podman.sock",
+		"exec", "-i", "sandbox", "/bin/sh", "-lc", "id",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("remote exec invocation mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+}
