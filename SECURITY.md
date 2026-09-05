@@ -34,3 +34,12 @@ The installer also treats existing persistent WarpMetal sandboxes as protected
 upgrade state. It starts the private Podman service when needed but does not
 restart an already-active service, avoiding a systemd cgroup teardown of live
 sandboxes during a supervisor upgrade.
+
+Sandbox image refresh is a separate authenticated control-plane action. The
+runtime accepts only an immutable registry digest paired with a sandbox
+generation advance; changing the global default does not refresh existing
+sandboxes. It pulls the target before stopping the old container and never
+deletes or remounts the external workspace. A deterministic backup container is
+kept until the target reaches the requested running or stopped state. Failure
+restores the old container when possible, and an incomplete rollback is
+reported as a distinct fail-closed condition for operator review.

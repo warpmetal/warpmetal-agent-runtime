@@ -174,11 +174,24 @@ func (r *Reconciler) reconcileSandbox(
 	local.Lifetime = desired.Lifetime
 	local.ExpiresInSeconds = desired.ExpiresInSeconds
 	local.Resources = desired.Resources
+	targetImageDigest := desired.ImageDigest
+	if targetImageDigest == "" {
+		if local.ImageDigest != "" {
+			targetImageDigest = local.ImageDigest
+		} else {
+			targetImageDigest = imageDigest
+		}
+	}
 	// Pin a sandbox to the image used when it was first created. A new default
-	// applies only to new sandboxes; existing workspaces are never disrupted by
-	// an implicit image replacement.
+	// applies only to new sandboxes. Existing sandboxes change images only when
+	// the control plane supplies an explicit per-sandbox digest and advances its
+	// generation.
 	if local.ImageDigest == "" {
-		local.ImageDigest = imageDigest
+		local.ImageDigest = targetImageDigest
+	}
+	refreshImage := local.ImageDigest != targetImageDigest
+	if refreshImage && desired.Generation <= local.ObservedGeneration {
+		return errors.New("sandbox image change requires a generation advance")
 	}
 	if local.StartedAt == nil && desired.StartedAt != nil {
 		local.StartedAt = desired.StartedAt
@@ -201,6 +214,33 @@ func (r *Reconciler) reconcileSandbox(
 	case "deleted":
 		return r.removeSandbox(ctx, local)
 	case "stopped":
+		if refreshImage {
+			workspace, err := r.Workspaces.Ensure(
+				ctx,
+				local.ID,
+				local.Resources.WorkspaceDiskGiB,
+			)
+			if err != nil {
+				return r.failSandbox(ctx, local, "workspace_create_failed", err)
+			}
+			local.ObservedState = "restarting"
+			if err := r.Store.PutSandbox(ctx, *local); err != nil {
+				return err
+			}
+			if r.Sessions != nil {
+				_ = r.Sessions.TerminateSandbox(ctx, local.ID)
+			}
+			if err := r.Engine.Replace(
+				ctx,
+				desired,
+				workspace,
+				targetImageDigest,
+				false,
+			); err != nil {
+				return r.failSandbox(ctx, local, imageReplaceErrorCode(err), err)
+			}
+			local.ImageDigest = targetImageDigest
+		}
 		if local.ObservedState != "stopped" {
 			local.ObservedState = "stopping"
 			if err := r.Store.PutSandbox(ctx, *local); err != nil {
@@ -224,7 +264,25 @@ func (r *Reconciler) reconcileSandbox(
 		if err != nil {
 			return r.failSandbox(ctx, local, "workspace_create_failed", err)
 		}
-		if local.ObservedState == "running" && local.ObservedGeneration < local.Generation {
+		if refreshImage {
+			local.ObservedState = "restarting"
+			if err := r.Store.PutSandbox(ctx, *local); err != nil {
+				return err
+			}
+			if r.Sessions != nil {
+				_ = r.Sessions.TerminateSandbox(ctx, local.ID)
+			}
+			if err := r.Engine.Replace(
+				ctx,
+				desired,
+				workspace,
+				targetImageDigest,
+				true,
+			); err != nil {
+				return r.failSandbox(ctx, local, imageReplaceErrorCode(err), err)
+			}
+			local.ImageDigest = targetImageDigest
+		} else if local.ObservedState == "running" && local.ObservedGeneration < local.Generation {
 			local.ObservedState = "restarting"
 			if err := r.Store.PutSandbox(ctx, *local); err != nil {
 				return err
@@ -269,6 +327,16 @@ func (r *Reconciler) reconcileSandbox(
 	default:
 		return errors.New("unsupported desired state")
 	}
+}
+
+func imageReplaceErrorCode(err error) string {
+	if errors.Is(err, containers.ErrImagePullFailed) {
+		return "sandbox_image_pull_failed"
+	}
+	if errors.Is(err, containers.ErrImageRollbackFailed) {
+		return "container_image_rollback_failed"
+	}
+	return "container_image_replace_failed"
 }
 
 func (r *Reconciler) removeSandbox(ctx context.Context, local *state.LocalSandbox) error {
