@@ -94,7 +94,11 @@ func (p Podman) Exec(
 	} else {
 		args = append(args, "-lc", command)
 	}
-	return p.runStreams(ctx, stdin, stdout, stderr, args...)
+	// Execute through the private Podman service so the OCI process is born
+	// inside the delegated warpmetal-podman.service cgroup hierarchy. A local
+	// Podman client launched by warpmetald runs in a sibling systemd cgroup and
+	// cannot migrate the exec process across that cgroup v2 delegation boundary.
+	return p.runRemoteStreams(ctx, stdin, stdout, stderr, args...)
 }
 
 func (p Podman) run(ctx context.Context, stdin io.Reader, args ...string) error {
