@@ -32,6 +32,30 @@ Security boundaries:
   namespace so the separate rootless engine sees only the intended workspace
   mounts; the rest of the supervisor stays inside its hardened mount namespace.
 
+## Baked-in CLI availability reports
+
+An authenticated desired sandbox may include an optional `cliTools` array. It
+is a unique subset of `codex`, `claude`, and `cursor`; omission means no tools
+are selected for onboarding. Selection is generation-bound preference metadata,
+not installation or authorization. Every supported sandbox image contains all
+three tools, and a connected sandbox owner may use an unselected tool.
+
+After a selected sandbox reaches its desired running generation, the supervisor
+executes only the image-owned constant
+`/usr/local/bin/warpmetal-agent-tool-report`. The supervisor accepts a bounded,
+strict report for the complete three-tool catalog, persists only the selected
+entries, and returns them under that sandbox report's `observedGeneration`.
+Malformed, unknown, duplicate, incomplete, or failed observations become safe
+per-tool failures without changing the sandbox's running state. Old desired
+manifests and existing local databases default to an empty selection.
+
+The supervisor never derives or executes a command from the image manifest,
+desired state, or tool output. Sandbox creation and reporting do not run a
+package manager, download or update a CLI, perform CLI login, or receive user
+credentials. An `available` result proves only that the pinned binary passed the
+baked-in version probe; it does not mean a user is authenticated. Tool output
+and child errors are never forwarded into runtime error details.
+
 Build and test on Linux with Go 1.25 or newer:
 
 ```sh

@@ -414,3 +414,18 @@ func TestPodmanInvocationUsesPrivateServiceForExec(t *testing.T) {
 		t.Fatalf("remote exec invocation mismatch:\n got: %#v\nwant: %#v", got, want)
 	}
 }
+
+func TestPodmanExecCarriesFixedToolReporterThroughPrivateService(t *testing.T) {
+	got := execArguments(
+		"sbx_example123",
+		"/usr/local/bin/warpmetal-agent-tool-report",
+		false,
+	)
+	want := []string{
+		"exec", "-i", "warpmetal-sbx_example123", "/bin/sh", "-lc",
+		"/usr/local/bin/warpmetal-agent-tool-report",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("tool reporter escaped the fixed exec boundary: %#v", got)
+	}
+}

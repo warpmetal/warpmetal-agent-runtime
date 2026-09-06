@@ -246,6 +246,15 @@ func (p Podman) Exec(
 	stdout io.Writer,
 	stderr io.Writer,
 ) error {
+	args := execArguments(id, command, tty)
+	// Execute through the private Podman service so the OCI process is born
+	// inside the delegated warpmetal-podman.service cgroup hierarchy. A local
+	// Podman client launched by warpmetald runs in a sibling systemd cgroup and
+	// cannot migrate the exec process across that cgroup v2 delegation boundary.
+	return p.runRemoteStreams(ctx, stdin, stdout, stderr, args...)
+}
+
+func execArguments(id, command string, tty bool) []string {
 	args := []string{"exec", "-i"}
 	if tty {
 		args = append(args, "-t")
@@ -256,11 +265,7 @@ func (p Podman) Exec(
 	} else {
 		args = append(args, "-lc", command)
 	}
-	// Execute through the private Podman service so the OCI process is born
-	// inside the delegated warpmetal-podman.service cgroup hierarchy. A local
-	// Podman client launched by warpmetald runs in a sibling systemd cgroup and
-	// cannot migrate the exec process across that cgroup v2 delegation boundary.
-	return p.runRemoteStreams(ctx, stdin, stdout, stderr, args...)
+	return args
 }
 
 func (p Podman) run(ctx context.Context, stdin io.Reader, args ...string) error {

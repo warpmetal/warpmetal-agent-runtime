@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -31,6 +32,9 @@ type LocalSandbox struct {
 	ExpiresAt          *time.Time
 	Resources          model.Resources
 	ImageDigest        string
+	CLITools           []string
+	ObservedCLITools   []model.CLIToolReport
+	CLIToolsGeneration int64
 	ErrorCode          string
 	ErrorMessage       string
 }
@@ -93,6 +97,9 @@ CREATE TABLE IF NOT EXISTS sandboxes (
   workspace_disk_gib INTEGER NOT NULL,
   pids_limit INTEGER NOT NULL,
   image_digest TEXT NOT NULL,
+  cli_tools TEXT NOT NULL DEFAULT '[]',
+  observed_cli_tools TEXT NOT NULL DEFAULT '[]',
+  cli_tools_generation INTEGER NOT NULL DEFAULT 0,
   error_code TEXT NOT NULL DEFAULT '',
   error_message TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL
@@ -112,6 +119,58 @@ CREATE INDEX IF NOT EXISTS grants_sandbox_idx ON grants(sandbox_id);
 `
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("initialize local database: %w", err)
+	}
+	if err := s.migrateSandboxToolColumns(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) migrateSandboxToolColumns(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(sandboxes)`)
+	if err != nil {
+		return fmt.Errorf("inspect local sandbox schema: %w", err)
+	}
+	columns := map[string]bool{}
+	for rows.Next() {
+		var sequence int
+		var name, columnType string
+		var notNull, primaryKey int
+		var defaultValue sql.NullString
+		if err := rows.Scan(
+			&sequence,
+			&name,
+			&columnType,
+			&notNull,
+			&defaultValue,
+			&primaryKey,
+		); err != nil {
+			rows.Close()
+			return fmt.Errorf("inspect local sandbox schema: %w", err)
+		}
+		columns[name] = true
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("inspect local sandbox schema: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect local sandbox schema: %w", err)
+	}
+	statements := []struct {
+		column string
+		sql    string
+	}{
+		{"cli_tools", `ALTER TABLE sandboxes ADD COLUMN cli_tools TEXT NOT NULL DEFAULT '[]'`},
+		{"observed_cli_tools", `ALTER TABLE sandboxes ADD COLUMN observed_cli_tools TEXT NOT NULL DEFAULT '[]'`},
+		{"cli_tools_generation", `ALTER TABLE sandboxes ADD COLUMN cli_tools_generation INTEGER NOT NULL DEFAULT 0`},
+	}
+	for _, statement := range statements {
+		if columns[statement.column] {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, statement.sql); err != nil {
+			return fmt.Errorf("upgrade local sandbox schema: %w", err)
+		}
 	}
 	return nil
 }
@@ -160,7 +219,7 @@ func (s *Store) Sandbox(ctx context.Context, id string) (*LocalSandbox, error) {
 const sandboxSelect = `SELECT id, name, desired_state, observed_state, generation,
 observed_generation, lifetime, expires_in_seconds, started_at, expires_at,
 cpu_millicores, memory_mib, workspace_disk_gib, pids_limit, image_digest,
-error_code, error_message FROM sandboxes`
+cli_tools, observed_cli_tools, cli_tools_generation, error_code, error_message FROM sandboxes`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -170,6 +229,7 @@ func scanSandbox(row scanner) (*LocalSandbox, error) {
 	var value LocalSandbox
 	var expiresSeconds sql.NullInt64
 	var started, expires sql.NullString
+	var cliTools, observedCLITools string
 	err := row.Scan(
 		&value.ID,
 		&value.Name,
@@ -186,11 +246,20 @@ func scanSandbox(row scanner) (*LocalSandbox, error) {
 		&value.Resources.WorkspaceDiskGiB,
 		&value.Resources.PIDs,
 		&value.ImageDigest,
+		&cliTools,
+		&observedCLITools,
+		&value.CLIToolsGeneration,
 		&value.ErrorCode,
 		&value.ErrorMessage,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if err := json.Unmarshal([]byte(cliTools), &value.CLITools); err != nil {
+		return nil, fmt.Errorf("decode desired CLI tools: %w", err)
+	}
+	if err := json.Unmarshal([]byte(observedCLITools), &value.ObservedCLITools); err != nil {
+		return nil, fmt.Errorf("decode observed CLI tools: %w", err)
 	}
 	if expiresSeconds.Valid {
 		seconds := int(expiresSeconds.Int64)
@@ -225,14 +294,22 @@ func (s *Store) Sandboxes(ctx context.Context) ([]LocalSandbox, error) {
 }
 
 func (s *Store) PutSandbox(ctx context.Context, value LocalSandbox) error {
-	_, err := s.db.ExecContext(
+	cliTools, err := marshalArray(value.CLITools)
+	if err != nil {
+		return fmt.Errorf("encode desired CLI tools: %w", err)
+	}
+	observedCLITools, err := marshalArray(value.ObservedCLITools)
+	if err != nil {
+		return fmt.Errorf("encode observed CLI tools: %w", err)
+	}
+	_, err = s.db.ExecContext(
 		ctx,
 		`INSERT INTO sandboxes(
 id, name, desired_state, observed_state, generation, observed_generation,
 lifetime, expires_in_seconds, started_at, expires_at, cpu_millicores,
 memory_mib, workspace_disk_gib, pids_limit, image_digest, error_code,
-error_message, updated_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+error_message, cli_tools, observed_cli_tools, cli_tools_generation, updated_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
 name=excluded.name, desired_state=excluded.desired_state,
 observed_state=excluded.observed_state, generation=excluded.generation,
@@ -242,6 +319,8 @@ expires_at=excluded.expires_at, cpu_millicores=excluded.cpu_millicores,
 memory_mib=excluded.memory_mib, workspace_disk_gib=excluded.workspace_disk_gib,
 pids_limit=excluded.pids_limit, image_digest=excluded.image_digest,
 error_code=excluded.error_code, error_message=excluded.error_message,
+cli_tools=excluded.cli_tools, observed_cli_tools=excluded.observed_cli_tools,
+cli_tools_generation=excluded.cli_tools_generation,
 updated_at=excluded.updated_at`,
 		value.ID,
 		value.Name,
@@ -260,9 +339,20 @@ updated_at=excluded.updated_at`,
 		value.ImageDigest,
 		value.ErrorCode,
 		value.ErrorMessage,
+		cliTools,
+		observedCLITools,
+		value.CLIToolsGeneration,
 		time.Now().UTC().Format(time.RFC3339Nano),
 	)
 	return err
+}
+
+func marshalArray[T any](values []T) (string, error) {
+	if values == nil {
+		values = []T{}
+	}
+	payload, err := json.Marshal(values)
+	return string(payload), err
 }
 
 func (s *Store) PutGrant(ctx context.Context, value LocalGrant) error {
