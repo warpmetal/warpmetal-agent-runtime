@@ -327,8 +327,8 @@
 | P2 | Runtime candidate packages and loads the restricted policy safely | R1-R4, R10, A1-A3 | P1 path contract | PR reviewed; full CI green on exact PR head | completed |
 | P2R | Runtime policy lifecycle is explicit, default-off, architecture-gated, and reversibly recoverable | R2-R4, R10-R11, A2-A3, A7-A8 | P2 recovery review | default preserve is mutation-free; explicit amd64 enable is idempotent; disable unloads/removes Runtime policy and restores any displaced prior file/state; interruption evidence is durable; tests/docs green | completed |
 | P2D | General capability documentation is discoverable and example-driven | R11-R12, A7-A9 | P2R interface | Runtime and sandbox docs, CLI help/skill, public pages, and both LLM contract sources agree on purpose, examples, versions, actions, host scope, and non-goals; repository gates pass | completed |
-| P3 | Signed v0.1.25 prerelease, CLI 0.8.7, and five-stage frontend canary contract ready | R1-R5, R10-R12 | P1-P2R, P2D | exact heads pass CI/review; signed Runtime and npm CLI releases are independently verified; frontend workflow is available on its default branch | in_progress |
-| P4 | Rollback/forward/disable amd64 acceptance canary passes | R1-R6, R10-R11, A1-A4 | P3 | pre-policy sensitivity, positive capability, preservation, retained-policy binary rollback, forward, and exact disable/restore gates pass | pending |
+| P3 | Signed v0.1.25 prerelease, CLI 0.8.7, and five-stage frontend canary contract ready | R1-R5, R10-R12 | P1-P2R, P2D | exact heads pass CI/review; signed Runtime and npm CLI releases are independently verified; frontend workflow is available on its default branch | completed |
+| P4 | Rollback/forward/disable amd64 acceptance canary passes | R1-R6, R10-R11, A1-A4 | P3 | pre-policy sensitivity, positive capability, preservation, retained-policy binary rollback, forward, and exact disable/restore gates pass | in_progress |
 | P5 | Stable production Runtime/image and Nico sandbox refresh | R1-R7, R10 | P4 | stable assets; Nico upgrade plus both explicit refreshes verified | pending |
 | P6 | Nico code/deploy and real autonomous task pass | R7-R10 | P5 | full gates, deploy, coder/publisher/QA canary, staged flags | pending |
 
@@ -391,10 +391,9 @@
 
 ### Release-readiness phase P3 entry-gate decision
 
-- Implementation authorized: yes for P3; Runtime, agent-kit, and image-doc
-  integration/publication passed their fresh exact-head hosted CI and review
-  gates. Frontend integration remains gated on a final `main` merge, full
-  regression run, independent review, and hosted CI/deploy.
+- Implementation authorized: yes for P3; Runtime, agent-kit, image-doc, and
+  frontend integration/publication passed their fresh exact-head hosted CI,
+  independent review, deployment, and live documentation gates.
 - Decision evidence: owner authorization is present; all five branches contain
   current `origin/main`; the post-merge Runtime, agent-kit, frontend, and image
   baselines above passed; Runtime v0.1.25 is an unpromoted signed prerelease and
@@ -413,10 +412,10 @@
 
 | Subpart | Deliverable and owner boundary | Dependencies | Interfaces / likely files | Documentation / API impact | Acceptance and oracle | Focused + regression checks | Parallel-safe | Status |
 |---|---|---|---|---|---|---|---|---|
-| P3.S1 | Five-stage canary and exact disable/restore oracle; primary Site owner only | P2R lifecycle | frontend workflow, driver, host helper, canary tests, backend operator README | canary operations/recovery docs; no API schema | ordered stages; candidate-only enable; v0.1.25 disable runs even when binary already current; a durable disable-attempt marker makes interruption before/after policy removal replay safe; final nested procfs denial and exact prior policy state; cleanup replay safe | focused Node canary tests, shell syntax/ShellCheck, full frontend/backend gates | no | completed locally and independently approved; held for final integration |
+| P3.S1 | Five-stage canary and exact disable/restore oracle; primary Site owner only | P2R lifecycle | frontend workflow, driver, host helper, canary tests, backend operator README | canary operations/recovery docs; no API schema | ordered stages; candidate-only enable; v0.1.25 disable runs even when binary already current; a durable disable-attempt marker makes interruption before/after policy removal replay safe; final nested procfs denial and exact prior policy state; cleanup replay safe | focused Node canary tests, shell syntax/ShellCheck, full frontend/backend gates | no | completed, independently approved, and integrated |
 | P3.S2 | Exact Runtime branch and sandbox-image documentation integration plus immutable signed v0.1.25 prerelease | post-merge Runtime/image gates, P3.S1 frozen artifact interface | Runtime PR #23 and release assets; sandbox-image README branch/PR | release notes, architecture-accurate image docs, and plan evidence; no API schema | both PR exact heads green/reviewed; merge commits green; sandbox docs land without image rebuild; Runtime tag produces exactly amd64 and arm64 archive/signature/checksum triplets whose checksums, Cosign signatures, architectures, and required membership verify; prerelease remains unpromoted | Runtime frozen gate, image doc/digest inspection, hosted distro checks, six-asset archive/signature inspection | yes after P3.S1 interface freeze | completed; release artifacts independently reproduced and approved |
 | P3.S3 | Exact agent-kit integration and npm `warpmetal@0.8.7` publication | post-merge agent-kit gate | agent-kit branch/PR, package/release workflow, CLI/skill mirrors | CLI help/README/skill references | source/package mirrors identical; package dry run exact; PR/merge CI green; registry tarball/version contains the nested lifecycle contract | check, 73+ tests, pack dry run, installed-package help probe | yes after interface freeze | completed; merged, published, and independently registry-probed |
-| P3.S4 | Frontend exact-head integration, public docs deployment, and cross-release readiness packet | P3.S1-S3 | frontend PR #104/default workflow, public pages/LLM text, production acceptance secrets metadata | public docs deployment and canary runbook | PR/default CI and deploy succeed; live pages/LLM contract match source; workflow verifies exact v0.1.24/v0.1.25 assets, CLI 0.8.7, image digest, and release public key without exposing secrets | full frontend/backend gates, route probes, workflow contract tests, exact metadata inspection | no | pending |
+| P3.S4 | Frontend exact-head integration, public docs deployment, and cross-release readiness packet | P3.S1-S3 | frontend PR #104/default workflow, public pages/LLM text, production acceptance secrets metadata | public docs deployment and canary runbook | PR/default CI and deploy succeed; live pages/LLM contract match source; workflow verifies exact v0.1.24/v0.1.25 assets, CLI 0.8.7, image digest, and release public key without exposing secrets | full frontend/backend gates, route probes, workflow contract tests, exact metadata inspection | no | completed and independently approved |
 
 - Inputs and outputs: reviewed post-main-merge source heads and protected release
   workflows produce immutable Runtime/CLI artifacts plus one default-branch
@@ -608,6 +607,170 @@ test -z "$(git tag --list "$TAG")"
   `sha512-tb4g07J8vciEvbMuYx/SyU3eAb/yTmGWmM7P+KoLvP1HCmrr6TR+NVIEyAzjab6AmCrPdrP0/wX0ahkaAKcRHQ==`,
   and a disposable local install reports version 0.8.7 and the exact
   `--nested-private-procfs <preserve|enable|disable>` help contract.
+- Immediately before frontend integration, current frontend `origin/main`
+  `17e03d1a98e91250136bfbafc512b7e431e7428a` was merged into the feature
+  branch. The one conflict in `backend/tests/test_surface.py` was resolved by
+  retaining both the private-procfs public-document contract and the newer
+  OpenAPI idempotency/root-SSH invariant. Exact merge head
+  `52a7be3219c26fcfa0a1b69ce0e3968335841d76` passed the production build,
+  137/137 frontend tests, 11/11 focused canary tests, Ruff, 46/46 backend
+  surface tests, Bash syntax, ShellCheck, actionlint, and diff checks. Lint had
+  zero errors and the same three pre-existing translation-script warnings.
+- Independent P3.S4 review reproduced those gates, verified both conflict
+  sides, and approved the five-stage, artifact-verification, durable-disable,
+  host-snapshot, credential-boundary, documentation, and API-parity contracts
+  with no findings. PR #104 exact-head run `34163979456` passed before merge.
+- Frontend PR #104 merged as
+  `ce3c0bed8a91db41f6051638164c964deea7b075`. Default-branch workflow run
+  `34164210354` completed successfully on that exact SHA: test, four-image
+  publication, blue-green production deployment, admin promotion, bounded
+  x402-header verification, and IndexNow all passed. The deployed acceptance
+  workflow SHA-256
+  `39b860b4b054941b10ce3387e499ce825c6de080af569e3eabf3aa77001a5e14`
+  matches the file at the exact merge commit.
+- Live HTTPS probes after deployment returned 200 for `/agent-runtime`,
+  `/docs`, `/llms.txt`, and `api.warpmetal.com/llms.txt`. They contain the
+  required optional host-scoped capability, CLI 0.8.7/Runtime 0.1.25,
+  preserve/enable/disable lifecycle, planning/coding/independent-QA examples,
+  and the statement that GitHub access, an AI CLI, and subagent delegation
+  alone do not require it. The shared nested-capability machine contract is
+  byte-identical across both live LLM endpoints. A final fetch confirmed
+  frontend `origin/main` still equals the deployed merge commit.
+- P3 integrated phase gate: all four subparts are integrated, immutable release
+  and deployment evidence is exact-head bound, documentation/API surfaces are
+  current, no live VPS/key/Runtime/sandbox mutation occurred, and no secrets
+  were exposed. Phase status: completed at release revision 9.
+
+### Live acceptance phase P4 header
+
+- Phase ID and outcome: P4, prove on one disposable amd64 Ubuntu 24.04 VPS that
+  the signed Runtime can move through `sensitivity -> candidate -> rollback ->
+  forward -> disable` while preserving host workloads and restoring the exact
+  pre-enable AppArmor state.
+- Covered requirement and assumption IDs: R1-R6, R10-R11; A1-A4, A6, A8.
+- Entry criteria: P3 is complete; the signed Runtime v0.1.24 baseline, signed
+  v0.1.25 prerelease, npm CLI 0.8.7, pinned amd64 sandbox image, and deployed
+  workflow are immutable and independently verified. A read-only live preflight
+  must report purchasing readiness, current `agent` plan inventory, exact OS
+  name, and monthly price before any key or server mutation.
+- Exit criteria: the operator creates exactly one monthly acceptance VPS with a
+  six-hour durable test expiry and three medium Runtime sandboxes; the VPS host
+  key is enrolled out of band before SSH; all five stages pass in order with
+  exact artifact pins and host snapshots; each stage's temporary small sandbox,
+  two distinct access keys/grants, sessions, and workspace are revoked/deleted;
+  final policy state equals the frozen initial absent state; the acceptance task
+  is cancelled and provider absence is verified without guessing through an
+  ambiguous outcome.
+- Dependencies and risks: production operator credentials and environment
+  approval; live `agent` plan availability and current price; exact
+  `Ubuntu 24.04 (VPS)` catalog name; monthly billing may not be prorated or
+  refunded by early cancellation; owner and per-sandbox SSH key generation;
+  trusted provider/console host-key enrollment; Runtime installation and
+  explicit host-policy mutation; one-hour temporary workspace expiry is
+  irreversible and does not replace explicit cleanup; cancellation may enter
+  manual review and must not be retried as though compute were absent.
+- Baseline test state: P3 exact-head release, source, hosted CI, production
+  deploy, and live public-document gates are green. No P4 server exists yet and
+  no P4 mutation has been attempted.
+- Required documentation and API-contract changes: this plan records the quote,
+  confirmation, task/server IDs, stage runs, bounded safe evidence, cleanup,
+  and residuals. No public HTTP/JSON schema or product documentation change is
+  expected unless live behavior disproves the published contract.
+- Coordinating owner: primary managed-plan executor. The deployed production
+  workflow is the only mutation path; a separate non-implementing verifier
+  reviews exact run evidence before promotion.
+- Fresh recovery reviewer available: yes; a subagent that did not implement the
+  Runtime/canary will review P4 after all mutations stop.
+
+### Live acceptance phase P4 assumption check
+
+| Assumption ID | Check or probe | Evidence | Result | Plan change |
+|---|---|---|---|---|
+| A1 | Run exact signed nested-procfs positive/negative oracle under Ubuntu restricted user namespaces | candidate and forward stages | unresolved | blocks Runtime promotion until both positive stages pass |
+| A2-A3 | Compare frozen workload/package/service/OCI snapshots across every stage and exact policy lifecycle state | sensitivity baseline plus per-stage canary evidence | unresolved live; hosted gates verified | stop on any drift; do not weaken snapshots |
+| A4 | Reconnect to an existing sandbox through a new stage-specific grant before and after Runtime install while preserving its resource and workspace marker | every staged run | unresolved live | stop on ID, grant, marker, lifetime, or exit-code drift |
+| A6 | Re-download and verify exact signed v0.1.24/v0.1.25 amd64 assets plus deployed metadata before each stage | protected workflow verification step | verified for P3; rerun required | no mutable or locally rebuilt artifact may substitute |
+| A8 | Confirm the enabled policy is host-scoped but only the signed exact helper attaches; generic, alternate, and deeper attempts remain denied | candidate and forward negative controls | unresolved live | stop on any broader grant |
+| P4.A1 | The production acceptance operator can obtain a current read-only quote without creating a prepared order, key, payment, or provider resource | `action=preflight`, plan `agent` | unresolved | run before requesting immediate mutation approval |
+| P4.A2 | The deployed workflow has all protected metadata and credentials needed for exact signed stages and replay-safe cleanup | P3 deploy and workflow/source parity | verified for dispatch; live use required | use only the default-branch production workflow |
+| P4.A3 | A trusted provider or console channel is available to enroll the exact new VPS host key before the private-procfs workflow opens SSH | operator runbook and deployment-host pin contract | unresolved | after creation, stop before stage dispatch if enrollment cannot be independently established |
+
+### Live acceptance phase P4 entry-gate decision
+
+- Implementation authorized: yes for the read-only preflight only. Priced VPS
+  creation, owner/sandbox key generation, Runtime installation, temporary
+  sandbox creation, policy enable/disable, access grants/revocation, sandbox
+  deletion, and final server cancellation remain unauthorized until the owner
+  confirms the exact fresh quote and lifecycle effects immediately before the
+  create dispatch.
+- Decision evidence: owner authorized plan execution and asked to begin live VPS
+  testing; managed-plan and WarpMetal safety contracts require the separate
+  immediate mutation confirmation after live discovery.
+- Unresolved low-impact defaults and consequences: hostname will use a unique
+  acceptance-only DNS label chosen after the quote; the workflow's six-hour
+  test expiry is retained. The exact monthly price and OS spelling are not
+  defaults and must come from preflight.
+- Error/logging requirements reviewed: yes; retain bounded IDs, stage labels,
+  exact digests, safe status, and failure codes only. Never print or inspect the
+  owner token, private keys, Runtime bootstrap, access tokens, full environment,
+  payment envelopes, or raw secret-bearing output.
+- Authentication/authorization requirements reviewed: yes; protected GitHub
+  environment to deployment host, out-of-band host-key enrollment, owner-only
+  host SSH, and distinct sandbox-specific grants remain mandatory.
+- Documentation/API requirements reviewed: yes; no schema change. Any live
+  discrepancy reopens P2/P3 instead of editing the oracle to pass.
+- Decision timestamp or plan revision: 2026-09-07, release revision 9.
+
+### Live acceptance phase P4 subparts
+
+| Subpart | Deliverable and owner boundary | Dependencies | Interfaces / likely files | Documentation / API impact | Acceptance and oracle | Focused + regression checks | Parallel-safe | Status |
+|---|---|---|---|---|---|---|---|---|
+| P4.S0 | Read-only current quote and readiness packet | P3 | production operator `action=preflight`, plan `agent` | plan evidence only | current purchasing readiness, exact OS, capacity, and monthly price; no key/order/resource mutation | inspect exact workflow run/logs and absence of create step | no | in_progress |
+| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.S0 and fresh owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence only | one task/server, key-only SSH, out-of-band pinned host key, ready state, active term, correct OS/amd64, three expected sandboxes | create/inspect runs, trusted-host-key precondition, bounded state inspection | no | pending |
+| P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | pending |
+| P4.S3 | Final cancellation, absence verification, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no billable compute ambiguity; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | pending |
+
+### Live acceptance phase P4 test matrix
+
+| Requirement / risk | Behavior or invariant | Test level | Oracle defined before action | Command or procedure |
+|---|---|---|---|---|
+| R1-R2/A1/A8 | only the exact signed helper gets one private-procfs nesting; generic/alternate/deeper controls fail | live end-to-end | yes | candidate and forward canary stages plus negative controls |
+| R3-R4/A2-A3 | OCI restrictions, nine Docker workloads, packages, services, and existing sandboxes remain exact | live snapshot | yes | compare frozen sensitivity host baseline after every stage |
+| R6/A4 | existing sandbox ID, marker, persistent lifetime, and behavior survive install transitions | live integration | yes | stage-specific grant/connect before and after install; exit 37 |
+| R10 | no credential or unbounded diagnostic exposure | workflow/log inspection | yes | inspect bounded stage markers and secret-redaction behavior only |
+| R11 | sensitivity begins absent; candidate enables; rollback retains policy; forward remains enabled; disable restores exact absent state | live lifecycle | yes | ordered stage checkpoint and exact final `post-disable-v0125-denied` oracle |
+| Billing/cleanup | only one approved monthly VPS exists and is cancelled; ephemeral stage resources are removed | live operator/lifecycle | yes | exact task/hostname binding, per-stage cleanup, cancel/inspect reconciliation |
+
+### Live acceptance phase P4 frozen command manifest
+
+```text
+1. Dispatch production acceptance workflow with action=preflight and plan=agent.
+2. Inspect exact preflight run; freeze purchasing readiness, OS name, capacity,
+   monthly price, and absence of mutation.
+3. Obtain immediate explicit owner confirmation for every priced/destructive
+   lifecycle effect before action=create.
+4. Dispatch action=create once with the confirmed hostname, OS, six-hour expiry,
+   exact max monthly price, and three medium sandboxes; inspect to ready.
+5. Enroll and verify the exact VPS host key out of band before any canary SSH.
+6. Dispatch sensitivity, candidate, rollback, forward, and disable separately,
+   in order, with the exact baseline/candidate SHA-256 values.
+7. Inspect every run for its exact stage success line, host snapshot equality,
+   signed metadata, and temporary resource cleanup before advancing.
+8. Dispatch cancel once, reconcile to terminal provider absence, and perform an
+   independent whole-phase review before promoting Runtime v0.1.25.
+```
+
+### Live acceptance phase P4 sequence and integration
+
+1. Complete P4.S0 and freeze the live quote. Stop for immediate owner approval.
+2. Complete P4.S1 serially; do not start a canary until the trusted-host-key and
+   initial-resource checks pass.
+3. Run P4.S2 strictly in stage order. A failed stage stops progression and
+   enters cleanup/recovery without weakening or skipping its oracle.
+4. Run P4.S3 even after a failed stage when safe cleanup is possible. Treat
+   manual review or ambiguous provider state as a blocker, not proof of absence.
+5. Record exact evidence, obtain independent approval, and only then advance to
+   P5 promotion and Nico work.
 
 ### Documentation phase P2D header
 
