@@ -25,10 +25,15 @@ jobs:
           sh -n packaging/install/warpmetal-apparmor-policy.sh
           sh -n packaging/apparmor/nested-private-procfs-oracle.sh
           sh -n packaging/install/coexistence_container_test.sh
+          printf '%s\n' runtime_profile_test_start
           sh packaging/apparmor/profile_test.sh
+          printf '%s\n' runtime_policy_transaction_test_start
           sh packaging/install/apparmor_policy_test.sh
+          printf '%s\n' runtime_installer_structure_test_start
           sh packaging/install/install_test.sh
+          printf '%s\n' runtime_go_race_test_start
           go test -race ./...
+          printf '%s\n' runtime_go_vet_start
           go vet ./...
 
   build:
