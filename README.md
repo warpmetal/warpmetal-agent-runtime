@@ -206,7 +206,9 @@ reviewed migration procedure instead of deleting container metadata implicitly.
 The fixed userspace image is maintained separately in
 [`warpmetal/warpmetal-agent-sandbox`](https://github.com/warpmetal/warpmetal-agent-sandbox).
 That repository publishes `ghcr.io/warpmetal/warpmetal-agent-sandbox` for
-`linux/amd64` and `linux/arm64` with SBOM, provenance, and a keyless signature.
+`linux/amd64` with SBOM, provenance, and a keyless signature. Runtime release
+archives remain multi-architecture, but this pinned all-tools sandbox image is
+currently amd64-only.
 Production must use the complete registry digest emitted by that workflow, and
 the package must permit unauthenticated pulls from customer servers. A new
 default digest applies only to newly created sandboxes; existing sandboxes

@@ -19,6 +19,8 @@
   - the model process is PID 1 in its inner namespace and `/proc/self` agrees;
   - a live outer Runtime process is absent from the inner procfs;
   - generic unprivileged user-namespace creation remains restricted;
+  - an explicit signed disable operation restores the host's exact pre-enable
+    AppArmor file and loaded/unloaded state after the forward canary;
   - normal seccomp, no-new-privileges, dropped capabilities, rootless identity,
     non-host networking, read-only root, and missing host runtime sockets remain;
   - Runtime installation preserves all pre-existing Docker workloads, protected
@@ -184,9 +186,9 @@
   - workers remain stopped and claims false on any failed prerequisite.
 - Deployment, migration, and rollback:
   - verify existing signed image -> Runtime candidate -> acceptance
-    rollback/forward canary -> stable metadata -> Nico supervisor upgrade ->
-    explicit two-sandbox refresh to the already signed all-tools image ->
-    Nico deploy -> bounded task canary -> staged flags.
+    rollback/forward/disable canary -> stable metadata -> Nico supervisor
+    upgrade -> explicit two-sandbox refresh to the already signed all-tools
+    image -> Nico deploy -> bounded task canary -> staged flags.
 
 ## Documentation and API contracts
 
@@ -297,10 +299,12 @@
   policy load and negative generic-unshare checks.
 - End-to-end: sensitivity failure before the candidate policy, positive
   disposable sandbox on the candidate, invariant-preserving binary rollback,
-  and forward positive again. The canary must report that binary downgrade does
-  not remove the installed host policy and must not claim a second sensitivity
-  failure. Full capability rollback uses the prior image as described above;
-  then Nico refresh and a real task verify the production path.
+  forward positive again, and explicit signed disable. The canary must report
+  that binary downgrade does not remove the installed host policy and must not
+  claim a second sensitivity failure. The final disable stage must prove the
+  nested procfs attempt is denied again and the exact pre-enable file and
+  loaded/unloaded state are restored; then Nico refresh and a real task verify
+  the production path.
 - Local macOS skips do not satisfy Linux or target Runtime behavior.
 
 ## Threat and failure model
@@ -323,12 +327,202 @@
 | P2 | Runtime candidate packages and loads the restricted policy safely | R1-R4, R10, A1-A3 | P1 path contract | PR reviewed; full CI green on exact PR head | completed |
 | P2R | Runtime policy lifecycle is explicit, default-off, architecture-gated, and reversibly recoverable | R2-R4, R10-R11, A2-A3, A7-A8 | P2 recovery review | default preserve is mutation-free; explicit amd64 enable is idempotent; disable unloads/removes Runtime policy and restores any displaced prior file/state; interruption evidence is durable; tests/docs green | completed |
 | P2D | General capability documentation is discoverable and example-driven | R11-R12, A7-A9 | P2R interface | Runtime and sandbox docs, CLI help/skill, public pages, and both LLM contract sources agree on purpose, examples, versions, actions, host scope, and non-goals; repository gates pass | completed |
-| P3 | Signed v0.1.25 prerelease and frontend canary contract ready | R1-R5, R10-R12 | P1-P2R, P2D | signatures verified; exact metadata/canary code reviewed | pending |
-| P4 | Rollback/forward amd64 acceptance canary passes | R1-R6, R10, A1-A4 | P3 | pre-policy sensitivity, positive capability, preservation, explicit retained-policy binary rollback, and forward gates pass | pending |
+| P3 | Signed v0.1.25 prerelease, CLI 0.8.7, and five-stage frontend canary contract ready | R1-R5, R10-R12 | P1-P2R, P2D | exact heads pass CI/review; signed Runtime and npm CLI releases are independently verified; frontend workflow is available on its default branch | in_progress |
+| P4 | Rollback/forward/disable amd64 acceptance canary passes | R1-R6, R10-R11, A1-A4 | P3 | pre-policy sensitivity, positive capability, preservation, retained-policy binary rollback, forward, and exact disable/restore gates pass | pending |
 | P5 | Stable production Runtime/image and Nico sandbox refresh | R1-R7, R10 | P4 | stable assets; Nico upgrade plus both explicit refreshes verified | pending |
 | P6 | Nico code/deploy and real autonomous task pass | R7-R10 | P5 | full gates, deploy, coder/publisher/QA canary, staged flags | pending |
 
 ## Active phase subplan
+
+### Release-readiness phase P3 header
+
+- Phase ID and outcome: P3, publish the exact reviewed Runtime and CLI
+  candidates and make the hardened five-stage private-procfs acceptance
+  workflow executable from the frontend repository's default branch.
+- Covered requirement and assumption IDs: R1-R5, R10-R12; A1-A3, A6-A9.
+- Entry criteria: P1, P2, P2R, and P2D are complete locally; all five feature
+  branches have merged current `origin/main`; the owner authorized plan
+  execution, repository integration, signed candidate publication, and the
+  later disposable-VPS gate on 2026-09-07.
+- Exit criteria: Runtime, agent-kit, frontend, image-contract, and cross-repo
+  gates pass on exact post-merge heads; fresh review approves the release and
+  canary boundary; Runtime PR #23 includes the recovery/documentation commits,
+  merges, and produces an immutable signed v0.1.25 prerelease; agent-kit merges
+  and publishes npm `warpmetal@0.8.7`; the frontend workflow includes ordered
+  `sensitivity -> candidate -> rollback -> forward -> disable` behavior, exact
+  artifact pins, replay-safe cleanup, and a final policy absence/restoration
+  oracle, then merges with green CI so the workflow is dispatchable.
+- Dependencies and risks: GitHub Actions/release and npm publication authority;
+  production deployment associated with merging the frontend default branch;
+  exact v0.1.24/v0.1.25 hashes and signatures; no VPS, Runtime, sandbox, key, or
+  payment mutation is allowed in P3. A missing release credential or failed
+  exact-head gate blocks the phase without substituting a local tarball.
+- Baseline test state: post-`origin/main` baselines are green on the exact local
+  heads. Runtime `a53be817372459af2b2741c7ade72fbaa25654fb` passed the Linux
+  Go 1.25 race/vet/cross-build, policy, installer, preserve-execution, and
+  unchanged-OCI gates. Agent-kit `7e1cf0d` passed check, 73 tests, package dry
+  run, and all three source/package mirror comparisons. Frontend `87c2476`
+  passed 11 focused canary tests, shell syntax/ShellCheck, build, 116 tests,
+  lint with only three existing translation warnings, and 45 backend surface
+  tests. The signed amd64 image digest and helper path, mode, SBOM, SLSA
+  provenance, and Cosign-v3 signature verified. Hosted PR checks remain stale
+  until the local commits are pushed and therefore remain an integration gate.
+- Required documentation and API-contract changes: update this living plan and
+  the frontend canary/operator documentation for the explicit disable stage.
+  Existing public Runtime pages, CLI help, skill mirrors, and LLM text already
+  describe preserve/enable/disable. No HTTP/JSON API schema change is planned.
+- Coordinating owner: primary managed-plan executor; only the primary Site owner
+  edits the frontend checkout and performs repository/release effects.
+- Fresh recovery reviewer available: yes; a non-implementing subagent will audit
+  the exact release/canary diff and evidence before P3 closes.
+
+### Release-readiness phase P3 assumption check
+
+| Assumption ID | Check or probe | Evidence | Result | Plan change |
+|---|---|---|---|---|
+| A6 | Confirm exact immutable releases can be selected without rebuilding | v0.1.24 release history, absent v0.1.25/CLI 0.8.7 collisions, and current canary signature/hash checks | verified for design; rerun required | retain signed prerelease and exact-hash gate |
+| A7-A9 | Reconfirm policy default, host scope, and general consumer boundary | merged implementation/docs and owner decision | verified/false as recorded | no design change; keep all-tools image for this rollout |
+| P3.A1 | Confirm every feature branch contains current `origin/main` before work | merge-base/HEAD inspection on Runtime, agent-kit, frontend, image, and Nico worktrees | verified | record exact heads before baseline and repeat before each later phase branch change |
+| P3.A2 | Confirm Runtime v0.1.25 and CLI 0.8.7 are not already published | GitHub release lookup and npm registry query on 2026-09-07 | verified | P3 must publish both; do not overwrite an existing artifact |
+| P3.A3 | Confirm explicit disable can be exercised without a new Runtime API | Runtime installer lifecycle and agent-kit `runtime install` flag contract | verified locally | add a fifth canary stage using signed v0.1.25 and verify exact restoration |
+| P3.A4 | Confirm the frontend default-branch merge may publish public docs | existing test/build/deploy workflow and repository history | verified | treat deployment as an authorized, observable P3 external effect; stop if CI/deploy fails |
+| P3.A5 | Confirm the documented sandbox architectures match the published image index | signed index contains one linux/amd64 manifest plus its attestation; image workflow builds amd64 only | false in Runtime README | correct the Runtime claim before release; do not add an arm64 image claim |
+
+### Release-readiness phase P3 entry-gate decision
+
+- Implementation authorized: yes for P3.S1 and documentation corrections;
+  repository integration and publication remain gated on fresh exact-head
+  hosted CI and independent review.
+- Decision evidence: owner authorization is present; all five branches contain
+  current `origin/main`; the post-merge Runtime, agent-kit, frontend, and image
+  baselines above passed; v0.1.25 and npm 0.8.7 remain unpublished.
+- Unresolved low-impact defaults and consequences: none.
+- Error/logging requirements reviewed: yes; retain bounded stage evidence and
+  exclude tokens, private keys, environment dumps, and raw child output.
+- Authentication/authorization requirements reviewed: yes; GitHub/npm release
+  credentials stay in their existing protected workflows, and later VPS access
+  remains owner-key plus pinned-host-key only.
+- Documentation/API requirements reviewed: yes; canary/operator docs and this
+  plan change, while public HTTP/JSON schemas remain unchanged.
+- Decision timestamp or plan revision: 2026-09-07, release revision 7.
+
+### Release-readiness phase P3 subparts
+
+| Subpart | Deliverable and owner boundary | Dependencies | Interfaces / likely files | Documentation / API impact | Acceptance and oracle | Focused + regression checks | Parallel-safe | Status |
+|---|---|---|---|---|---|---|---|---|
+| P3.S1 | Five-stage canary and exact disable/restore oracle; primary Site owner only | P2R lifecycle | frontend workflow, driver, host helper, canary tests, backend operator README | canary operations/recovery docs; no API schema | ordered stages; candidate-only enable; v0.1.25 disable runs even when binary already current; a durable disable-attempt marker makes interruption before/after policy removal replay safe; final nested procfs denial and exact prior policy state; cleanup replay safe | focused Node canary tests, shell syntax/ShellCheck, full frontend/backend gates | no | implemented and locally verified; fresh review pending |
+| P3.S2 | Exact Runtime branch and sandbox-image documentation integration plus immutable signed v0.1.25 prerelease | post-merge Runtime/image gates, P3.S1 frozen artifact interface | Runtime PR #23 and release assets; sandbox-image README branch/PR | release notes, architecture-accurate image docs, and plan evidence; no API schema | both PR exact heads green/reviewed; merge commits green; sandbox docs land without image rebuild; Runtime tag produces one expected amd64 archive/signature/checksum whose contents and Cosign signature verify; prerelease remains unpromoted | Runtime frozen gate, image doc/digest inspection, hosted distro checks, archive/signature inspection | yes after P3.S1 interface freeze | pending |
+| P3.S3 | Exact agent-kit integration and npm `warpmetal@0.8.7` publication | post-merge agent-kit gate | agent-kit branch/PR, package/release workflow, CLI/skill mirrors | CLI help/README/skill references | source/package mirrors identical; package dry run exact; PR/merge CI green; registry tarball/version contains the nested lifecycle contract | check, 73+ tests, pack dry run, installed-package help probe | yes after interface freeze | pending |
+| P3.S4 | Frontend exact-head integration, public docs deployment, and cross-release readiness packet | P3.S1-S3 | frontend PR #104/default workflow, public pages/LLM text, production acceptance secrets metadata | public docs deployment and canary runbook | PR/default CI and deploy succeed; live pages/LLM contract match source; workflow verifies exact v0.1.24/v0.1.25 assets, CLI 0.8.7, image digest, and release public key without exposing secrets | full frontend/backend gates, route probes, workflow contract tests, exact metadata inspection | no | pending |
+
+- Inputs and outputs: reviewed post-main-merge source heads and protected release
+  workflows produce immutable Runtime/CLI artifacts plus one default-branch
+  canary workflow; P4 consumes only their verified versions, hashes, signatures,
+  image digest, and credential-free scripts.
+- Non-goals: P3 creates no VPS, performs no wallet/payment action, installs no
+  Runtime, generates no key, and changes no Nico runtime state or flags.
+- Edge and failure cases: pre-existing tag/package, merge conflict, stale PR
+  head, failed CI, missing signing/publish credential, partially published
+  release, frontend deploy failure, duplicate/replayed disable, absent versus
+  displaced prior policy, and cleanup interruption.
+- Integration responsibility: the primary manager merges and publishes in the
+  recorded order after inspecting each exact diff and gate. Subagents may review
+  or run bounded checks but may not edit the Site checkout or perform releases.
+- Evidence to retain: exact commits, PR/check URLs, release asset hashes and
+  signatures, npm version/tarball identity, workflow/deploy run IDs, clean
+  worktree state, and redacted contract-test output.
+
+### Release-readiness phase P3 test matrix
+
+| Requirement / risk | Behavior or invariant | Test level | Oracle defined before code | Command or procedure |
+|---|---|---|---|---|
+| R11/A3 | explicit disable restores exact prior AppArmor state | contract + live-ready simulation | yes | durable `disable-attempt` marker is written after exact-policy verification and before install, accepts loaded/absent state on replay, and is retired only after completed-stage publication; focused canary assertions plus P4 host `verify-policy-absent`/exact displaced-state check |
+| R1-R2 | disable removes only the grant and returns nested procfs to exact denial | contract + P4 end-to-end | yes | fifth-stage sensitivity oracle and generic/alternate/deeper negative controls |
+| R3-R4 | release/canary changes do not alter OCI arguments, services, packages, workloads, or existing sandbox access | regression + P4 snapshot | yes | Runtime exact-argument/coexistence gates and before/after canary snapshots |
+| R5/R10 | only signed exact artifacts are consumed without secret output | supply-chain / inspection | yes | SHA-256, Cosign, archive membership, npm pack/install, log/redaction inspection |
+| R12 | CLI, public docs, skill mirrors, and LLM text agree on versions/actions/scope | documentation contract | yes | mirror comparison, rendered routes, backend surface tests, cross-repo phrase check |
+| A6 | release selection and rollback never rebuild or replace immutable assets | release integration | yes | verify tag/asset identity before and after canary readiness; fail on pre-existing mismatched artifact |
+
+### Release-readiness phase P3 frozen command manifest
+
+```sh
+# Every repository before changes and before integration
+git fetch origin main
+git merge --no-edit origin/main
+git status --short
+git diff --check
+
+# Runtime exact-head gate (Linux Go 1.25 environment)
+test -z "$(gofmt -l .)"
+sh packaging/apparmor/profile_test.sh
+sh packaging/install/apparmor_policy_test.sh
+sh packaging/install/install_test.sh
+go test -race ./...
+go vet ./...
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/warpmetal-policy-metadata
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./cmd/warpmetal-policy-metadata
+
+# Agent kit exact-head gate
+npm run check
+npm test
+npm pack --dry-run
+cmp skills/warpmetal/SKILL.md plugins/warpmetal/skills/warpmetal/SKILL.md
+cmp skills/warpmetal/references/runtime.md plugins/warpmetal/skills/warpmetal/references/runtime.md
+cmp skills/warpmetal/references/cli-reference.md plugins/warpmetal/skills/warpmetal/references/cli-reference.md
+
+# Frontend/canary exact-head gate
+node --test tests/runtime-private-procfs-canary.test.mjs
+bash -n scripts/runtime-private-procfs-canary-driver.sh
+bash -n scripts/runtime-private-procfs-canary-host.sh
+bash -n scripts/runtime-private-procfs-oracle.sh
+npm test
+npm run lint
+(cd backend && python3 -m pytest -q tests/test_surface.py)
+
+# Image and cross-repository contract
+sh -n test-image.sh
+# Re-pull and independently verify the pinned amd64 digest/signature before P4.
+
+# External exact-head evidence
+# Require green PR and merge-commit CI, immutable Runtime v0.1.25 assets and
+# signatures, npm warpmetal@0.8.7 pack/install probe, frontend default-branch
+# workflow/deploy success, and a final clean-worktree/cross-contract inspection.
+```
+
+### Release-readiness phase P3 sequence and integration
+
+1. Merge current `origin/main` into every feature branch and record exact heads.
+2. Run fresh post-merge baselines; update this entry decision to `yes` only if
+   the frozen gates and release interfaces remain valid.
+3. Implement and verify P3.S1 in the frontend worktree under the primary Site
+   owner, then obtain a read-only independent canary/security review.
+4. Push and integrate Runtime/image P3.S2 and agent-kit P3.S3 only after their
+   exact post-merge heads pass; publish and independently verify v0.1.25 and
+   0.8.7.
+5. Rebase-by-merge current `main` again if it advanced, integrate frontend
+   P3.S4, verify default-branch CI/deployment and public documentation, and
+   freeze the exact P4 input packet.
+6. Do not create or mutate a VPS until P3 is completed and the human gives the
+   required immediate confirmation for the priced test server, Runtime install,
+   temporary sandbox/key operations, and cleanup actions.
+
+### Release-readiness phase P3 verification evidence
+
+- P3.S1 local implementation gate, frontend commit
+  `f1bbe72301140c460566968f79a04016d7917e9f`: Bash syntax and
+  ShellCheck pass for the driver, host helper, and oracle; the focused canary
+  contract passes 11/11; full frontend build and 116/116 tests pass; lint has
+  zero errors and the same three pre-existing translation-script warnings; the
+  backend surface gate passes 45/45; `git diff --check` passes.
+- The fifth stage consumes the signed v0.1.25 candidate, writes and syncs a
+  metadata-bound disable-attempt marker after exact-policy verification, always
+  invokes CLI 0.8.7 with `--nested-private-procfs disable`, validates the CLI
+  result, accepts loaded or absent policy only on marker-backed replay, proves
+  the exact proc-mount denial under Runtime 0.1.25, verifies no policy lifecycle
+  residue remains, compares the final `absent` classification to the frozen
+  sensitivity baseline, and retires the marker only after completed-stage
+  publication.
+- Independent P3.S1 canary/security review: pending.
 
 ### Documentation phase P2D header
 
