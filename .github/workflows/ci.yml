@@ -38,7 +38,8 @@ jobs:
           # state, matching the root-only installer execution contract.
           sudo env "PATH=$PATH" sh packaging/install/apparmor_policy_test.sh
           printf '%s\n' runtime_installer_structure_test_start
-          sh packaging/install/install_test.sh
+          # install_test.sh also runs the root-owned lifecycle fixture.
+          sudo env "PATH=$PATH" sh packaging/install/install_test.sh
           printf '%s\n' runtime_go_race_test_start
           go test -race ./...
           printf '%s\n' runtime_go_vet_start

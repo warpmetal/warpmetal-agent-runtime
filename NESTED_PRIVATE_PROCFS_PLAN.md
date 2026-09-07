@@ -563,6 +563,12 @@ test -z "$(git tag --list "$TAG")"
   `95d989315ddfb33f7c3ebd157784b5852abb7467`; approval is limited to the
   root-execution workflow correction and a fresh exact-head hosted run remains
   mandatory.
+- The first correction rerun `34162212194` passed all four distro jobs and the
+  workload-drift job and passed the now-root lifecycle step. It then exposed
+  that `install_test.sh` transitively reruns the same root-owned lifecycle
+  fixture. CI and release now invoke the installer structure test through the
+  identical bounded `sudo env "PATH=$PATH"` boundary as well; exact-head review
+  and another hosted rerun are required.
 - P3.S3 independent review approved agent-kit head `7e1cf0d`. PR #31 passed
   both Node 20/22 jobs and merged as
   `fbdc417651f2d07d184e00823be0c3a19cb3b414`; exact-main ancestry, CI, strict
