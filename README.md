@@ -31,6 +31,13 @@ Security boundaries:
 - The root supervisor performs ext4 mount operations through PID 1's host mount
   namespace so the separate rootless engine sees only the intended workspace
   mounts; the rest of the supervisor stays inside its hardened mount namespace.
+- On hosts that actively enforce AppArmor's restricted-unprivileged-userns
+  control, the signed installer loads a narrowly attached policy for the exact
+  root-owned Codex Bubblewrap helper in the signed sandbox image. The setup
+  profile permits Bubblewrap to construct an inner user/PID namespace and new
+  procfs, then stacks every child executable with a capability-denying profile.
+  It does not apply to `/usr/bin/bwrap`, workspace binaries, or generic
+  `unshare`, and it does not change sandbox container-create arguments.
 
 Build and test on Linux with Go 1.25 or newer:
 
@@ -67,6 +74,17 @@ cosign verify-blob \
   warpmetal-runtime-<version>-linux-<arch>.tar.gz
 ```
 
+The archive also contains the AppArmor policy, its transactional installer
+helper, and `nested-private-procfs-oracle.sh`. The oracle is credential-free:
+inside the matching signed sandbox image it verifies the helper ownership,
+creates its own short-lived outer sentinel, mounts a new procfs in a new PID
+namespace, checks that the inner process is PID 1, checks a descendant's
+`/proc/self`, and confirms the outer sentinel is absent. It clears the inherited
+environment before starting the inner process. Passing this userspace oracle is
+not by itself a production promotion: the guarded provider canary must also
+prove generic user namespaces remain restricted and all host workload
+invariants remain unchanged.
+
 Only install a release through an authenticated WarpMetal runtime-install
 session. The installer requires root because it creates the dedicated runtime
 and SSH gateway accounts, installs host firewall rules, and enables the
@@ -96,6 +114,31 @@ On an upgrade, an already-active private WarpMetal Podman service is preserved
 instead of restarted. This keeps persistent Agent Runtime sandboxes and their
 delegated cgroups running while the supervisor binaries are replaced. A fresh
 install, or an inactive service, is still started before registration.
+
+On an AppArmor-enabled host where
+`kernel.apparmor_restrict_unprivileged_userns=1`, installation also requires the
+host's existing `apparmor_parser`. Runtime does not install an AppArmor package,
+change that sysctl, reload/restart the AppArmor service, or restart Podman. It
+parses the signed candidate first, atomically replaces only
+`/etc/apparmor.d/warpmetal-agent-runtime-bwrap`, and loads only that file. A
+prior Runtime policy is kept in the root-only installer state and restored in
+both the filesystem and kernel if any later install step fails, including its
+exact prior loaded or unloaded state. Disk/kernel mismatches and partial profile
+loads, including non-enforce modes, fail closed. GNU `cp --preserve=all` keeps
+the prior policy's ownership, mode, timestamps, ACLs, and extended attributes;
+the signed Linux metadata comparator then verifies content, UID/GID, raw mode,
+nanosecond access/modification timestamps, and every extended-attribute name
+and value on both backup and restoration. That includes POSIX ACL and SELinux
+context xattrs when present. Copy or comparison failure stops installation and
+preserves recovery evidence. If reloading a restored policy advances its atime,
+the installer reapplies the backup's nanosecond timestamps before the final
+non-atime-mutating comparison; failure to do so is a rollback failure. A
+first-install policy is unloaded and removed on failure.
+If either operation fails, the root-only recovery directory and backup are
+preserved for review. Unsupported, conflicting, parse, load, and rollback
+conditions use distinct `runtime_apparmor_policy_*` errors.
+The capability remains unproven for a release until the Ubuntu 24.04 live
+acceptance oracle passes.
 
 Workspace mounts receive a private Podman SELinux label on enforcing hosts.
 The ordinary installer does not install or replace a kernel. If a reboot is

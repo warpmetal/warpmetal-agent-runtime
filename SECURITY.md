@@ -35,6 +35,38 @@ upgrade state. It starts the private Podman service when needed but does not
 restart an already-active service, avoiding a systemd cgroup teardown of live
 sandboxes during a supervisor upgrade.
 
+Ubuntu's restricted-unprivileged-userns control is never disabled for Runtime.
+When that AppArmor control is active, the signed installer requires the host's
+existing parser and transactionally installs one Runtime-owned policy. The
+policy attaches setup permission only to the immutable, root-owned Codex
+Bubblewrap path in the signed sandbox image; it does not attach to the distro
+Bubblewrap path or a workspace executable. Bubblewrap's target and all later
+descendants are stacked with a profile that audits and denies capabilities, so
+the setup permission cannot be reused by the model process or a nested helper.
+The policy is based on AppArmor's upstream restricted-Bubblewrap setup/child
+split: <https://gitlab.com/apparmor/apparmor/-/blob/8e431ebcd915216a03ebc8d01e72b1741bb2f855/profiles/apparmor/profiles/extras/bwrap-userns-restrict>.
+
+Policy installation never changes a sysctl, installs/replaces AppArmor
+packages, invokes the AppArmor service, or alters Podman container-create
+arguments. Candidate syntax is checked before replacement; an existing policy
+is checked and backed up first; only the exact Runtime file is loaded. Any later
+installer failure restores the previous file and kernel policy, or unloads a
+new first-install policy. A rollback failure is reported separately and must be
+reviewed rather than worked around by relaxing host policy. Runtime snapshots
+both policy names independently, rejects partial or disk/kernel-conflicting
+states, unloads candidate definitions before restoration, and restores whether
+the prior policy was loaded or unloaded in enforce mode. Backup and restore use
+GNU `cp --preserve=all` and fail closed if ownership, mode, ACL, or extended
+attribute preservation is unsupported. A signed static comparator verifies the
+source and copy byte content, UID/GID, raw mode, nanosecond atime/mtime, and the
+complete xattr map after backup, before restored-file publication, and after
+publication. It therefore detects preservation warnings that GNU `cp` may not
+return as failures. Because `apparmor_parser` reads a restored policy, Runtime
+reapplies the backup's reference timestamps after loading it and performs its
+final comparison with `O_NOATIME`; timestamp restoration failure is fail-closed.
+Failed comparison/unload/removal recovery retains the root-only installer state
+and backup for operator diagnosis.
+
 Sandbox image refresh is a separate authenticated control-plane action. The
 runtime accepts only an immutable registry digest paired with a sandbox
 generation advance; changing the global default does not refresh existing

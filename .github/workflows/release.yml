@@ -22,7 +22,11 @@ jobs:
           set -eu
           test -z "$(gofmt -l .)"
           sh -n packaging/install/install.sh
+          sh -n packaging/install/warpmetal-apparmor-policy.sh
+          sh -n packaging/apparmor/nested-private-procfs-oracle.sh
           sh -n packaging/install/coexistence_container_test.sh
+          sh packaging/apparmor/profile_test.sh
+          sh packaging/install/apparmor_policy_test.sh
           sh packaging/install/install_test.sh
           go test -race ./...
           go vet ./...
@@ -59,7 +63,11 @@ jobs:
           go build -trimpath -ldflags "-s -w" -o "$stage/warpmetal-agentctl" ./cmd/warpmetal-agentctl
           go build -trimpath -ldflags "-s -w" -o "$stage/warpmetal-sandbox-gateway" ./cmd/warpmetal-sandbox-gateway
           go build -trimpath -ldflags "-s -w" -o "$stage/warpmetal-sandbox-shell" ./cmd/warpmetal-sandbox-shell
+          go build -trimpath -ldflags "-s -w" -o "$stage/warpmetal-policy-metadata" ./cmd/warpmetal-policy-metadata
           install -m 0755 packaging/install/install.sh "$stage/install.sh"
+          install -m 0755 packaging/install/warpmetal-apparmor-policy.sh "$stage/warpmetal-apparmor-policy.sh"
+          install -m 0644 packaging/apparmor/warpmetal-agent-runtime-bwrap "$stage/warpmetal-agent-runtime-bwrap"
+          install -m 0755 packaging/apparmor/nested-private-procfs-oracle.sh "$stage/nested-private-procfs-oracle.sh"
           install -m 0755 packaging/systemd/warpmetal-podman-service "$stage/warpmetal-podman-service"
           install -m 0644 packaging/systemd/warpmetal-podman.service "$stage/warpmetal-podman.service"
           install -m 0644 packaging/systemd/warpmetald.service "$stage/warpmetald.service"

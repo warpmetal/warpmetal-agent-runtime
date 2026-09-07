@@ -10,6 +10,12 @@ fail_install() {
   exit "${2:-1}"
 }
 
+# The AppArmor helper replaces this no-op after the package/workload gate. The
+# EXIT trap can therefore call it safely on every earlier failure path.
+warpmetal_rollback_apparmor_policy() {
+  return 0
+}
+
 is_warpmetal_podman_service_process() {
   process_id=$1
   [ -n "$warpmetal_podman_pid" ] || return 1
@@ -310,9 +316,24 @@ umask 077
 install_state_dir=$(mktemp -d /run/warpmetal-install.XXXXXX) || \
   fail_install runtime_install_state_unavailable
 cleanup_install_state() {
-  case "$install_state_dir" in
-    /run/warpmetal-install.*) rm -rf -- "$install_state_dir" ;;
-  esac
+  apparmor_rollback_status=0
+  if ! warpmetal_rollback_apparmor_policy; then
+    apparmor_rollback_status=1
+    echo runtime_apparmor_policy_rollback_failed >&2
+  fi
+  # Assigned by the signed helper sourced below.
+  # shellcheck disable=SC2154
+  if [ "${warpmetal_apparmor_policy_recovery_required:-0}" -eq 1 ]; then
+    apparmor_rollback_status=1
+  fi
+  if [ "$apparmor_rollback_status" -eq 0 ]; then
+    case "$install_state_dir" in
+      /run/warpmetal-install.*) rm -rf -- "$install_state_dir" ;;
+    esac
+  else
+    printf 'runtime_apparmor_policy_recovery_state_preserved %s\n' \
+      "$install_state_dir" >&2
+  fi
 }
 trap cleanup_install_state 0
 trap 'exit 130' 1 2 15
@@ -328,6 +349,47 @@ fi
 assert_host_workloads_unchanged
 command -v podman >/dev/null 2>&1 || fail_install runtime_podman_unavailable
 command -v crun >/dev/null 2>&1 || fail_install runtime_oci_runtime_unavailable
+
+apparmor_policy_source=$bundle_dir/warpmetal-agent-runtime-bwrap
+apparmor_policy_library=$bundle_dir/warpmetal-apparmor-policy.sh
+[ -f "$apparmor_policy_library" ] && [ ! -L "$apparmor_policy_library" ] || \
+  fail_install runtime_apparmor_policy_bundle_invalid
+# shellcheck source=/dev/null
+. "$apparmor_policy_library"
+apparmor_requirement_status=0
+warpmetal_detect_apparmor_policy_requirement \
+  /sys/module/apparmor/parameters/enabled \
+  /proc/sys/kernel/apparmor_restrict_unprivileged_userns || \
+  apparmor_requirement_status=$?
+case "$apparmor_requirement_status" in
+  0)
+    apparmor_parser_path=$(command -v apparmor_parser 2>/dev/null || true)
+    [ -n "$apparmor_parser_path" ] || fail_install runtime_apparmor_policy_unsupported
+    apparmor_policy_destination=/etc/apparmor.d/warpmetal-agent-runtime-bwrap
+    apparmor_policy_backup=$install_state_dir/apparmor-policy.before
+    apparmor_metadata_helper=$bundle_dir/warpmetal-policy-metadata
+    [ -f "$apparmor_metadata_helper" ] && [ ! -L "$apparmor_metadata_helper" ] && \
+      [ -x "$apparmor_metadata_helper" ] || \
+      fail_install runtime_apparmor_policy_bundle_invalid
+    if ! warpmetal_install_apparmor_policy \
+      "$apparmor_policy_source" \
+      "$apparmor_policy_destination" \
+      "$apparmor_policy_backup" \
+      "$apparmor_parser_path" \
+      /sys/kernel/security/apparmor/profiles \
+      "$apparmor_metadata_helper"; then
+      # Assigned by the signed helper sourced above.
+      # shellcheck disable=SC2154
+      fail_install "$warpmetal_apparmor_policy_error"
+    fi
+    ;;
+  1) ;;
+  *)
+    # Assigned by the signed helper sourced above.
+    # shellcheck disable=SC2154
+    fail_install "$warpmetal_apparmor_policy_error"
+    ;;
+esac
 
 getent passwd warpmetal-runtime >/dev/null 2>&1 || \
   useradd --system --create-home --home-dir /var/lib/warpmetal-runtime --shell /usr/sbin/nologin warpmetal-runtime
@@ -422,3 +484,6 @@ assert_host_workloads_unchanged
 /usr/local/sbin/warpmetald register --api "$api_origin" --server "$server_id"
 systemctl enable warpmetald.service
 systemctl restart warpmetald.service
+# Read by the helper-backed EXIT trap.
+# shellcheck disable=SC2034
+warpmetal_apparmor_policy_committed=1

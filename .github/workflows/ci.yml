@@ -22,7 +22,11 @@ jobs:
           set -eu
           test -z "$(gofmt -l .)"
           sh -n packaging/install/install.sh
+          sh -n packaging/install/warpmetal-apparmor-policy.sh
+          sh -n packaging/apparmor/nested-private-procfs-oracle.sh
           sh -n packaging/install/coexistence_container_test.sh
+          sh packaging/apparmor/profile_test.sh
+          sh packaging/install/apparmor_policy_test.sh
           sh packaging/install/install_test.sh
           go test -race ./...
           go vet ./...
