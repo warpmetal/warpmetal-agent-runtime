@@ -365,8 +365,9 @@
   passed 11 focused canary tests, shell syntax/ShellCheck, build, 116 tests,
   lint with only three existing translation warnings, and 45 backend surface
   tests. The signed amd64 image digest and helper path, mode, SBOM, SLSA
-  provenance, and Cosign-v3 signature verified. Hosted PR checks remain stale
-  until the local commits are pushed and therefore remain an integration gate.
+  provenance, and Cosign-v3 signature verified. Hosted PR, exact merge-commit,
+  and release gates have since passed for Runtime, agent-kit, and image docs;
+  frontend integration remains the final P3 gate.
 - Required documentation and API-contract changes: update this living plan and
   the frontend canary/operator documentation for the explicit disable stage.
   Existing public Runtime pages, CLI help, skill mirrors, and LLM text already
@@ -390,12 +391,14 @@
 
 ### Release-readiness phase P3 entry-gate decision
 
-- Implementation authorized: yes for P3.S1 and documentation corrections;
-  repository integration and publication remain gated on fresh exact-head
-  hosted CI and independent review.
+- Implementation authorized: yes for P3; Runtime, agent-kit, and image-doc
+  integration/publication passed their fresh exact-head hosted CI and review
+  gates. Frontend integration remains gated on a final `main` merge, full
+  regression run, independent review, and hosted CI/deploy.
 - Decision evidence: owner authorization is present; all five branches contain
   current `origin/main`; the post-merge Runtime, agent-kit, frontend, and image
-  baselines above passed; v0.1.25 and npm 0.8.7 remain unpublished.
+  baselines above passed; Runtime v0.1.25 is an unpromoted signed prerelease and
+  npm `warpmetal@0.8.7` is published and independently registry-probed.
 - Unresolved low-impact defaults and consequences: none.
 - Error/logging requirements reviewed: yes; retain bounded stage evidence and
   exclude tokens, private keys, environment dumps, and raw child output.
@@ -404,14 +407,14 @@
   remains owner-key plus pinned-host-key only.
 - Documentation/API requirements reviewed: yes; canary/operator docs and this
   plan change, while public HTTP/JSON schemas remain unchanged.
-- Decision timestamp or plan revision: 2026-09-07, release revision 7.
+- Decision timestamp or plan revision: 2026-09-07, release revision 8.
 
 ### Release-readiness phase P3 subparts
 
 | Subpart | Deliverable and owner boundary | Dependencies | Interfaces / likely files | Documentation / API impact | Acceptance and oracle | Focused + regression checks | Parallel-safe | Status |
 |---|---|---|---|---|---|---|---|---|
 | P3.S1 | Five-stage canary and exact disable/restore oracle; primary Site owner only | P2R lifecycle | frontend workflow, driver, host helper, canary tests, backend operator README | canary operations/recovery docs; no API schema | ordered stages; candidate-only enable; v0.1.25 disable runs even when binary already current; a durable disable-attempt marker makes interruption before/after policy removal replay safe; final nested procfs denial and exact prior policy state; cleanup replay safe | focused Node canary tests, shell syntax/ShellCheck, full frontend/backend gates | no | completed locally and independently approved; held for final integration |
-| P3.S2 | Exact Runtime branch and sandbox-image documentation integration plus immutable signed v0.1.25 prerelease | post-merge Runtime/image gates, P3.S1 frozen artifact interface | Runtime PR #23 and release assets; sandbox-image README branch/PR | release notes, architecture-accurate image docs, and plan evidence; no API schema | both PR exact heads green/reviewed; merge commits green; sandbox docs land without image rebuild; Runtime tag produces exactly amd64 and arm64 archive/signature/checksum triplets whose checksums, Cosign signatures, architectures, and required membership verify; prerelease remains unpromoted | Runtime frozen gate, image doc/digest inspection, hosted distro checks, six-asset archive/signature inspection | yes after P3.S1 interface freeze | in progress; image docs merged, Runtime exact-head CI correction pending review/rerun |
+| P3.S2 | Exact Runtime branch and sandbox-image documentation integration plus immutable signed v0.1.25 prerelease | post-merge Runtime/image gates, P3.S1 frozen artifact interface | Runtime PR #23 and release assets; sandbox-image README branch/PR | release notes, architecture-accurate image docs, and plan evidence; no API schema | both PR exact heads green/reviewed; merge commits green; sandbox docs land without image rebuild; Runtime tag produces exactly amd64 and arm64 archive/signature/checksum triplets whose checksums, Cosign signatures, architectures, and required membership verify; prerelease remains unpromoted | Runtime frozen gate, image doc/digest inspection, hosted distro checks, six-asset archive/signature inspection | yes after P3.S1 interface freeze | completed; release artifacts independently reproduced and approved |
 | P3.S3 | Exact agent-kit integration and npm `warpmetal@0.8.7` publication | post-merge agent-kit gate | agent-kit branch/PR, package/release workflow, CLI/skill mirrors | CLI help/README/skill references | source/package mirrors identical; package dry run exact; PR/merge CI green; registry tarball/version contains the nested lifecycle contract | check, 73+ tests, pack dry run, installed-package help probe | yes after interface freeze | completed; merged, published, and independently registry-probed |
 | P3.S4 | Frontend exact-head integration, public docs deployment, and cross-release readiness packet | P3.S1-S3 | frontend PR #104/default workflow, public pages/LLM text, production acceptance secrets metadata | public docs deployment and canary runbook | PR/default CI and deploy succeed; live pages/LLM contract match source; workflow verifies exact v0.1.24/v0.1.25 assets, CLI 0.8.7, image digest, and release public key without exposing secrets | full frontend/backend gates, route probes, workflow contract tests, exact metadata inspection | no | pending |
 
@@ -567,8 +570,33 @@ test -z "$(git tag --list "$TAG")"
   workload-drift job and passed the now-root lifecycle step. It then exposed
   that `install_test.sh` transitively reruns the same root-owned lifecycle
   fixture. CI and release now invoke the installer structure test through the
-  identical bounded `sudo env "PATH=$PATH"` boundary as well; exact-head review
-  and another hosted rerun are required.
+  identical bounded `sudo env "PATH=$PATH"` boundary as well. Independent
+  review P3-S2-ci-fix-review-02 approved commit
+  `a82a0d44634039b65845469fa28226aca417cbb7`; exact-head PR run `34162494532`
+  then passed all six required checks.
+- Runtime PR #23 merged as
+  `da08e6ec41eeac8a3d762aa44a17bada37390798`. Exact merge-commit CI run
+  `34162644110` passed the test, workload-drift, and all four distro coexistence
+  jobs. The strict-semver, current-`origin/main`, exact-CI, and collision gates
+  passed immediately before annotated tag `v0.1.25`, which peels to that merge
+  commit. Release run `34162774318` passed verify, both architecture builds,
+  and publish; the resulting non-draft prerelease contains exactly six assets.
+- Independent local release inspection downloaded all assets and verified both
+  published checksum files and both detached signatures with the committed
+  public key and checksum-verified Cosign v2.5.3. Each archive contains exactly
+  the 13 required members and five static Linux executables of the expected
+  architecture. Archive SHA-256 values are
+  `ad4aa7159fe9111df65aa7ce6695135a0e3e8691a8f24967c7264795a2573067`
+  for amd64 and
+  `cf7308e0264a6b116e2f4235bf8562c207202ff9a4ee9e7ca7c2c3005f8c4269`
+  for arm64. The prerelease remains unpromoted for P4.
+- Independent release review P3-S2-release-review-01 reproduced the exact tag,
+  workflow, release-state, asset-count, checksum, detached-signature,
+  archive-membership, static-linking, and architecture checks and approved
+  frontend integration with no release-contract or security blocker. The
+  annotated Git tag itself is not signed; that was not an acceptance
+  requirement because both immutable archives carry verified detached Cosign
+  signatures.
 - P3.S3 independent review approved agent-kit head `7e1cf0d`. PR #31 passed
   both Node 20/22 jobs and merged as
   `fbdc417651f2d07d184e00823be0c3a19cb3b414`; exact-main ancestry, CI, strict
