@@ -691,18 +691,22 @@ test -z "$(git tag --list "$TAG")"
 | A4 | Reconnect to an existing sandbox through a new stage-specific grant before and after Runtime install while preserving its resource and workspace marker | every staged run | unresolved live | stop on ID, grant, marker, lifetime, or exit-code drift |
 | A6 | Re-download and verify exact signed v0.1.24/v0.1.25 amd64 assets plus deployed metadata before each stage | protected workflow verification step | verified for P3; rerun required | no mutable or locally rebuilt artifact may substitute |
 | A8 | Confirm the enabled policy is host-scoped but only the signed exact helper attaches; generic, alternate, and deeper attempts remain denied | candidate and forward negative controls | unresolved live | stop on any broader grant |
-| P4.A1 | The production acceptance operator can obtain a current read-only quote without creating a prepared order, key, payment, or provider resource | `action=preflight`, plan `agent` | unresolved | run before requesting immediate mutation approval |
+| P4.A1 | The production acceptance operator can obtain a current read-only quote without creating a prepared order, key, payment, or provider resource | workflow run `34166139308`, `action=preflight`, plan `agent` | verified | freeze the exact quote and continue to recovery before requesting mutation approval |
 | P4.A2 | The deployed workflow has all protected metadata and credentials needed for exact signed stages and replay-safe cleanup | P3 deploy and workflow/source parity | verified for dispatch; live use required | use only the default-branch production workflow |
 | P4.A3 | A trusted provider or console channel is available to enroll the exact new VPS host key before the private-procfs workflow opens SSH | operator runbook and deployment-host pin contract | unresolved | after creation, stop before stage dispatch if enrollment cannot be independently established |
+| P4.A4 | The five canary stages can select their signed Runtime artifact without changing the process-global production `RUNTIME_*` tuple | backend `_artifact()`, CLI bootstrap/install path, and canary metadata gate | false | add a task-scoped, operator-only artifact override for test-authorized tasks before creating a VPS |
+| P4.A5 | Order-time three-sandbox intent yields a ready v0.1.24 supervisor and running baseline sandboxes before sensitivity starts | order/runtime state transitions and current sensitivity driver ordering | false | add an explicit trusted-key baseline preparation step that installs v0.1.24 with `preserve` and waits for the requested sandboxes |
 
 ### Live acceptance phase P4 entry-gate decision
 
-- Implementation authorized: yes for the read-only preflight only. Priced VPS
-  creation, owner/sandbox key generation, Runtime installation, temporary
-  sandbox creation, policy enable/disable, access grants/revocation, sandbox
-  deletion, and final server cancellation remain unauthorized until the owner
-  confirms the exact fresh quote and lifecycle effects immediately before the
-  create dispatch.
+- Implementation authorized: the read-only preflight is completed. Repository
+  recovery work is authorized to add and verify task-scoped artifact selection
+  plus trusted baseline preparation. Priced VPS creation, owner/sandbox key
+  generation, Runtime installation, temporary sandbox creation, policy
+  enable/disable, access grants/revocation, sandbox deletion, and final server
+  cancellation remain unauthorized until the recovery gate passes and the
+  owner confirms the exact fresh quote and lifecycle effects immediately before
+  the create dispatch.
 - Decision evidence: owner authorized plan execution and asked to begin live VPS
   testing; managed-plan and WarpMetal safety contracts require the separate
   immediate mutation confirmation after live discovery.
@@ -717,18 +721,60 @@ test -z "$(git tag --list "$TAG")"
 - Authentication/authorization requirements reviewed: yes; protected GitHub
   environment to deployment host, out-of-band host-key enrollment, owner-only
   host SSH, and distinct sandbox-specific grants remain mandatory.
-- Documentation/API requirements reviewed: yes; no schema change. Any live
-  discrepancy reopens P2/P3 instead of editing the oracle to pass.
-- Decision timestamp or plan revision: 2026-09-07, release revision 9.
+- Documentation/API requirements reviewed: yes; the public Runtime bootstrap
+  request and response remain unchanged. P4.R1 adds only nullable internal test
+  metadata, protected operator commands, and deployment-runbook coverage. Any
+  live discrepancy reopens P2/P3 instead of editing the oracle to pass.
+- Decision timestamp or plan revision: 2026-09-07, release revision 10.
 
 ### Live acceptance phase P4 subparts
 
 | Subpart | Deliverable and owner boundary | Dependencies | Interfaces / likely files | Documentation / API impact | Acceptance and oracle | Focused + regression checks | Parallel-safe | Status |
 |---|---|---|---|---|---|---|---|---|
-| P4.S0 | Read-only current quote and readiness packet | P3 | production operator `action=preflight`, plan `agent` | plan evidence only | current purchasing readiness, exact OS, capacity, and monthly price; no key/order/resource mutation | inspect exact workflow run/logs and absence of create step | no | in_progress |
-| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.S0 and fresh owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence only | one task/server, key-only SSH, out-of-band pinned host key, ready state, active term, correct OS/amd64, three expected sandboxes | create/inspect runs, trusted-host-key precondition, bounded state inspection | no | pending |
+| P4.S0 | Read-only current quote and readiness packet | P3 | production operator `action=preflight`, plan `agent` | plan evidence only | current purchasing readiness, exact OS, capacity, and monthly price; no key/order/resource mutation | inspect exact workflow run/logs and absence of create step | no | completed |
+| P4.R1 | Recover task-scoped signed artifact selection and establish a stable baseline-preparation path | P4.S0, false P4.A4-P4.A5 | backend Runtime/operator state and migration; acceptance workflow/driver/tests/runbook | internal operator contract and recovery docs; public bootstrap/OpenAPI stay unchanged | only live `is_test` tasks may receive an exact verified override; normal users retain global metadata; stage changes use fresh checkpoint-bound bootstrap keys while prior idempotent responses remain immutable; registration must report the selected version; sensitivity prepares v0.1.24 with `preserve`, nine Docker sentinels, and exactly three running medium sandboxes through trusted SSH | backend unit/DB/operator/security tests, canary contract tests, full frontend/backend gates, migration upgrade/downgrade, independent review, exact-head CI/deploy | no | in_progress |
+| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R1 and fresh owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence only | one task/server, key-only SSH, out-of-band pinned host key, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, trusted-host-key precondition, bounded state inspection, baseline prepare run | no | pending |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | pending |
 | P4.S3 | Final cancellation, absence verification, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no billable compute ambiguity; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | pending |
+
+### Live acceptance phase P4.R1 frozen recovery design
+
+- Store the test selector as an all-null or all-populated nullable tuple on
+  `PurchaseTask`: version, credential-free HTTPS Runtime release URL, lowercase
+  SHA-256, bounded detached signature, and SHA-256 of the configured signing
+  public key. A database constraint permits a populated tuple only when
+  `is_test=true`; these fields never enter public task/admin projections,
+  OpenAPI, or ordinary logs.
+- Add protected operator-only set, inspect, and clear commands. Set requires an
+  exact confirmation binding task ID, version, and digest; an existing,
+  unexpired operator test task; a provisioned active-term server; enabled
+  Runtime; strict version/digest/signature validation; the exact WarpMetal
+  GitHub amd64 release URL matching the version; and a signing-key digest equal
+  to the configured trusted Runtime public key. Arbitrary keys, URLs, versions,
+  non-test tasks, expired tasks, and partial selectors fail before mutation.
+- Resolve the effective artifact only after the bootstrap transaction locks and
+  revalidates the current task. Valid test selectors use the same globally
+  configured signing public key; normal tasks always use the stable global
+  artifact. A malformed, expired, or key-mismatched populated selector fails
+  closed instead of silently falling back.
+- Keep `POST /runtime/bootstrap` request/response and Agent Kit 0.8.7 unchanged.
+  Bind the selected version and digest into each one-use bootstrap row and
+  require registration to report the selected version. Preserve existing
+  idempotency records: replay of an old key returns its original response, while
+  each canary checkpoint uses a new key and receives the current selector.
+- The protected workflow already verifies both signed releases. It writes only
+  the chosen credential-free descriptor to a mode-0600 temporary file, invokes
+  the operator selector for the exact test task immediately before the official
+  CLI install, and clears/verifies absence in an `always()` cleanup. Cancellation
+  and expiry clear the selector as defense in depth. Audit events contain only
+  task ID, version, artifact digest, and signing-key digest—never the signature,
+  key body, bootstrap, owner token, or environment.
+- Sensitivity enrolls the host key through the independent trusted channel,
+  installs Docker and all nine sentinels, selects and installs signed v0.1.24
+  with `preserve` from `pending_install`, and waits for exactly the three ordered
+  persistent medium sandboxes to run before freezing the host and existing-
+  sandbox oracle. It does not create the generic canary's fourth persistent
+  sandbox and never uses `ssh-keyscan` as trust evidence.
 
 ### Live acceptance phase P4 test matrix
 
@@ -747,30 +793,61 @@ test -z "$(git tag --list "$TAG")"
 1. Dispatch production acceptance workflow with action=preflight and plan=agent.
 2. Inspect exact preflight run; freeze purchasing readiness, OS name, capacity,
    monthly price, and absence of mutation.
-3. Obtain immediate explicit owner confirmation for every priced/destructive
+3. Complete P4.R1 so the test task, not the global production metadata, selects
+   the signed stage artifact and sensitivity has an explicit stable baseline.
+4. Obtain immediate explicit owner confirmation for every priced/destructive
    lifecycle effect before action=create.
-4. Dispatch action=create once with the confirmed hostname, OS, six-hour expiry,
+5. Dispatch action=create once with the confirmed hostname, OS, six-hour expiry,
    exact max monthly price, and three medium sandboxes; inspect to ready.
-5. Enroll and verify the exact VPS host key out of band before any canary SSH.
-6. Dispatch sensitivity, candidate, rollback, forward, and disable separately,
+6. Enroll and verify the exact VPS host key out of band; prepare the v0.1.24
+   baseline with `preserve` before any private-procfs stage.
+7. Dispatch sensitivity, candidate, rollback, forward, and disable separately,
    in order, with the exact baseline/candidate SHA-256 values.
-7. Inspect every run for its exact stage success line, host snapshot equality,
+8. Inspect every run for its exact stage success line, host snapshot equality,
    signed metadata, and temporary resource cleanup before advancing.
-8. Dispatch cancel once, reconcile to terminal provider absence, and perform an
+9. Dispatch cancel once, reconcile to terminal provider absence, and perform an
    independent whole-phase review before promoting Runtime v0.1.25.
 ```
 
 ### Live acceptance phase P4 sequence and integration
 
-1. Complete P4.S0 and freeze the live quote. Stop for immediate owner approval.
-2. Complete P4.S1 serially; do not start a canary until the trusted-host-key and
+1. P4.S0 froze the live quote, then the entry audit exposed false P4.A4-P4.A5.
+2. Complete P4.R1 and its independent recovery gate before seeking owner
+   approval or creating a billable resource.
+3. Complete P4.S1 serially; do not start a canary until the trusted-host-key and
    initial-resource checks pass.
-3. Run P4.S2 strictly in stage order. A failed stage stops progression and
+4. Run P4.S2 strictly in stage order. A failed stage stops progression and
    enters cleanup/recovery without weakening or skipping its oracle.
-4. Run P4.S3 even after a failed stage when safe cleanup is possible. Treat
+5. Run P4.S3 even after a failed stage when safe cleanup is possible. Treat
    manual review or ambiguous provider state as a blocker, not proof of absence.
-5. Record exact evidence, obtain independent approval, and only then advance to
+6. Record exact evidence, obtain independent approval, and only then advance to
    P5 promotion and Nico work.
+
+### Live acceptance phase P4 recovery log
+
+- P4.S0 workflow run `34166139308` succeeded on deployed commit
+  `ce3c0bed8a91db41f6051638164c964deea7b075`. Only request validation,
+  pinned deployment-host setup, and the read-only operator preflight ran; the
+  create, inspect, Runtime, sandbox, grant, cancellation, and receipt steps were
+  skipped. The live account-specific `agent` quote is monthly `$15.00` in LAX2,
+  OGB1, or TPA2; exact target OS `Ubuntu 24.04 (VPS)` is available.
+- Independent public discovery with WarpMetal CLI 0.8.6 was read-only and is
+  compatible with the skill's 0.7.8 minimum. Health reported `status=ok` and
+  `purchasingReady=true`. The `agent` plan supports Runtime on Ubuntu 24.04 and
+  has 3500 millicores, 7168 MiB, and 70 GiB of workspace capacity. Three medium
+  sandboxes consume 3000 millicores, 6144 MiB, and 60 GiB; one stage-local
+  temporary small sandbox consumes the exact remainder. The canary itself will
+  install and verify published CLI 0.8.7.
+- Entry reconciliation then disproved P4.A4 and P4.A5. Backend
+  `runtime._artifact()` reads one process-global `RUNTIME_RELEASE_*` tuple and
+  every bootstrap returns it; CLI 0.8.7 installs only that returned artifact.
+  The driver nevertheless requires v0.1.24 metadata for sensitivity/rollback
+  and v0.1.25 for candidate/forward/disable. Global secret flips would expose
+  the prerelease or rollback to unrelated owners and are rejected. Separately,
+  order-time sandbox intent begins with no registered supervisor or running
+  sandbox, while sensitivity currently snapshots and connects before its
+  install branch. No VPS or key was created. P4.R1 is now the required recovery
+  gate before immediate owner confirmation.
 
 ### Documentation phase P2D header
 
