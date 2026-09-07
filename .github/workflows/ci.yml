@@ -24,7 +24,13 @@ jobs:
           sh -n packaging/install/install.sh
           sh -n packaging/install/warpmetal-apparmor-policy.sh
           sh -n packaging/apparmor/nested-private-procfs-oracle.sh
+          sh -n packaging/install/preserve_execution_test.sh
           sh -n packaging/install/coexistence_container_test.sh
+          printf '%s\n' runtime_preserve_execution_test_start
+          docker run --rm --privileged \
+            -v "$GITHUB_WORKSPACE:/source:ro" \
+            ubuntu:24.04 \
+            sh /source/packaging/install/preserve_execution_test.sh
           printf '%s\n' runtime_profile_test_start
           sh packaging/apparmor/profile_test.sh
           printf '%s\n' runtime_policy_transaction_test_start

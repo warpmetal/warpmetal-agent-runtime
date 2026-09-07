@@ -9,6 +9,7 @@ release_workflow=.github/workflows/release.yml
 apparmor_library=packaging/install/warpmetal-apparmor-policy.sh
 apparmor_profile=packaging/apparmor/warpmetal-agent-runtime-bwrap
 apparmor_oracle=packaging/apparmor/nested-private-procfs-oracle.sh
+preserve_execution_test=packaging/install/preserve_execution_test.sh
 
 reject_match() {
   if grep "$@"; then
@@ -23,7 +24,7 @@ restart_line=$(grep -n '^systemctl restart warpmetald.service$' "$script" | cut 
 snapshot_line=$(grep -n '^snapshot_host_workloads$' "$script" | cut -d: -f1)
 package_line=$(grep -n '^  install_apt_packages$' "$script" | cut -d: -f1)
 runtime_user_line=$(grep -n '^getent passwd warpmetal-runtime ' "$script" | cut -d: -f1)
-apparmor_load_line=$(grep -n '^[[:space:]]*if ! warpmetal_install_apparmor_policy ' "$script" | cut -d: -f1)
+apparmor_load_line=$(grep -n '^[[:space:]]*if ! warpmetal_configure_apparmor_policy ' "$script" | cut -d: -f1)
 last_workload_assert_line=$(grep -n '^[[:space:]]*assert_host_workloads_unchanged$' "$script" | tail -n 1 | cut -d: -f1)
 
 test -n "$register_line"
@@ -127,6 +128,15 @@ reject_match -Fq -- '--runtime runc' "$podman_launcher"
 grep -Fq -- '--cgroup-manager cgroupfs' "$podman_launcher"
 grep -Fq -- '--prerelease' "$release_workflow"
 grep -Fq 'warpmetal_detect_apparmor_policy_requirement' "$script"
+grep -Fq 'nested_private_procfs_mode=preserve' "$script"
+grep -Fq 'warpmetal_apparmor_policy_initialized=0' "$script"
+grep -Fq 'if [ "$warpmetal_apparmor_policy_initialized" -eq 1 ]; then' "$script"
+grep -Fq 'warpmetal_apparmor_policy_initialized=1' "$script"
+grep -Fq -- '--nested-private-procfs)' "$script"
+grep -Fq 'preserve|enable|disable)' "$script"
+grep -Fq 'runtime_nested_private_procfs_mode_invalid' "$script"
+grep -Fq 'runtime_nested_private_procfs_architecture_unsupported' "$script"
+grep -Fq 'if [ "$nested_private_procfs_mode" != preserve ]; then' "$script"
 grep -Fq '/sys/module/apparmor/parameters/enabled' "$script"
 grep -Fq '/proc/sys/kernel/apparmor_restrict_unprivileged_userns' "$script"
 grep -Fq '/sys/kernel/security/apparmor/profiles' "$script"
@@ -134,6 +144,8 @@ grep -Fq 'fail_install runtime_apparmor_policy_unsupported' "$script"
 grep -Fq 'fail_install "$warpmetal_apparmor_policy_error"' "$script"
 grep -Fq 'warpmetal_apparmor_policy_committed=1' "$script"
 grep -Fq 'warpmetal_rollback_apparmor_policy' "$script"
+grep -Fq 'warpmetal_commit_apparmor_policy_operation' "$script"
+grep -Fq 'apparmor_policy_durable_state=/var/lib/warpmetal/apparmor-policy-state' "$script"
 grep -Fq 'runtime_apparmor_policy_rollback_failed' "$script"
 grep -Fq '"$policy_parser" -Q -K "$policy_source"' "$apparmor_library"
 grep -Fq '"$policy_parser" -r -K "$policy_destination"' "$apparmor_library"
@@ -153,8 +165,11 @@ grep -Fq 'warpmetal-agent-runtime-bwrap "$stage/warpmetal-agent-runtime-bwrap"' 
 grep -Fq 'warpmetal-apparmor-policy.sh "$stage/warpmetal-apparmor-policy.sh"' "$release_workflow"
 grep -Fq 'nested-private-procfs-oracle.sh "$stage/nested-private-procfs-oracle.sh"' "$release_workflow"
 grep -Fq 'warpmetal-policy-metadata" ./cmd/warpmetal-policy-metadata' "$release_workflow"
+grep -Fq 'sh -n packaging/install/preserve_execution_test.sh' "$release_workflow"
+grep -Fq 'sh /source/packaging/install/preserve_execution_test.sh' "$release_workflow"
 test -s "$apparmor_profile"
 test -s "$apparmor_oracle"
+test -x "$preserve_execution_test"
 
 sh packaging/apparmor/profile_test.sh
 sh packaging/install/apparmor_policy_test.sh

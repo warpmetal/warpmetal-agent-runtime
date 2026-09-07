@@ -7,8 +7,9 @@
   procfs, without weakening the host, Runtime, or model-process isolation
   contracts.
 - Target users and use cases: Nico administrators dispatching autonomous coding
-  work to the persistent `nico-coder` and `nico-qa` sandboxes on the existing
-  production VPS.
+  work to the persistent `nico-coder` and `nico-qa` sandboxes on a dedicated
+  production VPS. Nested private procfs is a host-scoped coding-workload
+  capability, not a default requirement for every Agent Runtime user.
 - Success measures:
   - the exact Nico Bubblewrap plus Landlock boundary succeeds on Ubuntu 24.04;
   - the model process is PID 1 in its inner namespace and `/proc/self` agrees;
@@ -26,9 +27,10 @@
 - Scope:
   - `warpmetal-agent-sandbox`: reuse and verify the already signed image's
     root-owned, non-writable Codex Bubblewrap helper at its exact immutable path;
-  - `warpmetal-agent-runtime`: install a narrowly attached AppArmor policy,
-    select the required AppArmor starting state for newly created sandboxes,
-    preserve all other container restrictions, and package/test the policy;
+  - `warpmetal-agent-runtime`: preserve existing AppArmor policy state by
+    default; explicitly enable or disable a narrowly attached host policy on an
+    amd64 coding host; preserve all other container restrictions; and
+    package/test the policy and reversible transaction;
   - `warpmetal_frontend`: pin the signed Runtime candidate and existing signed
     image digest, and extend the
     existing guarded amd64 acceptance canary;
@@ -41,6 +43,9 @@
     network namespace, Docker/Podman socket mount, manual systemd/cgroup edit, or
     ad-hoc host profile installation;
   - no inherited `/proc` bind and no weakening of Nico's Landlock boundary;
+  - no claim that enablement is per-user or per-sandbox: every same-owner
+    sandbox on an enabled Runtime host that contains the trusted exact helper
+    path can invoke the policy;
   - no automatic merging of agent pull requests;
   - no arm64 production claim without a separate live arm64 canary.
 - Constraints and compatibility:
@@ -87,6 +92,7 @@
 | R8 | Autonomous pipeline readiness | One bounded admin task produces a reviewed plan, implementation PR/comment, exact-head CI, independent QA/API-or-UI evidence, and ready-to-merge state | production end-to-end |
 | R9 | Staged self-improvement | Flags advance one at a time with health/task rollback checks; human merge remains required | production end-to-end, inspection |
 | R10 | No secret exposure | Keys/tokens never appear in command arguments, logs, task chat, artifacts, or PR comments | tests, log inspection |
+| R11 | Explicit host-scoped lifecycle | Default install/upgrade preserves existing disk and kernel policy state; `--nested-private-procfs enable` installs/loads it only on amd64; `disable` unloads/removes it and restores a pre-existing destination safely | unit, integration, recovery inspection |
 
 ## Architecture
 
@@ -111,6 +117,9 @@
   - fixed executable path:
     `/opt/warpmetal-agent-tools/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-resources/bwrap`;
   - Runtime release archive includes the versioned AppArmor policy and installer;
+  - the signed installer accepts `--nested-private-procfs
+    preserve|enable|disable`, defaulting to `preserve`; this is a host-level
+    administrative operation, not a sandbox manifest field;
   - no Runtime HTTP API schema change is planned;
   - existing sandbox refresh API/CLI semantics remain the lifecycle boundary.
 - Data flow and persistence:
@@ -135,6 +144,8 @@
     official CLI; the retained profile has no matching immutable executable in
     that prior image and remains inert until a separately supported signed
     removal path exists;
+  - recovery phase P2R replaces that temporary retained-policy limitation with
+    an explicit signed disable transaction and durable transaction evidence;
   - Nico sandbox refresh failure uses existing transactional image rollback and
     must not alter Docker or protected packages.
 - Authentication and authorization:
@@ -147,7 +158,12 @@
   - tokens are supplied through existing stdin-only transports and redacted by
     the worker/publisher log contracts;
   - the AppArmor policy follows the upstream restricted-Bubblewrap split between
-    setup and capability-denied descendants.
+    setup and capability-denied descendants;
+  - the Runtime host cannot bind AppArmor pathname attachment to one sandbox or
+    verify image signatures from policy alone. The authenticated backend remains
+    the trusted image-selection boundary and must select the reviewed immutable
+    coding image. Host enablement grants the exact-path setup transition to all
+    same-owner sandboxes on that host containing that path.
 - Error handling, logging, and observability:
   - failures use stable safe codes for profile install/load, capability oracle,
     image refresh, and invariants; logs include version, sandbox ID, revision,
@@ -230,6 +246,7 @@
 | Binary source | mutable workspace install; generic distro path; exact signed-image Codex helper | exact root-owned helper in the existing signed all-tools image | no new image build; Nico still needs an explicit refresh from its older image |
 | Upgrade proof | refresh existing sandboxes during install; preserve them and use disposable canary | preserve existing sandboxes; prove capability on a fresh candidate | refresh is a later explicit lifecycle phase |
 | Release | mutable artifacts; signed prerelease then promotion | signed immutable prerelease, rollback/forward canary, then promote same assets | version candidate is v0.1.25 |
+| Policy activation | install on every restricted-AppArmor host; per-sandbox toggle; explicit host toggle | default `preserve`, explicit signed `enable`/`disable`; AppArmor pathname attachment cannot truthfully provide per-sandbox isolation without a separate outer profile/API design | ordinary users receive no policy mutation; enabled dedicated coding hosts grant all same-owner matching-path sandboxes |
 
 ## Assumption ledger
 
@@ -241,6 +258,8 @@
 | A4 | Explicit refresh preserves API IDs, grants, workspace markers, and persistent lifetime | high | verified for existing refresh implementation, must be reverified live | Runtime v0.1.24 refresh tests and prior release evidence |
 | A5 | Nico main's `--proc` runner logic remains the approved functional shape | high | verified | independent contract audit of commit `87c817c` |
 | A6 | Production metadata can be canaried and rolled back using exact signed artifacts without rebuilding them | high | verified, procedure must be rerun | v0.1.24 release history and release audit |
+| A7 | Every restricted-AppArmor Runtime host needs nested private procfs and may receive the policy during an ordinary install/upgrade | high | false | independent recovery review found the capability is required only for nested coding workloads; unconditional install expands scope and can fail unrelated installs |
+| A8 | Exact-path attachment can enforce a per-sandbox or per-user grant | high | false | AppArmor pathname attachment is host-scoped; all same-owner sandboxes containing the trusted path can invoke it |
 
 ## Test strategy
 
@@ -277,12 +296,112 @@
 | P0 | Architecture and rollout gate frozen | R1-R10, A1-A6 | independent audits | canonical plan reviewed; no rejected bind work included | completed |
 | P1 | Existing signed image contains trusted Bubblewrap | R2, R5, R10 | signed image | exact digest/path/owner/mode/version verified | completed |
 | P2 | Runtime candidate packages and loads the restricted policy safely | R1-R4, R10, A1-A3 | P1 path contract | PR reviewed; full CI green on exact PR head | completed |
-| P3 | Signed v0.1.25 prerelease and frontend canary contract ready | R1-R5, R10 | P1-P2 | signatures verified; exact metadata/canary code reviewed | pending |
+| P2R | Runtime policy lifecycle is explicit, default-off, architecture-gated, and reversibly recoverable | R2-R4, R10-R11, A2-A3, A7-A8 | P2 recovery review | default preserve is mutation-free; explicit amd64 enable is idempotent; disable unloads/removes Runtime policy and restores any displaced prior file/state; interruption evidence is durable; tests/docs green | completed |
+| P3 | Signed v0.1.25 prerelease and frontend canary contract ready | R1-R5, R10-R11 | P1-P2R | signatures verified; exact metadata/canary code reviewed | pending |
 | P4 | Rollback/forward amd64 acceptance canary passes | R1-R6, R10, A1-A4 | P3 | pre-policy sensitivity, positive capability, preservation, explicit retained-policy binary rollback, and forward gates pass | pending |
 | P5 | Stable production Runtime/image and Nico sandbox refresh | R1-R7, R10 | P4 | stable assets; Nico upgrade plus both explicit refreshes verified | pending |
 | P6 | Nico code/deploy and real autonomous task pass | R7-R10 | P5 | full gates, deploy, coder/publisher/QA canary, staged flags | pending |
 
 ## Active phase subplan
+
+### Recovery phase P2R header
+
+- Phase ID and outcome: P2R, recover the disproved default-install design with
+  an explicit host-scoped policy lifecycle that is off by default and safely
+  reversible.
+- Covered requirement and assumption IDs: R2-R4, R10-R11; A2-A3, A7-A8.
+- Entry criteria: PR #23 exact-head CI is green; independent review recorded A7
+  and A8 as false; the installer interface is frozen as
+  `--nested-private-procfs preserve|enable|disable` with default `preserve`;
+  Runtime-only recovery implementation is authorized.
+- Exit criteria: default installs do not inspect, parse, load, unload, create,
+  replace, or remove Runtime AppArmor policy state; explicit enable is amd64
+  only and idempotent; explicit disable restores any pre-existing destination
+  and loaded state; interrupted transactions retain durable recovery evidence;
+  focused tests and the full Runtime phase gate pass.
+- Dependencies and risks: the backend remains the authenticated trusted
+  image-selection boundary; this phase adds no sandbox manifest/API field and
+  cannot offer per-sandbox policy isolation.
+- Baseline test state: exact head `9459b08` passes current Linux unit, race, vet,
+  profile, installer, policy transaction, and four-distro hosted gates; live
+  restricted-AppArmor behavior remains P4.
+- Required documentation and API-contract changes: README, SECURITY, installer
+  CLI/error contract, and this plan. Public HTTP/JSON API changes are not
+  applicable.
+- Coordinating owner: Runtime recovery implementer, with the parent coordinator
+  retaining cross-repository integration.
+- Fresh recovery reviewer available: yes; parent coordinator will assign an
+  independent verifier after the Runtime diff is returned.
+
+### Recovery phase P2R assumption check
+
+| Assumption ID | Check or probe | Evidence | Result | Plan change |
+|---|---|---|---|---|
+| A7 | Compare unconditional installer branch with actual Nico-only use case | `install.sh` automatically mutates policy on restricted Ubuntu while the capability objective names coder/QA | false | default becomes `preserve`; only explicit enable/disable may mutate policy |
+| A8 | Determine whether exact-path attachment identifies a sandbox | profile attaches by filesystem path and Runtime sandboxes share the same owner/image path | false | document host scope; do not invent a per-sandbox claim or manifest flag |
+| A2 | Preserve container/package behavior | existing exact create-argument and coexistence gates are green | verified for implementation | keep policy operation after package/workload gate and leave container arguments unchanged |
+| A3 | Recover policy state safely | current EXIT rollback is process-failure safe but `/run` evidence and retained downgrade policy are insufficient for explicit disable/crash recovery | false for recovered lifecycle | add a durable root-only transaction journal/backup and explicit recovery before new policy operations |
+
+### Recovery phase P2R entry-gate decision
+
+- Implementation authorized: yes.
+- Decision evidence: parent recovery assignment and frozen installer interface,
+  2026-09-07.
+- Unresolved low-impact defaults and consequences: none; non-amd64 explicit
+  enable fails closed, while preserve and disable remain available for recovery.
+- Error/logging requirements reviewed: yes; preserve existing stable safe errors
+  and add distinct invalid-mode, unsupported-architecture, and recovery errors
+  without logging file contents or credentials.
+- Authentication/authorization requirements reviewed: yes; only the existing
+  root-required, authenticated signed Runtime install path may request the host
+  operation. Backend image selection remains a trusted boundary.
+- Documentation/API requirements reviewed: yes; installer CLI documentation is
+  required, HTTP/JSON API change is not applicable.
+- Decision timestamp or plan revision: 2026-09-07, recovery revision 4.
+
+### Recovery phase P2R subparts
+
+| Subpart | Deliverable and owner boundary | Dependencies | Interfaces / likely files | Documentation / API impact | Acceptance and oracle | Focused + regression checks | Parallel-safe | Status |
+|---|---|---|---|---|---|---|---|---|
+| P2R.S1 | Explicit preserve/enable/disable lifecycle with durable recovery and amd64 gate | frozen interface | installer and AppArmor policy helper | installer errors/recovery | preserve makes no policy calls; enable loads exact policy idempotently; disable restores prior file/state; stale transaction recovers before mutation | expanded policy transaction tests | no | completed; independent review approved |
+| P2R.S2 | Packaging and operator/security documentation parity | P2R.S1 | README, SECURITY, release/install structural tests | host scope, image trust, amd64, recovery | docs describe actual default and scope without per-sandbox claim | structural/doc inspection | no | completed; independent review approved |
+| P2R.S3 | Integrated Runtime recovery gate | P2R.S1-S2 | repository-wide | plan verification evidence | all focused/full gates pass; diff preserves OCI/package/workload invariants | shell, race, vet, cross-build, exact diff inspection | no | completed; independent review approved |
+
+### Recovery phase P2R test matrix
+
+| Requirement / risk | Behavior or invariant | Test level | Oracle defined before code | Command or procedure |
+|---|---|---|---|---|
+| R11/A7 | omitted/default preserve does not mutate policy | unit + structure | yes | fake parser/metadata operation log remains empty; existing state byte/kernel-state identical |
+| R11 | explicit enable is amd64-only and idempotent | unit + integration | yes | amd64 enable twice reaches exact candidate/enforce state; non-amd64 fails before mutation |
+| R11 | explicit disable reverses enable and restores displaced state | unit + recovery | yes | loaded/unloaded pre-existing file fixtures restore exact content/metadata/kernel state |
+| R11/A3 | interrupted transaction is recoverable | recovery | yes | durable journal fixture survives invocation boundary and is consumed before the next operation |
+| R2/A8 | scope is host-wide but exact-path/child restrictions remain | inspection + live P4 | yes | static profile test plus explicit docs; no sandbox/API toggle claim |
+| R3-R4 | OCI, packages, and workloads are unchanged | regression | yes | exact Podman args, installer structure, four-distro CI |
+
+### Recovery phase P2R frozen command manifest
+
+```sh
+git diff --check
+test -z "$(gofmt -l .)"
+sh -n packaging/install/install.sh
+sh -n packaging/install/warpmetal-apparmor-policy.sh
+sh -n packaging/apparmor/nested-private-procfs-oracle.sh
+sh packaging/apparmor/profile_test.sh
+sh packaging/install/apparmor_policy_test.sh
+sh packaging/install/install_test.sh
+go test -race ./...
+go vet ./...
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/warpmetal-policy-metadata
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./cmd/warpmetal-policy-metadata
+```
+
+### Recovery phase P2R sequence and integration
+
+1. Implement and test the local installer/policy lifecycle without changing
+   container arguments or HTTP manifests.
+2. Align operator/security docs and structural release assertions.
+3. Run the complete Runtime gate and return the uncommitted diff for fresh
+   independent review; live capability promotion remains P4.
 
 ### Phase header
 
@@ -411,6 +530,47 @@ removing a frozen invariant requires a fresh review and plan update.
   P4 and remains a production blocker.
 - Phase status: completed. P4 remains the required live capability gate before
   production promotion.
+
+### Recovery phase P2R verification log
+
+- Local implementation status: preserve/enable/disable lifecycle, durable
+  activation baseline, atomic in-progress transaction, amd64 enable gate,
+  legacy-candidate adoption/removal, documentation, and installer structure are
+  implemented. No HTTP/JSON API was added.
+- Focused behavior evidence: Linux tests prove preserve does not touch missing
+  bundle/parser/state paths; non-amd64 enable fails before durable-state or
+  parser mutation; enable is policy-idempotent; disable restores loaded and
+  unloaded pre-existing files with exact metadata; ordinary EXIT rollback and a
+  later explicit operation recover interrupted transactions; and an interrupted
+  disable after baseline movement restores both the candidate and baseline.
+- Independent behavior check: invoking the real installer entry point in a
+  linux/arm64 container returns only
+  `runtime_nested_private_procfs_architecture_unsupported` before host/package
+  mutation.
+- Recovery review correction: the preserve EXIT path now uses an explicit
+  `warpmetal_apparmor_policy_initialized` guard instead of relying on a
+  top-level no-op rollback definition. A disposable privileged Ubuntu 24.04
+  test executes the real default-preserve installer through its locked-install
+  failure path and proves it emits only `runtime_install_in_progress`, invokes
+  no policy rollback, and removes its `/run/warpmetal-install.*` state.
+- Full local gate: `git diff --check`, Go formatting, shell syntax, profile
+  tests, expanded AppArmor transaction tests, installer structural tests,
+  `go test -race ./...`, `go vet ./...`, and linux amd64/arm64 metadata-helper
+  cross-builds passed in a Go 1.25 Linux container. Host ShellCheck at warning
+  severity also passed.
+- Documentation/API parity: README and SECURITY describe default preserve,
+  host scope, amd64-only enable, trusted backend image selection, explicit
+  disable, and durable recovery. Installer contract is
+  `--nested-private-procfs preserve|enable|disable`; public HTTP/JSON API remains
+  not applicable.
+- Independent review: the parent verifier re-ran the Go 1.25 Linux gate,
+  privileged default-preserve execution, frontend contract suite, Nico runner
+  suite, and agent-kit package gate. A separate frontend verifier confirmed the
+  Runtime/release/canary contract, and a separate agent-kit verifier found and
+  then approved the recovery-error priority and exact bundle validation fixes.
+- Residual gate: P2R is complete. Live AppArmor kernel behavior remains the
+  separate P4 production-promotion blocker; power-loss recovery is consumed by
+  the next explicit enable/disable rather than a boot-time recovery unit.
 
 ## Project completion record
 

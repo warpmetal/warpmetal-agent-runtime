@@ -31,13 +31,14 @@ Security boundaries:
 - The root supervisor performs ext4 mount operations through PID 1's host mount
   namespace so the separate rootless engine sees only the intended workspace
   mounts; the rest of the supervisor stays inside its hardened mount namespace.
-- On hosts that actively enforce AppArmor's restricted-unprivileged-userns
-  control, the signed installer loads a narrowly attached policy for the exact
-  root-owned Codex Bubblewrap helper in the signed sandbox image. The setup
-  profile permits Bubblewrap to construct an inner user/PID namespace and new
-  procfs, then stacks every child executable with a capability-denying profile.
-  It does not apply to `/usr/bin/bwrap`, workspace binaries, or generic
-  `unshare`, and it does not change sandbox container-create arguments.
+- On amd64 hosts that actively enforce AppArmor's
+  restricted-unprivileged-userns control, an explicit signed-installer option
+  can load a narrowly attached policy for the exact root-owned Codex Bubblewrap
+  helper in the signed coding image. The setup profile permits Bubblewrap to
+  construct an inner user/PID namespace and new procfs, then stacks every child
+  executable with a capability-denying profile. The capability is off by
+  default, does not apply to `/usr/bin/bwrap`, workspace binaries, or generic
+  `unshare`, and does not change sandbox container-create arguments.
 
 Build and test on Linux with Go 1.25 or newer:
 
@@ -74,9 +75,12 @@ cosign verify-blob \
   warpmetal-runtime-<version>-linux-<arch>.tar.gz
 ```
 
-The archive also contains the AppArmor policy, its transactional installer
-helper, and `nested-private-procfs-oracle.sh`. The oracle is credential-free:
-inside the matching signed sandbox image it verifies the helper ownership,
+The archive also contains the amd64 coding-host AppArmor policy, its
+transactional installer helper, and `nested-private-procfs-oracle.sh`. Runtime
+continues to publish arm64 supervisor archives, but explicit capability enable
+fails closed there because the current signed coding image and exact helper path
+are amd64-only. The oracle is credential-free: inside the matching signed
+sandbox image it verifies the helper ownership,
 creates its own short-lived outer sentinel, mounts a new procfs in a new PID
 namespace, checks that the inner process is PID 1, checks a descendant's
 `/proc/self`, and confirms the outer sentinel is absent. It clears the inherited
@@ -115,29 +119,44 @@ instead of restarted. This keeps persistent Agent Runtime sandboxes and their
 delegated cgroups running while the supervisor binaries are replaced. A fresh
 install, or an inactive service, is still started before registration.
 
+Ordinary installs and upgrades use
+`--nested-private-procfs preserve` by default. Preserve mode does not inspect,
+parse, load, unload, create, replace, or remove the Runtime AppArmor policy.
+Dedicated amd64 coding hosts may explicitly use
+`--nested-private-procfs enable`; other architectures fail closed. Explicit
+`--nested-private-procfs disable` unloads/removes the Runtime policy and restores
+the exact file and loaded/unloaded state that preceded its first enable. These
+are host-scoped operations, not per-user or per-sandbox grants: after enable,
+every same-owner sandbox on that Runtime host containing the trusted exact
+helper path can invoke it. The authenticated backend remains the trusted
+immutable-image selection boundary; AppArmor pathname attachment does not
+verify an image digest.
+
 On an AppArmor-enabled host where
-`kernel.apparmor_restrict_unprivileged_userns=1`, installation also requires the
+`kernel.apparmor_restrict_unprivileged_userns=1`, explicit enable requires the
 host's existing `apparmor_parser`. Runtime does not install an AppArmor package,
 change that sysctl, reload/restart the AppArmor service, or restart Podman. It
 parses the signed candidate first, atomically replaces only
 `/etc/apparmor.d/warpmetal-agent-runtime-bwrap`, and loads only that file. A
-prior Runtime policy is kept in the root-only installer state and restored in
-both the filesystem and kernel if any later install step fails, including its
-exact prior loaded or unloaded state. Disk/kernel mismatches and partial profile
-loads, including non-enforce modes, fail closed. The signed Linux metadata
-helper copies through `O_NOATIME|O_NOFOLLOW`, rejects nonregular or pre-existing
-targets, clears inherited attributes, and reapplies ownership, every xattr,
-raw mode, and nanosecond timestamps in a fail-closed order. It verifies source
-stability plus exact content, UID/GID, raw mode, timestamps, and xattr identity
-on both backup and restoration, including POSIX ACL and SELinux context xattrs.
-Copy or comparison failure stops installation and preserves recovery evidence.
-If reloading a restored policy advances its atime,
-the installer reapplies the backup's nanosecond timestamps before the final
-non-atime-mutating comparison; failure to do so is a rollback failure. A
-first-install policy is unloaded and removed on failure.
-If either operation fails, the root-only recovery directory and backup are
-preserved for review. Unsupported, conflicting, parse, load, and rollback
-conditions use distinct `runtime_apparmor_policy_*` errors.
+root-only durable baseline under `/var/lib/warpmetal/apparmor-policy-state`
+retains the exact pre-enable file and loaded state until disable. Each mutating
+operation first writes and syncs an atomic transaction snapshot there; ordinary
+installer failure restores it through the EXIT trap, and the next explicit
+enable/disable recovers a transaction left by interruption before applying a
+new operation. A completed enable or disable is committed only after Runtime
+registration and service restart succeed.
+
+Disk/kernel mismatches and partial profile loads, including non-enforce modes,
+fail closed. The signed Linux metadata helper copies through
+`O_NOATIME|O_NOFOLLOW`, rejects nonregular or pre-existing targets, clears
+inherited attributes, and reapplies ownership, every xattr, raw mode, and
+nanosecond timestamps in a fail-closed order. It verifies source stability plus
+exact content, UID/GID, raw mode, timestamps, and xattr identity on both backup
+and restoration, including POSIX ACL and SELinux context xattrs. Copy or
+comparison failure preserves durable recovery evidence. If parser reads advance
+a restored file's atime, the installer reapplies the baseline timestamps before
+its final non-atime-mutating comparison. Unsupported, conflicting, parse, load,
+architecture, and recovery conditions use distinct safe `runtime_*` errors.
 The capability remains unproven for a release until the Ubuntu 24.04 live
 acceptance oracle passes.
 

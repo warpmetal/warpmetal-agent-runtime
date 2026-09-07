@@ -147,10 +147,177 @@ warpmetal_rollback_apparmor_policy
 [ ! -e "$destination" ] || fail_test first_install_file_not_removed
 test ! -s "$policy_state"
 
+metadata_command='import json,os,stat,sys; p=sys.argv[1]; s=os.stat(p,follow_symlinks=False); x={n:os.getxattr(p,n,follow_symlinks=False).hex() for n in sorted(os.listxattr(p,follow_symlinks=False))}; print(json.dumps([s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode),s.st_atime_ns,s.st_mtime_ns,x],sort_keys=True))'
+
+# The recovered public lifecycle defaults to a true preserve operation. It does
+# not inspect bundle, parser, kernel, destination, or durable state paths.
+lifecycle_root=$test_root/lifecycle-state
+lifecycle_destination=$test_root/etc/apparmor.d/lifecycle-policy
+lifecycle_missing=$test_root/does-not-exist
+printf 'preserved policy\n' > "$lifecycle_destination"
+lifecycle_before=$(python3 -c "$metadata_command" "$lifecycle_destination")
+: > "$APPARMOR_TEST_LOG"
+warpmetal_configure_apparmor_policy preserve arm64 \
+  "$lifecycle_missing" "$lifecycle_destination" "$lifecycle_root" \
+  "$lifecycle_missing" "$lifecycle_missing" "$lifecycle_missing"
+test "$(python3 -c "$metadata_command" "$lifecycle_destination")" = "$lifecycle_before"
+test ! -e "$lifecycle_root"
+test ! -s "$APPARMOR_TEST_LOG"
+
+expect_status 1 warpmetal_configure_apparmor_policy unexpected x86_64 \
+  "$lifecycle_missing" "$lifecycle_destination" "$lifecycle_root" \
+  "$lifecycle_missing" "$lifecycle_missing" "$lifecycle_missing"
+test "$warpmetal_apparmor_policy_error" = runtime_nested_private_procfs_mode_invalid
+test ! -e "$lifecycle_root"
+
+# Explicit enable fails closed on a non-amd64 architecture before creating
+# durable state or invoking the parser/metadata helper.
+expect_status 1 warpmetal_configure_apparmor_policy enable arm64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+test "$warpmetal_apparmor_policy_error" = runtime_nested_private_procfs_architecture_unsupported
+test ! -e "$lifecycle_root"
+test ! -s "$APPARMOR_TEST_LOG"
+
+# First enable preserves an exact loaded pre-existing destination in durable
+# state until the full installer commits. A second enable is policy-idempotent,
+# and disable restores the original file metadata and loaded state exactly.
+printf 'previous lifecycle policy\n' > "$lifecycle_destination"
+python3 -c 'import os,sys; p=sys.argv[1]; os.chmod(p,0o640); os.setxattr(p,"user.warpmetal_lifecycle",b"preserve"); os.utime(p,ns=(1650000000123456789,1650000000123456789))' "$lifecycle_destination"
+lifecycle_before=$(python3 -c "$metadata_command" "$lifecycle_destination")
+printf '%s\n' 'warpmetal-agent-runtime-bwrap (enforce)' 'warpmetal-agent-runtime-unpriv-bwrap (enforce)' > "$policy_state"
+: > "$APPARMOR_TEST_LOG"
+warpmetal_configure_apparmor_policy enable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+test -d "$lifecycle_root/transaction"
+test ! -e "$lifecycle_root/baseline"
+cmp -s "$candidate" "$lifecycle_destination"
+warpmetal_commit_apparmor_policy_operation
+test -d "$lifecycle_root/baseline"
+test ! -e "$lifecycle_root/transaction"
+test ! -e "$lifecycle_root/completed"
+
+: > "$APPARMOR_TEST_LOG"
+warpmetal_configure_apparmor_policy enable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+warpmetal_commit_apparmor_policy_operation
+if grep -Eq '^PARSER (-r|-R) ' "$APPARMOR_TEST_LOG"; then
+  fail_test idempotent_enable_mutated_kernel_policy
+fi
+
+warpmetal_configure_apparmor_policy disable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+test -d "$lifecycle_root/transaction"
+test "$(python3 -c "$metadata_command" "$lifecycle_destination")" = "$lifecycle_before"
+grep -Fqx 'warpmetal-agent-runtime-bwrap (enforce)' "$policy_state"
+grep -Fqx 'warpmetal-agent-runtime-unpriv-bwrap (enforce)' "$policy_state"
+warpmetal_commit_apparmor_policy_operation
+test ! -e "$lifecycle_root/baseline"
+test ! -e "$lifecycle_root/transaction"
+test ! -e "$lifecycle_root/completed"
+
+# An uncommitted first enable is rolled back through the installer EXIT hook,
+# while a durable transaction left by an interrupted process is recovered by
+# the next explicit operation before it applies its requested state.
+rm -f -- "$lifecycle_destination"
+: > "$policy_state"
+warpmetal_configure_apparmor_policy enable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+test -d "$lifecycle_root/transaction"
+warpmetal_rollback_apparmor_policy
+test ! -e "$lifecycle_destination"
+test ! -s "$policy_state"
+test ! -e "$lifecycle_root/transaction"
+
+warpmetal_configure_apparmor_policy enable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+test -d "$lifecycle_root/transaction"
+# Simulate a new installer process whose shell globals did not survive.
+warpmetal_apparmor_policy_operation=
+warpmetal_configure_apparmor_policy disable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+test ! -e "$lifecycle_destination"
+test ! -s "$policy_state"
+test ! -e "$lifecycle_root/transaction"
+
+# A pre-existing policy that was present but unloaded is restored byte-for-byte
+# and remains unloaded after an enable/disable cycle.
+printf 'unloaded lifecycle policy\n' > "$lifecycle_destination"
+python3 -c 'import os,sys; p=sys.argv[1]; os.chmod(p,0o604); os.setxattr(p,"user.warpmetal_unloaded",b"preserve"); os.utime(p,ns=(1660000000123456789,1660000000123456789))' "$lifecycle_destination"
+unloaded_lifecycle_before=$(python3 -c "$metadata_command" "$lifecycle_destination")
+: > "$policy_state"
+warpmetal_configure_apparmor_policy enable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+warpmetal_commit_apparmor_policy_operation
+warpmetal_configure_apparmor_policy disable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+test "$(python3 -c "$metadata_command" "$lifecycle_destination")" = "$unloaded_lifecycle_before"
+test ! -s "$policy_state"
+warpmetal_commit_apparmor_policy_operation
+test ! -e "$lifecycle_root/baseline"
+
+# If disable is interrupted after moving its activation baseline into the
+# transaction but before the atomic commit rename, the next explicit operation
+# restores both the enabled candidate and the original activation baseline.
+rm -f -- "$lifecycle_destination"
+: > "$policy_state"
+warpmetal_configure_apparmor_policy enable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+warpmetal_commit_apparmor_policy_operation
+warpmetal_configure_apparmor_policy disable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+mv -- "$lifecycle_root/baseline" "$lifecycle_root/transaction/activation-baseline"
+warpmetal_apparmor_policy_operation=
+warpmetal_configure_apparmor_policy enable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+cmp -s "$candidate" "$lifecycle_destination"
+grep -Fqx 'warpmetal-agent-runtime-bwrap (enforce)' "$policy_state"
+grep -Fqx 'warpmetal-agent-runtime-unpriv-bwrap (enforce)' "$policy_state"
+test -d "$lifecycle_root/baseline"
+test ! -e "$lifecycle_root/transaction"
+warpmetal_configure_apparmor_policy disable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+warpmetal_commit_apparmor_policy_operation
+test ! -e "$lifecycle_destination"
+test ! -s "$policy_state"
+test ! -e "$lifecycle_root/baseline"
+
+# Adopt and remove a policy installed by the pre-recovery candidate, which had
+# no durable activation baseline. Enable records an empty baseline without
+# reloading; disable then unloads and removes the legacy candidate.
+install -m 0644 "$candidate" "$lifecycle_destination"
+printf '%s\n' 'warpmetal-agent-runtime-bwrap (enforce)' 'warpmetal-agent-runtime-unpriv-bwrap (enforce)' > "$policy_state"
+: > "$APPARMOR_TEST_LOG"
+warpmetal_configure_apparmor_policy enable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+test -d "$lifecycle_root/baseline"
+if grep -Eq '^PARSER (-r|-R) ' "$APPARMOR_TEST_LOG"; then
+  fail_test legacy_adoption_reloaded_policy
+fi
+warpmetal_configure_apparmor_policy disable x86_64 \
+  "$candidate" "$lifecycle_destination" "$lifecycle_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+test ! -e "$lifecycle_destination"
+test ! -s "$policy_state"
+warpmetal_commit_apparmor_policy_operation
+test ! -e "$lifecycle_root/baseline"
+
 # A disk policy that was loaded is restored as loaded after candidate removal.
 printf 'previous profile\n' > "$destination"
 python3 -c 'import os,struct,sys; p=sys.argv[1]; os.chmod(p,0o640); os.setxattr(p,"user.warpmetal_test",b"preserve-me"); acl=struct.pack("<I",2)+b"".join(struct.pack("<HHI",tag,perm,ident) for tag,perm,ident in [(1,7,0xffffffff),(2,4,os.getuid()+1),(4,4,0xffffffff),(16,4,0xffffffff),(32,0,0xffffffff)]); os.setxattr(p,"system.posix_acl_access",acl); default=struct.pack("<I",2)+b"".join(struct.pack("<HHI",tag,perm,ident) for tag,perm,ident in [(1,7,0xffffffff),(4,4,0xffffffff),(16,4,0xffffffff),(32,0,0xffffffff)]); [os.setxattr(d,"system.posix_acl_default",default) for d in sys.argv[2:]]; os.utime(p,ns=(1700000000000000000,1700000000000000000)); os.chown(p,123,456) if os.geteuid()==0 else None' "$destination" "$test_root/state" "$test_root/etc/apparmor.d"
-metadata_command='import json,os,stat,sys; p=sys.argv[1]; s=os.stat(p,follow_symlinks=False); x={n:os.getxattr(p,n,follow_symlinks=False).hex() for n in sorted(os.listxattr(p,follow_symlinks=False))}; print(json.dumps([s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode),s.st_atime_ns,s.st_mtime_ns,x],sort_keys=True))'
 previous_metadata=$(python3 -c "$metadata_command" "$destination")
 source_atime_before=$(python3 -c 'import os,sys; print(os.stat(sys.argv[1],follow_symlinks=False).st_atime_ns)' "$destination")
 "$metadata_binary" copy "$destination" "$test_root/expected-previous"

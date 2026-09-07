@@ -68,6 +68,44 @@ func TestCompareDetectsContentModeTimestampAndXattrDrift(t *testing.T) {
 	}
 }
 
+func TestContentEqualIgnoresMetadataButDetectsContent(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left")
+	right := filepath.Join(dir, "right")
+	if err := os.WriteFile(left, []byte("policy"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(right, []byte("policy"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	leftStamp := time.Unix(1_500_000_000, 111111111)
+	rightStamp := time.Unix(1_600_000_000, 222222222)
+	if err := os.Chtimes(left, leftStamp, leftStamp); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(right, rightStamp, rightStamp); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"content-equal", left, right}); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]time.Time{left: leftStamp, right: rightStamp} {
+		var stat unix.Stat_t
+		if err := unix.Stat(path, &stat); err != nil {
+			t.Fatal(err)
+		}
+		if got := time.Unix(stat.Atim.Sec, stat.Atim.Nsec); !got.Equal(want) {
+			t.Fatalf("content comparison changed %s atime: got=%v want=%v", path, got, want)
+		}
+	}
+	if err := os.WriteFile(right, []byte("changed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"content-equal", left, right}); err == nil {
+		t.Fatal("content comparison accepted different bytes")
+	}
+}
+
 func TestCopyPreservesMetadataWithoutChangingSourceAtime(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "source")

@@ -150,6 +150,41 @@ func comparePaths(leftPath, rightPath string) error {
 	return nil
 }
 
+func comparePathContent(leftPath, rightPath string) error {
+	left, err := readPathContent(leftPath)
+	if err != nil {
+		return err
+	}
+	right, err := readPathContent(rightPath)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(left, right) {
+		return errors.New("content mismatch")
+	}
+	return nil
+}
+
+func readPathContent(path string) (content []byte, err error) {
+	file, err := openForMetadata(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := file.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+	var stat unix.Stat_t
+	if err := unix.Fstat(int(file.Fd()), &stat); err != nil {
+		return nil, err
+	}
+	if stat.Mode&unix.S_IFMT != unix.S_IFREG {
+		return nil, errors.New("not a regular file")
+	}
+	return io.ReadAll(file)
+}
+
 func copyPath(sourcePath, destinationPath string) (err error) {
 	source, err := openForMetadata(sourcePath)
 	if err != nil {
@@ -250,6 +285,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "compare":
 		return comparePaths(args[1], args[2])
+	case "content-equal":
+		return comparePathContent(args[1], args[2])
 	case "copy":
 		return copyPath(args[1], args[2])
 	default:
