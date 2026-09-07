@@ -276,7 +276,7 @@
 |---|---|---|---|---|---|
 | P0 | Architecture and rollout gate frozen | R1-R10, A1-A6 | independent audits | canonical plan reviewed; no rejected bind work included | completed |
 | P1 | Existing signed image contains trusted Bubblewrap | R2, R5, R10 | signed image | exact digest/path/owner/mode/version verified | completed |
-| P2 | Runtime candidate packages and loads the restricted policy safely | R1-R4, R10, A1-A3 | P1 path contract | PR reviewed; full CI green on merge commit | in_progress |
+| P2 | Runtime candidate packages and loads the restricted policy safely | R1-R4, R10, A1-A3 | P1 path contract | PR reviewed; full CI green on exact PR head | completed |
 | P3 | Signed v0.1.25 prerelease and frontend canary contract ready | R1-R5, R10 | P1-P2 | signatures verified; exact metadata/canary code reviewed | pending |
 | P4 | Rollback/forward amd64 acceptance canary passes | R1-R6, R10, A1-A4 | P3 | pre-policy sensitivity, positive capability, preservation, explicit retained-policy binary rollback, and forward gates pass | pending |
 | P5 | Stable production Runtime/image and Nico sandbox refresh | R1-R7, R10 | P4 | stable assets; Nico upgrade plus both explicit refreshes verified | pending |
@@ -312,8 +312,8 @@
 | Assumption ID | Check or probe | Evidence | Result | Plan change |
 |---|---|---|---|---|
 | A1 | Compare the exact-path profile with upstream's setup/stacked capability-denied-child pattern; prove path attachment and one allowed nesting on disposable Ubuntu 24.04 | upstream AppArmor profile lines 12-72; signed-image path inspection | unresolved | permit isolated candidate implementation only; block promotion until P4 |
-| A2 | Preserve the exact current `createArguments` list and exercise supported distros | v0.1.24 source plus four-distro matrix | unresolved | add exact forbidden/unchanged assertions; no AppArmor OCI override |
-| A3 | Parse-before-install, load only the new file, never restart AppArmor/Podman, require both loaded profiles exactly once in enforce mode, and retain/restore exact prior file metadata plus loaded/unloaded state on failure | installer architecture audit and recovery review | unresolved | signed no-atime/no-follow copy and comparison helper plus source-stability and inherited-xattr checks, parser-read timestamp restoration, transactional mismatch, mode, backup/restore failure, partial-load, aggregate-failure, and workload postcondition checks |
+| A2 | Preserve the exact current `createArguments` list and exercise supported distros | v0.1.24 source plus four-distro matrix | verified for P2 | exact forbidden/unchanged assertions and Ubuntu 24.04, Debian 12, AlmaLinux 9, Rocky Linux 9 hosted coexistence jobs passed; live host remains P4 |
+| A3 | Parse-before-install, load only the new file, never restart AppArmor/Podman, require both loaded profiles exactly once in enforce mode, and retain/restore exact prior file metadata plus loaded/unloaded state on failure | installer architecture audit and recovery review | verified for P2 | signed no-atime/no-follow copy and comparison helper, source-stability/inherited-xattr checks, parser-read timestamp restoration, failure tests, and hosted install/drift gates passed; live host remains P4 |
 
 ### Entry-gate decision
 
@@ -337,7 +337,7 @@
 | P2.S1 | Add exact-path upstream-style setup and capability-denied child AppArmor policy | P1 | `packaging/apparmor/warpmetal-agent-runtime-bwrap` | README/security | exact attachment only; child has no capabilities; deeper namespace/proc mount denied | parser/static policy tests + live P4 | yes | completed locally; live proof pending P4 |
 | P2.S2 | Add transactional conditional policy installation/loading without service or package mutation | P2.S1 | `packaging/install/install.sh`, `install_test.sh` | installer errors/recovery | parse first; exact file load; sysctl unchanged; failure restores prior policy and preserves workloads | shell/unit/coexistence tests | no | completed locally; CI pending |
 | P2.S3 | Package policy/oracle and freeze unchanged OCI restrictions | P2.S1 | `release.yml`, `podman_test.go`, canary helper | release contents | archive complete; `createArguments` unchanged; forbidden broad options absent | Go/release structural tests | yes | completed locally; CI pending |
-| P2.S4 | Full Runtime verification and independent scope/security review | P2.S1-S3 | repository-wide | plan verification log | exact head green on all supported distros; reviewer APPROVE | full commands below | no | independent review approved; exact-head CI pending |
+| P2.S4 | Full Runtime verification and independent scope/security review | P2.S1-S3 | repository-wide | plan verification log | exact head green on all supported distros; reviewer APPROVE | full commands below | no | completed |
 
 ### Test matrix
 
@@ -390,13 +390,13 @@ removing a frozen invariant requires a fresh review and plan update.
 
 ### Integrated phase gate
 
-- Acceptance criteria checked: local P2 criteria passed; exact-head hosted matrix
-  remains pending.
+- Acceptance criteria checked: P2 local and exact-head hosted criteria passed.
 - Full commands and results: Ubuntu 24.04 shell/AppArmor/installer/ShellCheck
   gate passed; Go 1.25 formatting, race suite, vet, and amd64/arm64 helper builds
   passed; `git diff --check` passed.
 - Cross-subpart behavior checked: fresh independent reviewer returned APPROVE for
-  the complete Runtime diff.
+  the complete Runtime diff; exact head `39dbb82` passed GitHub Actions run
+  `34143505512`.
 - Error-path and log-safety evidence: backup, staged restore, final restore,
   timestamp restoration, partial profile load, and aggregate rollback failures
   are exercised without credential-bearing output.
@@ -409,7 +409,8 @@ removing a frozen invariant requires a fresh review and plan update.
 - Assumptions added or changed: none after revision 1.
 - Limitations or unrun checks: live AppArmor capability intentionally deferred to
   P4 and remains a production blocker.
-- Phase status: in progress.
+- Phase status: completed. P4 remains the required live capability gate before
+  production promotion.
 
 ## Project completion record
 
