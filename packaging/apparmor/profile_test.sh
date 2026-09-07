@@ -61,5 +61,7 @@ if kill -0 "$sentinel_test_pid" 2>/dev/null; then
 fi
 
 if command -v apparmor_parser >/dev/null 2>&1; then
-  apparmor_parser -Q "$profile"
+  # Parse only: CI runners are unprivileged and must not read or write the
+  # host policy cache while validating the bundled profile.
+  apparmor_parser -Q -K "$profile"
 fi

@@ -386,7 +386,7 @@ removing a frozen invariant requires a fresh review and plan update.
 | Subpart | Review result | Commands and results | Independent behavior check | Residual risk | Final status |
 |---|---|---|---|---|---|
 | P1 | coordinator verified | pulled exact amd64 digest; container inspection reported exact path, UID/GID 0, mode 0555, and `bubblewrap built for Codex` | immutable image inspection | AppArmor capability unproven until P4 | verified |
-| P2.S1-S3 | fresh recovery reviewer approved | Ubuntu 24.04: shell syntax, profile parse/static test, transactional policy/installer tests, and ShellCheck passed; Go 1.25: formatting, `go test -race ./...`, and `go vet ./...` passed; amd64 and arm64 static metadata-helper builds passed | full diff review confirmed exact attachment, capability-denied child, unchanged Podman create arguments, fail-closed exact metadata rollback, and signed archive inclusion | live restricted-userns behavior remains blocked on P4 | verified locally |
+| P2.S1-S3 | fresh recovery reviewer approved; first hosted test exposed and corrected an unprivileged cache-access assumption in the parse-only test | Ubuntu 24.04: shell syntax, cache-free profile parse/static test, transactional policy/installer tests, and ShellCheck passed; Go 1.25: formatting, `go test -race ./...`, and `go vet ./...` passed; amd64 and arm64 static metadata-helper builds passed | full diff review confirmed exact attachment, capability-denied child, unchanged Podman create arguments, fail-closed exact metadata rollback, and signed archive inclusion | live restricted-userns behavior remains blocked on P4 | verified locally; exact-head CI rerun pending |
 
 ### Integrated phase gate
 
