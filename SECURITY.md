@@ -56,12 +56,12 @@ reviewed rather than worked around by relaxing host policy. Runtime snapshots
 both policy names independently, rejects partial or disk/kernel-conflicting
 states, unloads candidate definitions before restoration, and restores whether
 the prior policy was loaded or unloaded in enforce mode. Backup and restore use
-GNU `cp --preserve=all` and fail closed if ownership, mode, ACL, or extended
-attribute preservation is unsupported. A signed static comparator verifies the
-source and copy byte content, UID/GID, raw mode, nanosecond atime/mtime, and the
-complete xattr map after backup, before restored-file publication, and after
-publication. It therefore detects preservation warnings that GNU `cp` may not
-return as failures. Because `apparmor_parser` reads a restored policy, Runtime
+the signed Linux metadata helper with no-atime, no-symlink source reads and
+exclusive destination creation. It removes inherited attributes, then applies
+ownership, the complete xattr map, raw mode, and nanosecond atime/mtime before
+verifying exact content and metadata plus unchanged source metadata. Unsupported
+ACL, SELinux context, ownership, timestamp, or filesystem behavior fails closed.
+Because `apparmor_parser` reads a restored policy, Runtime
 reapplies the backup's reference timestamps after loading it and performs its
 final comparison with `O_NOATIME`; timestamp restoration failure is fail-closed.
 Failed comparison/unload/removal recovery retains the root-only installer state

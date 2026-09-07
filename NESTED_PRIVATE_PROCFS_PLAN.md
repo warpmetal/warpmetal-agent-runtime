@@ -313,7 +313,7 @@
 |---|---|---|---|---|
 | A1 | Compare the exact-path profile with upstream's setup/stacked capability-denied-child pattern; prove path attachment and one allowed nesting on disposable Ubuntu 24.04 | upstream AppArmor profile lines 12-72; signed-image path inspection | unresolved | permit isolated candidate implementation only; block promotion until P4 |
 | A2 | Preserve the exact current `createArguments` list and exercise supported distros | v0.1.24 source plus four-distro matrix | unresolved | add exact forbidden/unchanged assertions; no AppArmor OCI override |
-| A3 | Parse-before-install, load only the new file, never restart AppArmor/Podman, require both loaded profiles exactly once in enforce mode, and retain/restore exact prior file metadata plus loaded/unloaded state on failure | installer architecture audit and recovery review | unresolved | signed non-atime-mutating metadata comparator plus parser-read timestamp restoration, transactional mismatch, mode, backup/restore metadata failure, partial-load, aggregate-failure, and workload postcondition checks |
+| A3 | Parse-before-install, load only the new file, never restart AppArmor/Podman, require both loaded profiles exactly once in enforce mode, and retain/restore exact prior file metadata plus loaded/unloaded state on failure | installer architecture audit and recovery review | unresolved | signed no-atime/no-follow copy and comparison helper plus source-stability and inherited-xattr checks, parser-read timestamp restoration, transactional mismatch, mode, backup/restore failure, partial-load, aggregate-failure, and workload postcondition checks |
 
 ### Entry-gate decision
 
@@ -386,7 +386,7 @@ removing a frozen invariant requires a fresh review and plan update.
 | Subpart | Review result | Commands and results | Independent behavior check | Residual risk | Final status |
 |---|---|---|---|---|---|
 | P1 | coordinator verified | pulled exact amd64 digest; container inspection reported exact path, UID/GID 0, mode 0555, and `bubblewrap built for Codex` | immutable image inspection | AppArmor capability unproven until P4 | verified |
-| P2.S1-S3 | fresh recovery reviewer approved; first hosted test exposed and corrected an unprivileged cache-access assumption in the parse-only test | Ubuntu 24.04: shell syntax, cache-free profile parse/static test, transactional policy/installer tests, and ShellCheck passed; Go 1.25: formatting, `go test -race ./...`, and `go vet ./...` passed; amd64 and arm64 static metadata-helper builds passed | full diff review confirmed exact attachment, capability-denied child, unchanged Podman create arguments, fail-closed exact metadata rollback, and signed archive inclusion | live restricted-userns behavior remains blocked on P4 | verified locally; exact-head CI rerun pending |
+| P2.S1-S3 | final fresh recovery reviewer approved; hosted tests exposed and corrected unprivileged parser-cache access and strict-atime `cp` behavior | Ubuntu 24.04 root and UID/GID 1000 gates: cache-free profile parse, real signed-helper transaction tests, installer tests, and ShellCheck passed; Go 1.25: formatting, `go test -race ./...`, `go vet ./...`, and amd64/arm64 helper builds passed | full diff review confirmed exact attachment, capability-denied child, unchanged Podman create arguments, signed no-atime/no-follow exact metadata copy/rollback, and signed archive inclusion | live restricted-userns behavior remains blocked on P4 | verified locally; exact-head CI rerun pending |
 
 ### Integrated phase gate
 

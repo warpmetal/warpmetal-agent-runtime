@@ -142,11 +142,7 @@ warpmetal_install_apparmor_policy() {
       warpmetal_apparmor_policy_error=runtime_apparmor_policy_conflict
       return 1
     fi
-    if ! "$policy_parser" -Q -K "$policy_destination" >/dev/null 2>&1; then
-      warpmetal_apparmor_policy_error=runtime_apparmor_policy_conflict
-      return 1
-    fi
-    if ! cp --preserve=all -- "$policy_destination" "$policy_backup"; then
+    if ! "$policy_metadata_helper" copy "$policy_destination" "$policy_backup" >/dev/null 2>&1; then
       warpmetal_apparmor_policy_recovery_required=1
       warpmetal_apparmor_policy_error=runtime_apparmor_policy_backup_failed
       return 1
@@ -154,6 +150,20 @@ warpmetal_install_apparmor_policy() {
     if ! "$policy_metadata_helper" compare "$policy_destination" "$policy_backup" >/dev/null 2>&1; then
       warpmetal_apparmor_policy_recovery_required=1
       warpmetal_apparmor_policy_error=runtime_apparmor_policy_backup_failed
+      return 1
+    fi
+    existing_parse_status=0
+    "$policy_parser" -Q -K "$policy_destination" >/dev/null 2>&1 || existing_parse_status=$?
+    # Syntax inspection reads the existing policy. Restore its exact reference
+    # timestamps from the no-atime backup before accepting either result.
+    if ! touch --no-dereference --reference="$policy_backup" "$policy_destination" || \
+       ! "$policy_metadata_helper" compare "$policy_backup" "$policy_destination" >/dev/null 2>&1; then
+      warpmetal_apparmor_policy_recovery_required=1
+      warpmetal_apparmor_policy_error=runtime_apparmor_policy_backup_failed
+      return 1
+    fi
+    if [ "$existing_parse_status" -ne 0 ]; then
+      warpmetal_apparmor_policy_error=runtime_apparmor_policy_conflict
       return 1
     fi
     warpmetal_apparmor_policy_had_previous=1
@@ -210,6 +220,7 @@ warpmetal_rollback_apparmor_policy() {
 
   rollback_status=0
   restore_file_ready=1
+  rollback_directory=
 
   # Remove both candidate definitions before restoring a previous policy. The
   # source is retained in the signed bundle even if the destination was altered.
@@ -218,13 +229,15 @@ warpmetal_rollback_apparmor_policy() {
   fi
 
   if [ "$warpmetal_apparmor_policy_had_previous" -eq 1 ]; then
-    rollback_staged=$(mktemp "${warpmetal_apparmor_policy_destination%/*}/.warpmetal-agent-runtime-bwrap.rollback.XXXXXX") || {
+    rollback_directory=$(mktemp -d "${warpmetal_apparmor_policy_destination%/*}/.warpmetal-agent-runtime-bwrap.rollback.XXXXXX") || {
       rollback_status=1
       restore_file_ready=0
       rollback_staged=
     }
     if [ "$restore_file_ready" -eq 1 ]; then
-      if ! cp --preserve=all -- "$warpmetal_apparmor_policy_backup" "$rollback_staged"; then
+      rollback_staged=$rollback_directory/policy
+      if ! "$warpmetal_apparmor_policy_metadata_helper" copy \
+        "$warpmetal_apparmor_policy_backup" "$rollback_staged" >/dev/null 2>&1; then
         rollback_status=1
         restore_file_ready=0
       fi
@@ -244,6 +257,11 @@ warpmetal_rollback_apparmor_policy() {
     fi
     if [ -n "$rollback_staged" ] && [ -e "$rollback_staged" ]; then
       if ! rm -f -- "$rollback_staged"; then
+        rollback_status=1
+      fi
+    fi
+    if [ -n "$rollback_directory" ] && [ -d "$rollback_directory" ]; then
+      if ! rmdir -- "$rollback_directory"; then
         rollback_status=1
       fi
     fi

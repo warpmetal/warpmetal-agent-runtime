@@ -25,8 +25,9 @@ type fileMetadata struct {
 	xattrs  map[string][]byte
 }
 
-func readXattrs(path string) (map[string][]byte, error) {
-	size, err := unix.Listxattr(path, nil)
+func readXattrs(file *os.File) (map[string][]byte, error) {
+	fd := int(file.Fd())
+	size, err := unix.Flistxattr(fd, nil)
 	if errors.Is(err, syscall.ENOTSUP) {
 		return map[string][]byte{}, nil
 	}
@@ -37,7 +38,7 @@ func readXattrs(path string) (map[string][]byte, error) {
 		return map[string][]byte{}, nil
 	}
 	namesBuffer := make([]byte, size)
-	size, err = unix.Listxattr(path, namesBuffer)
+	size, err = unix.Flistxattr(fd, namesBuffer)
 	if err != nil {
 		return nil, err
 	}
@@ -45,13 +46,13 @@ func readXattrs(path string) (map[string][]byte, error) {
 	sort.Strings(names)
 	result := make(map[string][]byte, len(names))
 	for _, name := range names {
-		valueSize, err := unix.Getxattr(path, name, nil)
+		valueSize, err := unix.Fgetxattr(fd, name, nil)
 		if err != nil {
 			return nil, err
 		}
 		value := make([]byte, valueSize)
 		if valueSize > 0 {
-			valueSize, err = unix.Getxattr(path, name, value)
+			valueSize, err = unix.Fgetxattr(fd, name, value)
 			if err != nil {
 				return nil, err
 			}
@@ -62,36 +63,22 @@ func readXattrs(path string) (map[string][]byte, error) {
 	return result, nil
 }
 
-func readMetadata(path string) (fileMetadata, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
+func readMetadata(file *os.File) (fileMetadata, error) {
+	var stat unix.Stat_t
+	if err := unix.Fstat(int(file.Fd()), &stat); err != nil {
 		return fileMetadata{}, err
 	}
-	if !info.Mode().IsRegular() {
+	if stat.Mode&unix.S_IFMT != unix.S_IFREG {
 		return fileMetadata{}, errors.New("not a regular file")
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return fileMetadata{}, errors.New("Linux stat metadata unavailable")
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return fileMetadata{}, err
 	}
-	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOATIME, 0)
+	content, err := io.ReadAll(file)
 	if err != nil {
 		return fileMetadata{}, err
 	}
-	file := os.NewFile(uintptr(fd), path)
-	if file == nil {
-		_ = unix.Close(fd)
-		return fileMetadata{}, errors.New("could not create file handle")
-	}
-	content, readErr := io.ReadAll(file)
-	closeErr := file.Close()
-	if readErr != nil {
-		return fileMetadata{}, readErr
-	}
-	if closeErr != nil {
-		return fileMetadata{}, closeErr
-	}
-	xattrs, err := readXattrs(path)
+	xattrs, err := readXattrs(file)
 	if err != nil {
 		return fileMetadata{}, err
 	}
@@ -104,6 +91,32 @@ func readMetadata(path string) (fileMetadata, error) {
 		mtimeNS: stat.Mtim.Sec*1_000_000_000 + stat.Mtim.Nsec,
 		xattrs:  xattrs,
 	}, nil
+}
+
+func openForMetadata(path string) (*os.File, error) {
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOATIME|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, err
+	}
+	file := os.NewFile(uintptr(fd), path)
+	if file == nil {
+		_ = unix.Close(fd)
+		return nil, errors.New("could not create file handle")
+	}
+	return file, nil
+}
+
+func readPathMetadata(path string) (metadata fileMetadata, err error) {
+	file, err := openForMetadata(path)
+	if err != nil {
+		return fileMetadata{}, err
+	}
+	defer func() {
+		if closeErr := file.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+	return readMetadata(file)
 }
 
 func equalMetadata(left, right fileMetadata) bool {
@@ -122,15 +135,12 @@ func equalMetadata(left, right fileMetadata) bool {
 	return true
 }
 
-func run(args []string) error {
-	if len(args) != 3 || args[0] != "compare" {
-		return errors.New("invalid arguments")
-	}
-	left, err := readMetadata(args[1])
+func comparePaths(leftPath, rightPath string) error {
+	left, err := readPathMetadata(leftPath)
 	if err != nil {
 		return err
 	}
-	right, err := readMetadata(args[2])
+	right, err := readPathMetadata(rightPath)
 	if err != nil {
 		return err
 	}
@@ -138,6 +148,113 @@ func run(args []string) error {
 		return errors.New("metadata mismatch")
 	}
 	return nil
+}
+
+func copyPath(sourcePath, destinationPath string) (err error) {
+	source, err := openForMetadata(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := source.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+	before, err := readMetadata(source)
+	if err != nil {
+		return err
+	}
+
+	destinationFD, err := unix.Open(
+		destinationPath,
+		unix.O_RDWR|unix.O_CLOEXEC|unix.O_CREAT|unix.O_EXCL|unix.O_NOATIME|unix.O_NOFOLLOW,
+		0o600,
+	)
+	if err != nil {
+		return err
+	}
+	destination := os.NewFile(uintptr(destinationFD), destinationPath)
+	if destination == nil {
+		_ = unix.Close(destinationFD)
+		return errors.New("could not create destination file handle")
+	}
+	defer func() {
+		if closeErr := destination.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+
+	if _, err = destination.Write(before.content); err != nil {
+		return err
+	}
+	if err = unix.Fchown(destinationFD, int(before.uid), int(before.gid)); err != nil {
+		return err
+	}
+
+	// Default ACLs and security policy may attach attributes at create time.
+	// Remove the complete inherited set before applying the source set so the
+	// final map is exact rather than additive.
+	inherited, err := readXattrs(destination)
+	if err != nil {
+		return err
+	}
+	for name := range inherited {
+		if err = unix.Fremovexattr(destinationFD, name); err != nil {
+			return err
+		}
+	}
+	names := make([]string, 0, len(before.xattrs))
+	for name := range before.xattrs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if err = unix.Fsetxattr(destinationFD, name, before.xattrs[name], 0); err != nil {
+			return err
+		}
+	}
+	if err = unix.Fchmod(destinationFD, before.mode&^uint32(unix.S_IFMT)); err != nil {
+		return err
+	}
+	if err = unix.UtimesNanoAt(destinationFD, "", []unix.Timespec{
+		unix.NsecToTimespec(before.atimeNS),
+		unix.NsecToTimespec(before.mtimeNS),
+	}, unix.AT_EMPTY_PATH); err != nil {
+		return err
+	}
+	if err = destination.Sync(); err != nil {
+		return err
+	}
+
+	after, err := readMetadata(source)
+	if err != nil {
+		return err
+	}
+	if !equalMetadata(before, after) {
+		return errors.New("source mutated during copy")
+	}
+	copied, err := readMetadata(destination)
+	if err != nil {
+		return err
+	}
+	if !equalMetadata(before, copied) {
+		return errors.New("copied metadata mismatch")
+	}
+	return nil
+}
+
+func run(args []string) error {
+	if len(args) != 3 {
+		return errors.New("invalid arguments")
+	}
+	switch args[0] {
+	case "compare":
+		return comparePaths(args[1], args[2])
+	case "copy":
+		return copyPath(args[1], args[2])
+	default:
+		return errors.New("invalid arguments")
+	}
 }
 
 func main() {

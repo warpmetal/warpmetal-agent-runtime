@@ -124,13 +124,14 @@ parses the signed candidate first, atomically replaces only
 prior Runtime policy is kept in the root-only installer state and restored in
 both the filesystem and kernel if any later install step fails, including its
 exact prior loaded or unloaded state. Disk/kernel mismatches and partial profile
-loads, including non-enforce modes, fail closed. GNU `cp --preserve=all` keeps
-the prior policy's ownership, mode, timestamps, ACLs, and extended attributes;
-the signed Linux metadata comparator then verifies content, UID/GID, raw mode,
-nanosecond access/modification timestamps, and every extended-attribute name
-and value on both backup and restoration. That includes POSIX ACL and SELinux
-context xattrs when present. Copy or comparison failure stops installation and
-preserves recovery evidence. If reloading a restored policy advances its atime,
+loads, including non-enforce modes, fail closed. The signed Linux metadata
+helper copies through `O_NOATIME|O_NOFOLLOW`, rejects nonregular or pre-existing
+targets, clears inherited attributes, and reapplies ownership, every xattr,
+raw mode, and nanosecond timestamps in a fail-closed order. It verifies source
+stability plus exact content, UID/GID, raw mode, timestamps, and xattr identity
+on both backup and restoration, including POSIX ACL and SELinux context xattrs.
+Copy or comparison failure stops installation and preserves recovery evidence.
+If reloading a restored policy advances its atime,
 the installer reapplies the backup's nanosecond timestamps before the final
 non-atime-mutating comparison; failure to do so is a rollback failure. A
 first-install policy is unloaded and removed on failure.

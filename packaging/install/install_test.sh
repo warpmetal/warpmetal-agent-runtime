@@ -138,8 +138,11 @@ grep -Fq 'runtime_apparmor_policy_rollback_failed' "$script"
 grep -Fq '"$policy_parser" -Q -K "$policy_source"' "$apparmor_library"
 grep -Fq '"$policy_parser" -r -K "$policy_destination"' "$apparmor_library"
 grep -Fq '"$warpmetal_apparmor_policy_parser" -R -K "$warpmetal_apparmor_policy_source"' "$apparmor_library"
-grep -Fq 'cp --preserve=all -- "$policy_destination" "$policy_backup"' "$apparmor_library"
-grep -Fq 'cp --preserve=all -- "$warpmetal_apparmor_policy_backup" "$rollback_staged"' "$apparmor_library"
+grep -Fq '"$policy_metadata_helper" copy "$policy_destination" "$policy_backup"' "$apparmor_library"
+grep -Fq '"$warpmetal_apparmor_policy_metadata_helper" copy' "$apparmor_library"
+if grep -Fq 'cp --preserve=all' "$apparmor_library"; then
+  exit 1
+fi
 grep -Fq '"$policy_metadata_helper" compare "$policy_destination" "$policy_backup"' "$apparmor_library"
 grep -Fq '"$warpmetal_apparmor_policy_metadata_helper" compare' "$apparmor_library"
 grep -Fq 'mv -f -- "$policy_staged" "$policy_destination"' "$apparmor_library"

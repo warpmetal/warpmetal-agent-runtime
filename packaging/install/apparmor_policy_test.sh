@@ -5,12 +5,12 @@ set -eu
 # shellcheck source=/dev/null
 . packaging/install/warpmetal-apparmor-policy.sh
 
-if ! cp --version 2>/dev/null | grep -Fq 'GNU coreutils'; then
-  echo apparmor_policy_test_requires_gnu_coreutils
-  exit 0
-fi
 command -v python3 >/dev/null 2>&1 || {
   echo apparmor_policy_test_requires_python3 >&2
+  exit 1
+}
+command -v go >/dev/null 2>&1 || {
+  echo apparmor_policy_test_requires_go >&2
   exit 1
 }
 
@@ -71,14 +71,17 @@ printf '%s\n' \
 chmod 0755 "$parser"
 
 metadata_helper=$test_root/warpmetal-policy-metadata
+metadata_binary=$test_root/warpmetal-policy-metadata.real
+go build -o "$metadata_binary" ./cmd/warpmetal-policy-metadata
 printf '%s\n' \
   '#!/bin/sh' \
   'set -eu' \
   'printf "METADATA %s %s %s\\n" "$1" "$2" "$3" >> "$APPARMOR_TEST_LOG"' \
-  'if [ "${APPARMOR_TEST_METADATA_FAIL_TARGET:-}" = "$3" ]; then exit 9; fi' \
-  'case "${APPARMOR_TEST_METADATA_FAIL_KIND:-}" in restore) case "$3" in *.rollback.*) exit 9 ;; esac ;; esac' \
-  'exec python3 -c '\''import os,stat,sys; a,b=sys.argv[1:3]; sa=os.stat(a,follow_symlinks=False); sb=os.stat(b,follow_symlinks=False); xa={n:os.getxattr(a,n,follow_symlinks=False) for n in os.listxattr(a,follow_symlinks=False)}; xb={n:os.getxattr(b,n,follow_symlinks=False) for n in os.listxattr(b,follow_symlinks=False)}; read=lambda p: os.fdopen(os.open(p,os.O_RDONLY|os.O_CLOEXEC|os.O_NOATIME),"rb").read(); ok=read(a)==read(b) and (sa.st_uid,sa.st_gid,stat.S_IMODE(sa.st_mode),sa.st_atime_ns,sa.st_mtime_ns)==(sb.st_uid,sb.st_gid,stat.S_IMODE(sb.st_mode),sb.st_atime_ns,sb.st_mtime_ns) and xa==xb; raise SystemExit(0 if ok else 1)'\'' "$2" "$3"' > "$metadata_helper"
+  'if [ "${APPARMOR_TEST_METADATA_FAIL_TARGET:-}" = "$3" ]; then "$APPARMOR_TEST_METADATA_BINARY" "$@"; exit 9; fi' \
+  'case "${APPARMOR_TEST_METADATA_FAIL_KIND:-}" in restore) case "$3" in */.warpmetal-agent-runtime-bwrap.rollback.*/*) "$APPARMOR_TEST_METADATA_BINARY" "$@"; exit 9 ;; esac ;; esac' \
+  'exec "$APPARMOR_TEST_METADATA_BINARY" "$@"' > "$metadata_helper"
 chmod 0755 "$metadata_helper"
+export APPARMOR_TEST_METADATA_BINARY="$metadata_binary"
 warpmetal_apparmor_policy_metadata_helper=$metadata_helper
 
 export APPARMOR_TEST_LOG="$test_root/operations.log"
@@ -146,16 +149,19 @@ test ! -s "$policy_state"
 
 # A disk policy that was loaded is restored as loaded after candidate removal.
 printf 'previous profile\n' > "$destination"
-python3 -c 'import os,struct,sys; p=sys.argv[1]; os.chmod(p,0o640); os.setxattr(p,"user.warpmetal_test",b"preserve-me"); acl=struct.pack("<I",2)+b"".join(struct.pack("<HHI",tag,perm,ident) for tag,perm,ident in [(1,7,0xffffffff),(2,4,os.getuid()+1),(4,4,0xffffffff),(16,4,0xffffffff),(32,0,0xffffffff)]); os.setxattr(p,"system.posix_acl_access",acl); os.utime(p,ns=(1700000000000000000,1700000000000000000)); os.chown(p,123,456) if os.geteuid()==0 else None' "$destination"
-metadata_command='import json,os,stat,sys; p=sys.argv[1]; s=os.stat(p,follow_symlinks=False); x={n:os.getxattr(p,n,follow_symlinks=False).hex() for n in sorted(os.listxattr(p,follow_symlinks=False))}; print(json.dumps([s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode),s.st_mtime_ns,x],sort_keys=True))'
+python3 -c 'import os,struct,sys; p=sys.argv[1]; os.chmod(p,0o640); os.setxattr(p,"user.warpmetal_test",b"preserve-me"); acl=struct.pack("<I",2)+b"".join(struct.pack("<HHI",tag,perm,ident) for tag,perm,ident in [(1,7,0xffffffff),(2,4,os.getuid()+1),(4,4,0xffffffff),(16,4,0xffffffff),(32,0,0xffffffff)]); os.setxattr(p,"system.posix_acl_access",acl); default=struct.pack("<I",2)+b"".join(struct.pack("<HHI",tag,perm,ident) for tag,perm,ident in [(1,7,0xffffffff),(4,4,0xffffffff),(16,4,0xffffffff),(32,0,0xffffffff)]); [os.setxattr(d,"system.posix_acl_default",default) for d in sys.argv[2:]]; os.utime(p,ns=(1700000000000000000,1700000000000000000)); os.chown(p,123,456) if os.geteuid()==0 else None' "$destination" "$test_root/state" "$test_root/etc/apparmor.d"
+metadata_command='import json,os,stat,sys; p=sys.argv[1]; s=os.stat(p,follow_symlinks=False); x={n:os.getxattr(p,n,follow_symlinks=False).hex() for n in sorted(os.listxattr(p,follow_symlinks=False))}; print(json.dumps([s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode),s.st_atime_ns,s.st_mtime_ns,x],sort_keys=True))'
 previous_metadata=$(python3 -c "$metadata_command" "$destination")
-cp "$destination" "$test_root/expected-previous"
+source_atime_before=$(python3 -c 'import os,sys; print(os.stat(sys.argv[1],follow_symlinks=False).st_atime_ns)' "$destination")
+"$metadata_binary" copy "$destination" "$test_root/expected-previous"
+source_atime_after=$(python3 -c 'import os,sys; print(os.stat(sys.argv[1],follow_symlinks=False).st_atime_ns)' "$destination")
+test "$source_atime_after" = "$source_atime_before"
 printf '%s\n' 'warpmetal-agent-runtime-bwrap (enforce)' 'warpmetal-agent-runtime-unpriv-bwrap (enforce)' > "$policy_state"
 : > "$APPARMOR_TEST_LOG"
 warpmetal_install_apparmor_policy "$candidate" "$destination" "$backup" "$parser" "$policy_state"
 test "$(python3 -c "$metadata_command" "$backup")" = "$previous_metadata"
 warpmetal_rollback_apparmor_policy
-cmp -s "$test_root/expected-previous" "$destination"
+"$metadata_binary" compare "$test_root/expected-previous" "$destination"
 test "$(python3 -c "$metadata_command" "$destination")" = "$previous_metadata"
 test "$(grep -Fxc -- "PARSER -r -K $destination" "$APPARMOR_TEST_LOG")" -eq 2
 grep -Fqx 'warpmetal-agent-runtime-bwrap (enforce)' "$policy_state"
@@ -163,6 +169,7 @@ grep -Fqx 'warpmetal-agent-runtime-unpriv-bwrap (enforce)' "$policy_state"
 
 # Timestamp restoration is fail-closed after the parser reads an old-atime
 # restored policy. The backup is retained as recovery evidence.
+rm -f -- "$backup"
 warpmetal_install_apparmor_policy "$candidate" "$destination" "$backup" "$parser" "$policy_state"
 original_path=$PATH
 printf '%s\n' \
@@ -180,8 +187,10 @@ unset APPARMOR_TEST_TOUCH_FAIL
 test "$warpmetal_apparmor_policy_recovery_required" -eq 1
 test -f "$backup"
 # Reset this deliberately failed fixture from its retained backup.
-cp --preserve=all -- "$backup" "$destination"
+rm -f -- "$destination"
+"$metadata_binary" copy "$backup" "$destination"
 printf '%s\n' 'warpmetal-agent-runtime-bwrap (enforce)' 'warpmetal-agent-runtime-unpriv-bwrap (enforce)' > "$policy_state"
+rm -f -- "$backup"
 
 # A restore metadata mismatch blocks replacement, retains the backup, and marks
 # recovery evidence for preservation.
@@ -193,15 +202,17 @@ unset APPARMOR_TEST_METADATA_FAIL_KIND
 test "$warpmetal_apparmor_policy_recovery_required" -eq 1
 test -f "$backup"
 # Complete this fixture's cleanup before the remaining independent cases.
-cp --preserve=all -- "$backup" "$destination"
+rm -f -- "$destination"
+"$metadata_binary" copy "$backup" "$destination"
 : > "$policy_state"
+rm -f -- "$backup"
 
 # A disk policy that was not loaded remains unloaded after rollback.
 : > "$policy_state"
 : > "$APPARMOR_TEST_LOG"
 warpmetal_install_apparmor_policy "$candidate" "$destination" "$backup" "$parser" "$policy_state"
 warpmetal_rollback_apparmor_policy
-cmp -s "$test_root/expected-previous" "$destination"
+"$metadata_binary" compare "$test_root/expected-previous" "$destination"
 test "$(grep -Fxc -- "PARSER -r -K $destination" "$APPARMOR_TEST_LOG")" -eq 1
 test ! -s "$policy_state"
 
