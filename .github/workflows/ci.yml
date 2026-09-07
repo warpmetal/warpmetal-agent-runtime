@@ -28,7 +28,7 @@ jobs:
           printf '%s\n' runtime_profile_test_start
           sh packaging/apparmor/profile_test.sh
           printf '%s\n' runtime_policy_transaction_test_start
-          sh packaging/install/apparmor_policy_test.sh
+          sh -x packaging/install/apparmor_policy_test.sh
           printf '%s\n' runtime_installer_structure_test_start
           sh packaging/install/install_test.sh
           printf '%s\n' runtime_go_race_test_start
