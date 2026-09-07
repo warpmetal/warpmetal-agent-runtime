@@ -38,11 +38,20 @@ sandboxes during a supervisor upgrade.
 Ubuntu's restricted-unprivileged-userns control is never disabled for Runtime.
 The nested private procfs capability is off by default: ordinary signed
 installer invocations preserve existing policy disk and kernel state without
-inspecting or mutating it. On a dedicated amd64 coding host, an explicit enable
-requires the host's existing parser and transactionally installs one
-Runtime-owned policy. Explicit enable fails closed on other architectures, and
-explicit disable removes the Runtime policy and restores the exact state that
-preceded the first enable.
+inspecting or mutating it. On a dedicated amd64 host for a verified
+nested-Bubblewrap workload, an explicit enable requires the host's existing
+parser and transactionally installs one Runtime-owned policy. Explicit enable
+fails closed on other architectures, and explicit disable removes the Runtime
+policy and restores the exact state that preceded the first enable.
+
+The security purpose is per-attempt isolation inside an existing Runtime
+sandbox. A planning process can receive a read-only checkout, an implementation
+process can receive one writable checkout, and a QA process can review an exact
+candidate and execute repository-controlled tests without inheriting the
+persistent runner's process view or sibling workspaces. The capability is not
+required for GitHub access, a specific AI CLI, or subagent orchestration. It is
+useful whenever the consumer deliberately builds this second Bubblewrap
+boundary, including non-coding workloads with the same isolation requirement.
 
 The policy attaches setup permission only to the immutable, root-owned Codex
 Bubblewrap path in the signed coding image; it does not attach to the distro

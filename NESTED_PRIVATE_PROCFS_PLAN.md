@@ -1,15 +1,19 @@
-# Nested Private Procfs Capability and Nico Agent Activation Plan
+# Nested Private Procfs Capability and Agent Sandbox Activation Plan
 
 ## Project details
 
-- Objective: let a WarpMetal Agent Runtime sandbox execute Nico's approved
-  nested Bubblewrap boundary with a new PID namespace and a newly mounted
-  procfs, without weakening the host, Runtime, or model-process isolation
-  contracts.
-- Target users and use cases: Nico administrators dispatching autonomous coding
-  work to the persistent `nico-coder` and `nico-qa` sandboxes on a dedicated
-  production VPS. Nested private procfs is a host-scoped coding-workload
-  capability, not a default requirement for every Agent Runtime user.
+- Objective: let a WarpMetal Agent Runtime sandbox execute an approved nested
+  Bubblewrap boundary with a new PID namespace and a newly mounted procfs,
+  without weakening the host, Runtime, or inner-process isolation contracts.
+  Nico is the first production consumer and acceptance workload, not the owner
+  or limit of the capability.
+- Target users and use cases: any WarpMetal owner operating a verified workload
+  that launches the signed, exact-path Bubblewrap helper inside an Agent Runtime
+  sandbox and needs per-attempt process/filesystem isolation. Examples include
+  read-only planning, bounded repository implementation, and independent QA.
+  Nested private procfs is an optional host-scoped capability, not a default
+  requirement for every Agent Runtime user or an intrinsic requirement of an
+  AI CLI, GitHub access, or subagent delegation.
 - Success measures:
   - the exact Nico Bubblewrap plus Landlock boundary succeeds on Ubuntu 24.04;
   - the model process is PID 1 in its inner namespace and `/proc/self` agrees;
@@ -26,14 +30,19 @@
     autonomous/self-improvement flags are enabled.
 - Scope:
   - `warpmetal-agent-sandbox`: reuse and verify the already signed image's
-    root-owned, non-writable Codex Bubblewrap helper at its exact immutable path;
+    root-owned, non-writable Bubblewrap helper at its exact immutable path, and
+    document the planning, coding, and QA boundaries it can support;
   - `warpmetal-agent-runtime`: preserve existing AppArmor policy state by
     default; explicitly enable or disable a narrowly attached host policy on an
-    amd64 coding host; preserve all other container restrictions; and
+    amd64 nested-Bubblewrap host; preserve all other container restrictions; and
     package/test the policy and reversible transaction;
+  - `agent-kit`: expose the explicit lifecycle through CLI 0.8.7, explain the
+    default and host scope in CLI help, and keep the bundled WarpMetal skill and
+    references aligned;
   - `warpmetal_frontend`: pin the signed Runtime candidate and existing signed
-    image digest, and extend the
-    existing guarded amd64 acceptance canary;
+    image digest, extend the existing guarded amd64 acceptance canary, and add
+    the capability contract and examples to the public `/agent-runtime` and
+    `/docs` pages, canonical `llms.txt` source, and backend mirror;
   - `nico`: strengthen the exact boundary oracle, fail closed during runner
     installation, correct operations/planning documentation, deploy the runner,
     and activate agents gradually.
@@ -93,6 +102,7 @@
 | R9 | Staged self-improvement | Flags advance one at a time with health/task rollback checks; human merge remains required | production end-to-end, inspection |
 | R10 | No secret exposure | Keys/tokens never appear in command arguments, logs, task chat, artifacts, or PR comments | tests, log inspection |
 | R11 | Explicit host-scoped lifecycle | Default install/upgrade preserves existing disk and kernel policy state; `--nested-private-procfs enable` installs/loads it only on amd64; `disable` unloads/removes it and restores a pre-existing destination safely | unit, integration, recovery inspection |
+| R12 | Product-wide documentation and discovery | Runtime, sandbox-image, CLI help/README/skill, public `/agent-runtime` and `/docs` pages, and `llms.txt` explain who needs the capability, why nested Bubblewrap is used, the planning/coding/QA examples, the exact version/action contract, host scope, and when to preserve or disable it | documentation contract, CLI test, frontend route/backend tests, inspection |
 
 ## Architecture
 
@@ -111,8 +121,11 @@
   - Runtime owns host policy installation/loading, container-create arguments,
     release packaging, and coexistence checks;
   - frontend owns exact signed release/image metadata and the disposable live
-    canary workflow;
-  - Nico owns the production boundary arguments/oracle and task orchestration.
+    canary workflow plus the canonical LLM-facing machine contract;
+  - agent-kit owns CLI validation, signed-bundle compatibility, human help, and
+    the bundled agent skill/reference contract;
+  - each consumer owns its inner boundary arguments and oracle; Nico owns the
+    first production boundary and task orchestration.
 - Interfaces and contracts:
   - fixed executable path:
     `/opt/warpmetal-agent-tools/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-resources/bwrap`;
@@ -180,6 +193,12 @@
 - Canonical plan: this file, owned by the cross-repository coordinator.
 - Runtime operator/security docs: `README.md`, `SECURITY.md`, and installer tests.
 - Sandbox image contract: `README.md`, `Containerfile`, and `test-image.sh`.
+- CLI and agent guidance: agent-kit `src/cli.js`, `README.md`, and the source and
+  packaged WarpMetal skill/reference mirrors.
+- LLM-facing machine contract: frontend `content/llms.md`, served by
+  `app/llms.txt/route.ts`, plus `backend/public/llms.txt`.
+- Public human documentation: frontend `app/agent-runtime/page.tsx`,
+  `app/docs/page.tsx`, and localized `messages/*.json` content.
 - Nico operator and architecture docs:
   `docs/AGENT_ENGINEERING_ACTIVATION_PLAN.md`,
   `docs/AGENT_ENGINEERING_PIPELINE_PLAN.md`, and
@@ -190,10 +209,13 @@
 
 | Capability or interface | Required document / contract | Owner | Verification | Status |
 |---|---|---|---|---|
-| Restricted nested Bubblewrap | Runtime README/security + this decision record | Runtime | policy inspection + live oracle | pending |
-| Trusted Bubblewrap binary | Sandbox README/image tests | Image | build + ownership/path checks | pending |
+| Restricted nested Bubblewrap | Runtime README/security + this decision record | Runtime | policy inspection + live oracle | current; live P4 pending |
+| Trusted Bubblewrap binary and use-case examples | Sandbox README/image tests | Image | build + ownership/path checks + doc inspection | current |
+| CLI lifecycle and operator examples | CLI help/README + WarpMetal skill/reference mirrors | agent-kit | CLI tests + mirror parity | current |
+| Public capability overview and reference | `/agent-runtime` + `/docs` + localized messages | Frontend | rendered HTML tests in all supported locales | current |
+| LLM-facing discovery contract | `content/llms.md` + `backend/public/llms.txt` | Frontend | route/backend tests + phrase parity | current |
 | Signed artifact selection | Frontend acceptance workflow | Frontend | exact digest/signature checks | pending |
-| Nico runner boundary | Nico plans/operations | Nico | unit + target oracle | pending |
+| First consumer boundary | Nico plans/operations | Nico | unit + target oracle | pending live activation |
 | HTTP API | No schema change | Runtime | diff inspection | not applicable |
 
 ## Error handling and logging
@@ -246,7 +268,8 @@
 | Binary source | mutable workspace install; generic distro path; exact signed-image Codex helper | exact root-owned helper in the existing signed all-tools image | no new image build; Nico still needs an explicit refresh from its older image |
 | Upgrade proof | refresh existing sandboxes during install; preserve them and use disposable canary | preserve existing sandboxes; prove capability on a fresh candidate | refresh is a later explicit lifecycle phase |
 | Release | mutable artifacts; signed prerelease then promotion | signed immutable prerelease, rollback/forward canary, then promote same assets | version candidate is v0.1.25 |
-| Policy activation | install on every restricted-AppArmor host; per-sandbox toggle; explicit host toggle | default `preserve`, explicit signed `enable`/`disable`; AppArmor pathname attachment cannot truthfully provide per-sandbox isolation without a separate outer profile/API design | ordinary users receive no policy mutation; enabled dedicated coding hosts grant all same-owner matching-path sandboxes |
+| Policy activation | install on every restricted-AppArmor host; per-sandbox toggle; explicit host toggle | default `preserve`, explicit signed `enable`/`disable`; AppArmor pathname attachment cannot truthfully provide per-sandbox isolation without a separate outer profile/API design | hosts without nested Bubblewrap receive no policy mutation; enabled dedicated hosts grant all same-owner matching-path sandboxes |
+| Consumer scope | Nico-only feature; coding-only feature; general nested-Bubblewrap capability | general capability with Nico as the first acceptance consumer; need is determined by the inner isolation boundary rather than the agent brand, task category, GitHub use, or subagent use | product docs must use capability-based language and concrete planning/coding/QA examples |
 
 ## Assumption ledger
 
@@ -258,8 +281,9 @@
 | A4 | Explicit refresh preserves API IDs, grants, workspace markers, and persistent lifetime | high | verified for existing refresh implementation, must be reverified live | Runtime v0.1.24 refresh tests and prior release evidence |
 | A5 | Nico main's `--proc` runner logic remains the approved functional shape | high | verified | independent contract audit of commit `87c817c` |
 | A6 | Production metadata can be canaried and rolled back using exact signed artifacts without rebuilding them | high | verified, procedure must be rerun | v0.1.24 release history and release audit |
-| A7 | Every restricted-AppArmor Runtime host needs nested private procfs and may receive the policy during an ordinary install/upgrade | high | false | independent recovery review found the capability is required only for nested coding workloads; unconditional install expands scope and can fail unrelated installs |
+| A7 | Every restricted-AppArmor Runtime host needs nested private procfs and may receive the policy during an ordinary install/upgrade | high | false | independent recovery review found the capability is required only for workloads that create the nested private-procfs boundary; unconditional install expands scope and can fail unrelated installs |
 | A8 | Exact-path attachment can enforce a per-sandbox or per-user grant | high | false | AppArmor pathname attachment is host-scoped; all same-owner sandboxes containing the trusted path can invoke it |
+| A9 | Nested private procfs is a Nico-only or coding-user-only feature | high | false | owner decision: any verified Agent Runtime workload may use the trusted Bubblewrap boundary; Nico remains the first production canary |
 
 ## Test strategy
 
@@ -267,7 +291,8 @@
   existing-container no-recreate behavior, installer profile decisions, and Nico
   exact command/oracle assertions.
 - Contract: release archive contents, exact AppArmor attachment/child transition,
-  no Runtime API change, source digest and runner manifest parity.
+  no Runtime API change, source digest and runner manifest parity, CLI help/skill
+  mirror parity, and frontend/backend LLM contract parity.
 - Integration: four supported distro coexistence jobs; AppArmor-enabled Ubuntu
   policy load and negative generic-unshare checks.
 - End-to-end: sensitivity failure before the candidate policy, positive
@@ -297,12 +322,123 @@
 | P1 | Existing signed image contains trusted Bubblewrap | R2, R5, R10 | signed image | exact digest/path/owner/mode/version verified | completed |
 | P2 | Runtime candidate packages and loads the restricted policy safely | R1-R4, R10, A1-A3 | P1 path contract | PR reviewed; full CI green on exact PR head | completed |
 | P2R | Runtime policy lifecycle is explicit, default-off, architecture-gated, and reversibly recoverable | R2-R4, R10-R11, A2-A3, A7-A8 | P2 recovery review | default preserve is mutation-free; explicit amd64 enable is idempotent; disable unloads/removes Runtime policy and restores any displaced prior file/state; interruption evidence is durable; tests/docs green | completed |
-| P3 | Signed v0.1.25 prerelease and frontend canary contract ready | R1-R5, R10-R11 | P1-P2R | signatures verified; exact metadata/canary code reviewed | pending |
+| P2D | General capability documentation is discoverable and example-driven | R11-R12, A7-A9 | P2R interface | Runtime and sandbox docs, CLI help/skill, public pages, and both LLM contract sources agree on purpose, examples, versions, actions, host scope, and non-goals; repository gates pass | completed |
+| P3 | Signed v0.1.25 prerelease and frontend canary contract ready | R1-R5, R10-R12 | P1-P2R, P2D | signatures verified; exact metadata/canary code reviewed | pending |
 | P4 | Rollback/forward amd64 acceptance canary passes | R1-R6, R10, A1-A4 | P3 | pre-policy sensitivity, positive capability, preservation, explicit retained-policy binary rollback, and forward gates pass | pending |
 | P5 | Stable production Runtime/image and Nico sandbox refresh | R1-R7, R10 | P4 | stable assets; Nico upgrade plus both explicit refreshes verified | pending |
 | P6 | Nico code/deploy and real autonomous task pass | R7-R10 | P5 | full gates, deploy, coder/publisher/QA canary, staged flags | pending |
 
 ## Active phase subplan
+
+### Documentation phase P2D header
+
+- Phase ID and outcome: P2D, make the nested-private-procfs capability
+  understandable and discoverable for any qualifying Agent Runtime workload.
+- Covered requirement and assumption IDs: R11-R12; A7-A9.
+- Entry criteria: the preserve/enable/disable interface is implemented and
+  independently approved; the owner confirmed Bubblewrap remains part of the
+  current isolation architecture and clarified that the capability is not
+  Nico-only.
+- Exit criteria: Runtime and sandbox-image documentation explains why the inner
+  boundary exists and gives planning, coding, and QA examples; CLI help, README,
+  and skill/reference mirrors show the exact lifecycle; public `/agent-runtime`
+  and `/docs` pages plus `llms.txt` and its backend mirror carry the same
+  capability-based guidance; documentation tests and repository regressions pass.
+- Dependencies and risks: CLI 0.8.7 and Runtime 0.1.25 remain unreleased; live
+  capability behavior remains gated by P4. Documentation must not imply that
+  GitHub operations, a particular agent brand, or subagent delegation requires
+  the feature, and must not describe a host-scoped policy as per-sandbox.
+- Baseline test state: Runtime, agent-kit, frontend, and Nico gates passed before
+  this documentation phase; the sandbox image branch is clean at `864cf6f`.
+- Required documentation and API-contract changes: Runtime README/security and
+  this plan; sandbox README; agent-kit CLI help/README/skill/reference mirrors;
+  frontend public pages, localized message dictionaries, and canonical and
+  backend-mirror LLM text. Public HTTP/JSON API change is not applicable because
+  these are documentation surfaces, not API schemas.
+- Coordinating owner: cross-repository documentation coordinator.
+- Fresh recovery reviewer available: no fresh reviewer required for this
+  documentation-only phase; behavior remains protected by existing executable
+  tests and P4 live acceptance.
+
+### Documentation phase P2D assumption check
+
+| Assumption ID | Check or probe | Evidence | Result | Plan change |
+|---|---|---|---|---|
+| A7 | Determine whether ordinary Runtime installs need the feature | default preserve implementation and owner discussion | false | explain that need is driven by nested Bubblewrap use |
+| A8 | Determine whether activation can be documented per sandbox | exact-path AppArmor policy and shared Runtime owner | false | state host scope everywhere and recommend separate hosts when necessary |
+| A9 | Determine whether Nico owns or limits the capability | owner clarification and Runtime-level interface | false | describe a general capability; retain Nico only as the first acceptance consumer |
+
+### Documentation phase P2D entry-gate decision
+
+- Implementation authorized: yes.
+- Decision evidence: owner requested the documentation update and explicitly
+  requested CLI and LLM-text coverage on 2026-09-07.
+- Unresolved low-impact defaults and consequences: none; examples will use
+  planning, coding, and QA while stating that other verified nested-Bubblewrap
+  workloads may qualify.
+- Error/logging requirements reviewed: yes; preserve the documented stable
+  installer error contract and do not add credentials or host details to examples.
+- Authentication/authorization requirements reviewed: yes; only the existing
+  owner-authorized Runtime installation may change host policy. Documentation
+  does not expand access.
+- Documentation/API requirements reviewed: yes; all canonical and mirrored
+  surfaces are listed above. HTTP/JSON API changes are not applicable.
+- Decision timestamp or plan revision: 2026-09-07, documentation revision 5.
+
+### Documentation phase P2D subparts
+
+| Subpart | Deliverable and owner boundary | Dependencies | Interfaces / likely files | Documentation / API impact | Acceptance and oracle | Focused + regression checks | Parallel-safe | Status |
+|---|---|---|---|---|---|---|---|---|
+| P2D.S1 | General Runtime and image explanation with planning/coding/QA examples | R11 interface | Runtime README/SECURITY/plan; sandbox README | human architecture and security guidance | purpose, examples, limits, and disposable-sandbox alternative are accurate | phrase/contract inspection; Runtime and image existing gates | yes | completed |
+| P2D.S2 | CLI and agent-facing lifecycle guidance | CLI 0.8.7 branch | CLI help/README; source and packaged skill/reference mirrors | executable help and agent instructions | help and docs show preserve/enable/disable, version floor, host scope, examples, and non-goals | CLI help assertion; full agent-kit test/package gates; mirror comparison | yes | completed |
+| P2D.S3 | Public human and LLM documentation | frontend branch | public pages; localized messages; `content/llms.md`; `backend/public/llms.txt`; frontend tests | public human and machine documentation | public pages and both LLM contracts contain matching purpose, examples, lifecycle, and scope language | rendered-page/route/backend tests + phrase parity | yes | completed |
+| P2D.S4 | Cross-repository documentation parity | P2D.S1-S3 | all documentation surfaces | no API schema change | no Nico-only/coding-only/subagent-only requirement claim; exact versions/actions agree | targeted search, diff check, full relevant regressions | no | completed |
+
+### Documentation phase P2D test matrix
+
+| Requirement / risk | Behavior or invariant | Test level | Oracle defined before code | Command or procedure |
+|---|---|---|---|---|
+| R12/A9 | capability is general and need is workload-based | documentation contract | yes | all canonical surfaces say nested Bubblewrap/private procfs; no surface says Nico or coding users are the exclusive audience |
+| R12 | planning, coding, and QA examples explain the enforced boundary | documentation contract | yes | Runtime, sandbox, CLI/skill, and LLM text cover read-only planning, single-workspace coding, and independent QA |
+| R11-R12 | exact lifecycle and compatibility remain aligned | CLI/contract | yes | preserve default; explicit enable/disable; CLI >=0.8.7 and Runtime >=0.1.25; amd64 enable; host scope |
+| R12 | public and backend LLM text remain aligned | integration | yes | targeted phrase comparison plus frontend rendered-route and backend surface tests |
+| R12 | public human documentation remains available and localized | integration | yes | `/agent-runtime` and `/docs` render the explanation, examples, lifecycle, and activation command in English, Spanish, and Portuguese |
+| R10 | examples contain no real identifiers or credentials | inspection | yes | placeholder-only command review and existing secret/surface tests |
+
+### Documentation phase P2D frozen command manifest
+
+```sh
+# Each repository
+git diff --check
+
+# Runtime
+sh packaging/apparmor/profile_test.sh
+sh packaging/install/apparmor_policy_test.sh
+sh packaging/install/install_test.sh
+
+# Agent sandbox
+sh -n test-image.sh
+
+# Agent kit
+npm run check
+npm test
+npm pack --dry-run
+
+# Frontend and llms.txt
+npm test
+npm run lint
+python -m unittest backend.tests.test_surface
+```
+
+### Documentation phase P2D sequence and integration
+
+1. Generalize the Runtime decision record and explain the security boundary in
+   Runtime and sandbox-image documentation.
+2. Update CLI help, README, and both copies of the bundled skill/reference.
+3. Update the canonical frontend LLM text and backend mirror with the same
+   examples and operational contract.
+4. Run focused contract assertions, full relevant regressions, cross-repository
+   phrase/version/action inspection, and record the results before P3.
 
 ### Recovery phase P2R header
 
@@ -337,7 +473,7 @@
 
 | Assumption ID | Check or probe | Evidence | Result | Plan change |
 |---|---|---|---|---|
-| A7 | Compare unconditional installer branch with actual Nico-only use case | `install.sh` automatically mutates policy on restricted Ubuntu while the capability objective names coder/QA | false | default becomes `preserve`; only explicit enable/disable may mutate policy |
+| A7 | Compare unconditional installer behavior with the first Nico consumer and the general capability boundary | `install.sh` automatically mutates policy on restricted Ubuntu although only workloads creating nested private procfs need it | false | default becomes `preserve`; only explicit enable/disable may mutate policy |
 | A8 | Determine whether exact-path attachment identifies a sandbox | profile attaches by filesystem path and Runtime sandboxes share the same owner/image path | false | document host scope; do not invent a per-sandbox claim or manifest flag |
 | A2 | Preserve container/package behavior | existing exact create-argument and coexistence gates are green | verified for implementation | keep policy operation after package/workload gate and leave container arguments unchanged |
 | A3 | Recover policy state safely | current EXIT rollback is process-failure safe but `/run` evidence and retained downgrade policy are insufficient for explicit disable/crash recovery | false for recovered lifecycle | add a durable root-only transaction journal/backup and explicit recovery before new policy operations |
@@ -531,6 +667,36 @@ removing a frozen invariant requires a fresh review and plan update.
 - Phase status: completed. P4 remains the required live capability gate before
   production promotion.
 
+### Documentation phase P2D verification log
+
+- Runtime and image documentation: Runtime README/SECURITY and the signed-image
+  README now describe the inner boundary, planning/coding/QA examples, exact
+  wrapper trust, version/action contract, host scope, and the disposable
+  per-attempt Runtime-sandbox alternative. Runtime's full Go 1.25 Linux gate and
+  the image test script syntax check passed.
+- CLI and agent guidance: CLI help, README, source skill/references, and packaged
+  plugin mirrors agree on CLI 0.8.7, Runtime 0.1.25, preserve/enable/disable,
+  amd64 enablement, general workload scope, and examples. The source/package
+  mirrors compare byte-for-byte; `npm run check`, 73 tests, and
+  `npm pack --dry-run` passed.
+- Public human documentation: `/agent-runtime` and `/docs` render the rationale,
+  examples, exact activation command, lifecycle, and scope in English, Spanish,
+  and Portuguese. Frontend build and 108 tests passed; lint reported zero errors
+  and the same three unrelated existing warnings.
+- Public machine documentation: the canonical `content/llms.md` and backend
+  `public/llms.txt` carry byte-identical capability sections. Frontend route
+  assertions and all 45 backend surface tests passed.
+- Cross-repository parity: targeted inspection found planning, coding, QA,
+  preserve, enable, disable, host scope, CLI 0.8.7, and Runtime 0.1.25 in every
+  required surface. Documentation states that need is determined by nested
+  Bubblewrap, not Nico, GitHub, an AI CLI, or subagent delegation.
+- API/authentication/error impact: no public HTTP/JSON schema or authorization
+  change. The existing owner-authorized install and stable safe error contract
+  remain authoritative.
+- Residual: documentation is locally complete, but publication remains coupled
+  to the reviewed branch/release rollout and P4 live capability canary.
+- Phase status: completed.
+
 ### Recovery phase P2R verification log
 
 - Local implementation status: preserve/enable/disable lifecycle, durable
@@ -576,9 +742,12 @@ removing a frozen invariant requires a fresh review and plan update.
 
 - Final acceptance evidence: pending.
 - Full relevant regression evidence: pending.
-- Delivered architecture and operational notes: pending.
+- Delivered architecture and operational notes: nested-Bubblewrap capability
+  rationale, examples, lifecycle, scope, and alternatives are complete locally;
+  production activation notes remain pending P4-P6.
 - Delivered API contracts, reference documentation, and parity evidence: no
-  public API change planned; pending final inspection.
+  public API schema change; Runtime/image docs, CLI help/skill references,
+  localized public pages, and LLM machine contracts passed P2D parity checks.
 - Error/logging controls and verification: pending.
 - Authentication/authorization controls and verification: pending.
 - Known residual risks: no arm64 live canary is in scope; arm64 artifacts remain

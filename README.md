@@ -122,7 +122,7 @@ install, or an inactive service, is still started before registration.
 Ordinary installs and upgrades use
 `--nested-private-procfs preserve` by default. Preserve mode does not inspect,
 parse, load, unload, create, replace, or remove the Runtime AppArmor policy.
-Dedicated amd64 coding hosts may explicitly use
+Dedicated amd64 hosts for verified nested-Bubblewrap workloads may explicitly use
 `--nested-private-procfs enable`; other architectures fail closed. Explicit
 `--nested-private-procfs disable` unloads/removes the Runtime policy and restores
 the exact file and loaded/unloaded state that preceded its first enable. These
@@ -131,6 +131,37 @@ every same-owner sandbox on that Runtime host containing the trusted exact
 helper path can invoke it. The authenticated backend remains the trusted
 immutable-image selection boundary; AppArmor pathname attachment does not
 verify an image digest.
+
+### Why and when to enable nested private procfs
+
+This capability is general Agent Runtime infrastructure; Nico is its first
+production consumer, not a requirement or product boundary. Enable it when a
+trusted workload launches the signed, fixed-path Bubblewrap helper inside a
+Runtime sandbox and needs a second process/filesystem boundary. It is unrelated
+to ordinary GitHub operations, which AI CLI is installed, or whether an agent
+delegates to subagents.
+
+The supported public interface requires WarpMetal CLI 0.8.7 or newer and signed
+Agent Runtime 0.1.25 or newer. The owner selects `preserve`, `enable`, or
+`disable` during the guarded Runtime installation; no sandbox manifest or HTTP
+API field is added.
+
+Typical uses include:
+
+- planning: mount the exact checkout read-only while hiding sibling workspaces,
+  runner state, and outer processes;
+- coding: make only one approved checkout, its output directory, and private
+  temporary storage writable while repository-controlled commands execute; and
+- QA: review an exact candidate read-only, then run untrusted tests with a
+  private process view, scrubbed environment, and isolated scratch space.
+
+Bubblewrap supplies mount, PID, IPC, and related namespace boundaries; a
+consumer may add a filesystem control such as Landlock. The outer Runtime
+sandbox remains the host/tenant boundary. A deployment that creates one fresh,
+credential-minimal Runtime sandbox for every attempt may choose not to add the
+inner Bubblewrap layer. A persistent worker that processes multiple attempts or
+retains trusted state should keep the inner boundary so prompt instructions are
+backed by kernel-enforced read/write and process visibility rules.
 
 On an AppArmor-enabled host where
 `kernel.apparmor_restrict_unprivileged_userns=1`, explicit enable requires the
