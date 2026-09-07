@@ -386,7 +386,7 @@
 | P3.A2 | Confirm Runtime v0.1.25 and CLI 0.8.7 are not already published | GitHub release lookup and npm registry query on 2026-09-07 | verified | P3 must publish both; do not overwrite an existing artifact |
 | P3.A3 | Confirm explicit disable can be exercised without a new Runtime API | Runtime installer lifecycle and agent-kit `runtime install` flag contract | verified locally | add a fifth canary stage using signed v0.1.25 and verify exact restoration |
 | P3.A4 | Confirm the frontend default-branch merge may publish public docs | existing test/build/deploy workflow and repository history | verified | treat deployment as an authorized, observable P3 external effect; stop if CI/deploy fails |
-| P3.A5 | Confirm the documented sandbox architectures match the published image index | signed index contains one linux/amd64 manifest plus its attestation; image workflow builds amd64 only | false in Runtime README | correct the Runtime claim before release; do not add an arm64 image claim |
+| P3.A5 | Confirm the documented sandbox architectures match the published image index | signed index contains one linux/amd64 manifest plus its attestation; image workflow builds amd64 only; corrected Runtime README now distinguishes it from multi-architecture Runtime archives | verified after correction | keep the sandbox-image claim amd64-only and verify both Runtime release architectures |
 
 ### Release-readiness phase P3 entry-gate decision
 
@@ -410,9 +410,9 @@
 
 | Subpart | Deliverable and owner boundary | Dependencies | Interfaces / likely files | Documentation / API impact | Acceptance and oracle | Focused + regression checks | Parallel-safe | Status |
 |---|---|---|---|---|---|---|---|---|
-| P3.S1 | Five-stage canary and exact disable/restore oracle; primary Site owner only | P2R lifecycle | frontend workflow, driver, host helper, canary tests, backend operator README | canary operations/recovery docs; no API schema | ordered stages; candidate-only enable; v0.1.25 disable runs even when binary already current; a durable disable-attempt marker makes interruption before/after policy removal replay safe; final nested procfs denial and exact prior policy state; cleanup replay safe | focused Node canary tests, shell syntax/ShellCheck, full frontend/backend gates | no | implemented and locally verified; fresh review pending |
-| P3.S2 | Exact Runtime branch and sandbox-image documentation integration plus immutable signed v0.1.25 prerelease | post-merge Runtime/image gates, P3.S1 frozen artifact interface | Runtime PR #23 and release assets; sandbox-image README branch/PR | release notes, architecture-accurate image docs, and plan evidence; no API schema | both PR exact heads green/reviewed; merge commits green; sandbox docs land without image rebuild; Runtime tag produces one expected amd64 archive/signature/checksum whose contents and Cosign signature verify; prerelease remains unpromoted | Runtime frozen gate, image doc/digest inspection, hosted distro checks, archive/signature inspection | yes after P3.S1 interface freeze | pending |
-| P3.S3 | Exact agent-kit integration and npm `warpmetal@0.8.7` publication | post-merge agent-kit gate | agent-kit branch/PR, package/release workflow, CLI/skill mirrors | CLI help/README/skill references | source/package mirrors identical; package dry run exact; PR/merge CI green; registry tarball/version contains the nested lifecycle contract | check, 73+ tests, pack dry run, installed-package help probe | yes after interface freeze | pending |
+| P3.S1 | Five-stage canary and exact disable/restore oracle; primary Site owner only | P2R lifecycle | frontend workflow, driver, host helper, canary tests, backend operator README | canary operations/recovery docs; no API schema | ordered stages; candidate-only enable; v0.1.25 disable runs even when binary already current; a durable disable-attempt marker makes interruption before/after policy removal replay safe; final nested procfs denial and exact prior policy state; cleanup replay safe | focused Node canary tests, shell syntax/ShellCheck, full frontend/backend gates | no | completed locally and independently approved; held for final integration |
+| P3.S2 | Exact Runtime branch and sandbox-image documentation integration plus immutable signed v0.1.25 prerelease | post-merge Runtime/image gates, P3.S1 frozen artifact interface | Runtime PR #23 and release assets; sandbox-image README branch/PR | release notes, architecture-accurate image docs, and plan evidence; no API schema | both PR exact heads green/reviewed; merge commits green; sandbox docs land without image rebuild; Runtime tag produces exactly amd64 and arm64 archive/signature/checksum triplets whose checksums, Cosign signatures, architectures, and required membership verify; prerelease remains unpromoted | Runtime frozen gate, image doc/digest inspection, hosted distro checks, six-asset archive/signature inspection | yes after P3.S1 interface freeze | in progress; review approved and image docs merged, Runtime integration pending |
+| P3.S3 | Exact agent-kit integration and npm `warpmetal@0.8.7` publication | post-merge agent-kit gate | agent-kit branch/PR, package/release workflow, CLI/skill mirrors | CLI help/README/skill references | source/package mirrors identical; package dry run exact; PR/merge CI green; registry tarball/version contains the nested lifecycle contract | check, 73+ tests, pack dry run, installed-package help probe | yes after interface freeze | in progress; merged/tag workflow green, registry propagation verification pending |
 | P3.S4 | Frontend exact-head integration, public docs deployment, and cross-release readiness packet | P3.S1-S3 | frontend PR #104/default workflow, public pages/LLM text, production acceptance secrets metadata | public docs deployment and canary runbook | PR/default CI and deploy succeed; live pages/LLM contract match source; workflow verifies exact v0.1.24/v0.1.25 assets, CLI 0.8.7, image digest, and release public key without exposing secrets | full frontend/backend gates, route probes, workflow contract tests, exact metadata inspection | no | pending |
 
 - Inputs and outputs: reviewed post-main-merge source heads and protected release
@@ -442,6 +442,7 @@
 | R5/R10 | only signed exact artifacts are consumed without secret output | supply-chain / inspection | yes | SHA-256, Cosign, archive membership, npm pack/install, log/redaction inspection |
 | R12 | CLI, public docs, skill mirrors, and LLM text agree on versions/actions/scope | documentation contract | yes | mirror comparison, rendered routes, backend surface tests, cross-repo phrase check |
 | A6 | release selection and rollback never rebuild or replace immutable assets | release integration | yes | verify tag/asset identity before and after canary readiness; fail on pre-existing mismatched artifact |
+| A6/R5 | tag workflows accept broad `v*` refs and repositories lack automated main protection | release integration | yes | before each tag, fetch `main` and tags; prove the intended reviewed merge SHA equals current remote `main`, has successful exact-commit CI, matches strict `vMAJOR.MINOR.PATCH`, and has no tag/registry/release collision; after Runtime publication require exactly six assets and verify both architecture triplets |
 
 ### Release-readiness phase P3 frozen command manifest
 
@@ -487,6 +488,18 @@ sh -n test-image.sh
 # Require green PR and merge-commit CI, immutable Runtime v0.1.25 assets and
 # signatures, npm warpmetal@0.8.7 pack/install probe, frontend default-branch
 # workflow/deploy success, and a final clean-worktree/cross-contract inspection.
+
+# Exact pre-tag gate in each release repository. Replace RELEASE_SHA and TAG
+# only with the recorded reviewed merge commit and strict semantic-version tag.
+git fetch origin main --tags
+test "$(git rev-parse "$RELEASE_SHA")" = "$(git rev-parse origin/main)"
+[[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+test -z "$(git tag --list "$TAG")"
+# Query GitHub Actions for successful exact-RELEASE_SHA default-branch CI and
+# query the target registry/release again before creating the annotated tag.
+# Runtime post-release: require exactly six assets, then independently verify
+# amd64 and arm64 archives, checksum files, detached Cosign signatures,
+# executable architecture, and required archive membership.
 ```
 
 ### Release-readiness phase P3 sequence and integration
@@ -522,7 +535,30 @@ sh -n test-image.sh
   residue remains, compares the final `absent` classification to the frozen
   sensitivity baseline, and retires the marker only after completed-stage
   publication.
-- Independent P3.S1 canary/security review: pending.
+- Independent P3.S1 canary/security review: the first review correctly rejected
+  a missing directory durability barrier between completed-stage rename and
+  marker retirement. Follow-up commit
+  `4bcf6f16e6abedb5157d86371fc0083bdefe558f` syncs pending content, publishes
+  the rename, syncs the checkpoint directory, then removes and syncs the marker
+  deletion. Review P3-S1-review-02 approved the fix after an in-memory negative
+  control proved the regression assertion rejects removal of the middle
+  barrier. Per owner direction, this branch remains local until every other P3
+  repository is integrated; current `main` will be merged into it again before
+  push and its complete gate will rerun.
+- P3.S2 independent Runtime/image review approved after requiring both Runtime
+  architecture triplets and the explicit reviewed-main pre-tag gate. Sandbox
+  documentation PR #3 merged as commit
+  `f54f23ef3173fadd43cf3fe3fdf264817a72c7e6`; path filtering correctly avoided
+  an image rebuild, and the pre-existing immutable signed image remains the P4
+  input.
+- P3.S3 independent review approved agent-kit head `7e1cf0d`. PR #31 passed
+  both Node 20/22 jobs and merged as
+  `fbdc417651f2d07d184e00823be0c3a19cb3b414`; exact-main ancestry, CI, strict
+  tag shape, and collision gates passed before annotated tag `v0.8.7`. Publish
+  workflow run `34161645892` passed all gates and npm reported accepted
+  publication with 22 files and shasum
+  `17e47b71b139392c03a62782867db7cbfaadc2b9`; registry propagation and the
+  installed-package probe remain pending.
 
 ### Documentation phase P2D header
 
