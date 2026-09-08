@@ -1868,6 +1868,18 @@ test -z "$(git tag --list "$TAG")"
   exact completion-response binding failures. Fresh filesystem-security and
   backend-contract reviewers must independently approve the corrected diff and
   executable oracle before exact-head CI or any live action.
+- Second implementation gate: the corrected descriptor-bound helper and expanded
+  real-OpenSSH/failure matrix passed the manager's native, Linux, PostgreSQL,
+  migration, coverage, lint, and static gates, but the fresh filesystem reviewer
+  found one remaining durability defect before promotion. A fully written
+  `journal.json.new` crash residue was renamed into place and followed by a
+  recovery-directory fsync without first fsyncing the held residue file. A
+  process replay could therefore succeed while a later power loss exposed
+  non-durable or corrupt journal bytes. No exact fault-injection assertion
+  covered that barrier. Keep integration and live dispatch blocked; add the
+  missing held-file fsync before rename, an executable fault/trace oracle for
+  that ordering, and any other controls from the reviewers' final reports, then
+  repeat the full affected gates and obtain fresh non-implementing approval.
 
 ### Documentation phase P2D header
 
