@@ -671,8 +671,10 @@ test -z "$(git tag --list "$TAG")"
   stages pass in order with exact artifact pins and host snapshots; each stage's
   temporary small sandbox, two distinct access keys/grants, sessions, and
   workspace are revoked/deleted; final policy state equals the frozen initial
-  absent state; the acceptance task is cancelled and provider absence is
-  verified without guessing through an ambiguous outcome.
+  absent state; the acceptance task reaches terminal cancellation with
+  unambiguous future-billing cancellation. Provider compute may remain through
+  the already-created paid term and is reconciled without treating that expected
+  retention as a failed cancellation or a reason to retry.
 - Dependencies and risks: production operator credentials and environment
   approval; live `agent` plan availability and current price; exact
   `Ubuntu 24.04 (VPS)` catalog name; monthly billing may not be prorated or
@@ -689,11 +691,13 @@ test -z "$(git tag --list "$TAG")"
   merge commit `ae64f8539450b78fe68214c87b8cc31c94f03ba8`; PR exact-head CI,
   main tests/publication/deployment, an independent merge-tree audit, and a
   fresh deployed-main read-only task inspection are green but its provider-
-  console-first assumption is superseded by P4.R3. One approved P4
-  test server now exists and is ready with an active six-hour test term and
-  Runtime `pending_install`; no second server or payment retry exists, and no
-  Runtime installation, sandbox, policy, grant, or cancellation mutation has
-  been attempted.
+  console-first assumption is superseded by P4.R3. The sole approved P4 test
+  task is now terminally cancelled after proving live TOFU and strict replay.
+  Runtime remained `pending_install`, desired/applied revision remained `1/0`,
+  the failed-run selector and guarded deployment-host directory are cleared,
+  and no second server, payment retry, Runtime installation, sandbox, policy,
+  or grant mutation exists. Provider compute may remain powered through the
+  already-created term under the verified cancellation contract.
 - Required documentation and API-contract changes: this plan records the quote,
   confirmation, task/server IDs, stage runs, bounded safe evidence, cleanup,
   and residuals. CLI 0.8.8 help/README/skill references and the public Runtime,
@@ -741,6 +745,10 @@ test -z "$(git tag --list "$TAG")"
   revocation, and final server cancellation. Each later mutation remains
   conditional on its frozen state and trust oracle; no retry is authorized on
   an ambiguous result.
+- Authorization state: that one-VPS authorization was exercised and ended with
+  terminal cancellation. It does not authorize a replacement order or payment;
+  resuming P4.S1 requires fresh owner authorization for exactly one replacement
+  VPS after a new read-only quote/readiness check.
 - Decision evidence: owner authorized plan execution and asked to begin live VPS
   testing; managed-plan and WarpMetal safety contracts require the separate
   immediate mutation confirmation after live discovery.
@@ -761,7 +769,7 @@ test -z "$(git tag --list "$TAG")"
   request and response remain unchanged. P4.R1 adds only nullable internal test
   metadata, protected operator commands, and deployment-runbook coverage. Any
   live discrepancy reopens P2/P3 instead of editing the oracle to pass.
-- Decision timestamp or plan revision: 2026-09-08, release revision 16.
+- Decision timestamp or plan revision: 2026-09-08, release revision 20.
 
 ### Live acceptance phase P4 subparts
 
@@ -771,9 +779,9 @@ test -z "$(git tag --list "$TAG")"
 | P4.R1 | Recover task-scoped signed artifact selection and establish a stable baseline-preparation path | P4.S0, false P4.A4-P4.A5 | backend Runtime/operator state and migration; acceptance workflow/driver/tests/runbook | internal operator contract and recovery docs; public bootstrap/OpenAPI stay unchanged | only live `is_test` tasks may receive an exact verified override; normal users retain global metadata; stage changes use fresh checkpoint-bound bootstrap keys while prior idempotent responses remain immutable; registration must report the selected version; sensitivity prepares v0.1.24 with `preserve`, nine Docker sentinels, and exactly three running medium sandboxes through trusted SSH | backend unit/DB/operator/security tests, canary contract tests, full frontend/backend gates, migration upgrade/downgrade, independent review, exact-head CI/deploy | no | completed; merged, deployed, and independently approved |
 | P4.R2 | Recover a protected deployment-host enrollment path for console-authenticated host keys | P4.R1, partially resolved P4.A3, false P4.A7 | acceptance workflow/tests/runbook only | internal operator workflow; public API and ordinary-user behavior unchanged | accept one console-copied OpenSSH public host key for the exact live test task/hostname; derive and verify current IP/task state on the deployment host; atomically create the non-symlink mode-0600 pin under a mode-0700 directory; byte-identical replay succeeds and every mismatch refuses overwrite; log only fingerprint and file digest | workflow contract tests, shell syntax, exact-head CI/deploy, independent review | no | completed; PR #108 exact head, merge tree, default-branch deployment, fresh task inspection, and three independent reviews approved |
 | P4.R3 | Replace mandatory provider-console trust with safe first-use trust for the protected canary and ordinary CLI users | false P4.A3/P4.A8, completed P4.R2 | agent-kit host-trust/state/installer/CLI/tests/docs first; frontend protected workflow/driver/tests/operator and public docs last | CLI 0.8.8 plus public human/LLM trust contract; no Runtime HTTP schema | first harmless owner-key SSH for an exact server trust epoch may accept only Ed25519 into an isolated candidate; atomic no-overwrite pin precedes bootstrap; immediate and all later SSH is strict; existing mismatch and unauthorized epoch change fail closed; optional console pre-seed remains | local two-host-key SSH integration, filesystem/race/error tests, agent-kit full gate and release, frontend focused/full gates, two fresh security reviews, exact-head CI/deploy | no | completed at revision 19; PR #110 deployed and protected live TOFU plus immediate strict replay passed on the sole acceptance VPS |
-| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3 and existing owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence plus safe TOFU metadata | one task/server, key-only SSH, exact-task first-use pin or optional stronger pre-seed, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, first-use pin and strict-replay precondition, bounded state inspection, baseline prepare run | no | recovery required; trust passed, but baseline driver preflight rejected an undeclared deployment-host `jq` dependency before any Runtime or sandbox mutation; the task was safely cancelled |
-| P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked on reviewed driver/cleanup recovery and fresh owner authorization for one replacement acceptance VPS |
-| P4.S3 | Final cancellation, provider reconciliation, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no future-billing ambiguity; provider compute may remain through the already-created term; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | recovery in progress; early cancellation is terminal, artifact selector is cleared, and the exact failed-run directory still requires guarded cleanup |
+| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3 and fresh owner confirmation for a replacement | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence plus safe TOFU metadata | one task/server, key-only SSH, exact-task first-use pin or optional stronger pre-seed, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, first-use pin and strict-replay precondition, bounded state inspection, baseline prepare run | no | recovery code is merged, deployed, independently approved, and cleanup-replayed; live rerun requires fresh owner authorization for exactly one replacement acceptance VPS |
+| P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked only on fresh owner authorization for exactly one replacement acceptance VPS and its completed P4.S1 baseline |
+| P4.S3 | Final cancellation, provider reconciliation, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no future-billing ambiguity; provider compute may remain through the already-created term; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | failed-attempt cancellation and guarded cleanup are complete and replay-verified; final whole-phase cleanup/review remains pending P4.S2 |
 
 ### Live acceptance phase P4.R1 frozen recovery design
 
@@ -1345,18 +1353,69 @@ test -z "$(git tag --list "$TAG")"
   run-directory removal failed closed because the ownership marker remained.
   Independent review found that the cleanup-side `docker compose exec` lacked
   `</dev/null`, allowing Docker to consume the remainder of the remote
-  `bash -s` input after the successful clear. Recovery must replace the three
-  `jq` uses with Python 3.8-compatible JSON handling, name any missing command,
-  redirect container stdin, prove post-clear marker removal in tests, and remove
-  only the validated failed-run marker/directory under the deployment lock.
+  `bash -s` input after the successful clear. Recovery therefore had to replace
+  the three `jq` uses with Python 3.8-compatible JSON handling, name any missing
+  command, redirect container stdin, prove post-clear marker removal in tests,
+  and remove only the validated failed-run marker/directory under the deployment
+  lock.
 - Safety stop: exact cancel run `34198721496` passed. Post-cancel inspect run
   `34198926210` verified task state `cancelled`, Runtime still
   `pending_install`, desired/applied revision `1/0`, and no Runtime mutation.
   Provider cancellation is unambiguous, but the device remains powered through
   the already-created term by the provider contract; it is not a new billing
   attempt. No replacement server, payment, or duplicate order was created.
-  P4.S1-P4.S3 cannot resume live execution until the code recovery is reviewed,
-  merged, deployed, and the owner authorizes exactly one replacement VPS.
+  The recovery below is now reviewed, merged, deployed, and replay-verified;
+  P4.S1-P4.S3 cannot resume live execution until the owner authorizes exactly
+  one replacement VPS.
+
+### Live acceptance phase P4.S1 deployment-host recovery log
+
+- Implementation: frontend commits `df38d8e` and `5e83d1c` removed the
+  deployment-host `jq` dependency in favor of exact Python 3.8-compatible JSON
+  construction and validation, named any missing command, and redirected
+  container stdin for selector clear and verification. The protected
+  `cleanup-private-procfs-run` action is bound to an exact task ID, numeric run
+  ID, and confirmation string under the production deployment lock. It requires
+  a null selector, a mode-0600 task-bound marker, exact ownership/modes and file
+  types, and a closed entry allowlist before removing only the known files and
+  empty directory; absent-directory replay succeeds without mutation.
+- Verification and review: the stabilized frontend gate passed 158 tests with
+  one expected macOS Bash-4 skip, the complete deployment workflow test file
+  passed 42 tests, and the backend count update passed the full hosted backend
+  suite. Build, Bash syntax, ShellCheck, actionlint, Python 3.8 grammar, and diff
+  checks passed; lint had zero errors and three pre-existing unrelated warnings.
+  Three independent non-implementing reviewers approved the exact JSON parity,
+  cleanup security contract, behavioral failure matrix, and final exact head.
+- Integration: the first PR check `34201363279` correctly caught the existing
+  deployment resolver-count assertion after the new protected action increased
+  the count from seven to eight. The one-line expectation correction introduced
+  no production behavior change. PR #111 exact head
+  `5e83d1c65affe9f02b92677e4c77e71f68f32eae` then passed run
+  `34201690826` and merged as
+  `d2ad70251cd87628cfdcc046ccce1240abebbe09`. Default-branch run
+  `34202077886` passed its test, image-publication, and production-deployment
+  jobs.
+- Cleanup replay: protected run `34204247814` verified the exact task selector
+  remained null and removed only
+  `warpmetal/acceptance/runs/34198567199/private-procfs`, reporting
+  `private_procfs_run_cleanup run=34198567199 selected=false directory=removed`.
+  Exact replay run `34204327245` passed with
+  `private_procfs_run_cleanup run=34198567199 selected=false directory=absent`.
+  The failed attempt is fully reconciled: no temporary deployment-host files,
+  task-scoped artifact selector, Runtime install, sandbox, policy, or grant
+  remains. No replacement VPS, duplicate order, or payment was created.
+- Fresh post-mutation verification independently confirmed the PR/head/merge
+  chain, all three successful default/protected runs, both cleanup oracles, and
+  that unrelated create, canary, artifact-clear, cancel, and reconcile steps
+  were skipped in the cleanup actions. Workflow inventory still contains
+  exactly one successful server-create run, no payment reconcile, and no later
+  canary; post-cancel state remains `cancelled`, `pending_install`, revision
+  `1/0`, with provider power retained through the paid term as expected.
+- Gate status: the recovery implementation and early P4.S3 cleanup are complete
+  at release revision 20. P4.S1-P4.S3 remain incomplete only because the live
+  baseline and five signed stages require fresh owner authorization for exactly
+  one replacement acceptance VPS; the cancelled task cannot be reused. Runtime
+  v0.1.24/v0.1.25 and the signed all-tools sandbox image remain unchanged.
 
 ### Documentation phase P2D header
 
