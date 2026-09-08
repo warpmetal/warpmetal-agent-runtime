@@ -674,8 +674,10 @@ test -z "$(git tag --list "$TAG")"
   deployed from frontend merge commit
   `6da3f0ab35eab8136ecfa11c88ccdd2a1d79003d`; its exact-head and
   default-branch gates are green, and a fresh deployed-main read-only preflight
-  passed. No P4 server exists yet and no P4 key, payment, Runtime, sandbox,
-  policy, grant, or cancellation mutation has been attempted.
+  passed. One approved P4 test server now exists and is ready with an active
+  six-hour test term and Runtime `pending_install`; no second server or payment
+  retry exists, and no Runtime installation, sandbox, policy, grant, or
+  cancellation mutation has been attempted.
 - Required documentation and API-contract changes: this plan records the quote,
   confirmation, task/server IDs, stage runs, bounded safe evidence, cleanup,
   and residuals. No public HTTP/JSON schema or product documentation change is
@@ -698,19 +700,24 @@ test -z "$(git tag --list "$TAG")"
 | A8 | Confirm the enabled policy is host-scoped but only the signed exact helper attaches; generic, alternate, and deeper attempts remain denied | candidate and forward negative controls | unresolved live | stop on any broader grant |
 | P4.A1 | The production acceptance operator can obtain a current read-only quote without creating a prepared order, key, payment, or provider resource | workflow runs `34166139308` and deployed-main refresh `34175259049`, `action=preflight`, plan `agent` | verified | freeze the exact quote and require fresh owner confirmation before mutation |
 | P4.A2 | The deployed workflow has all protected metadata and credentials needed for exact signed stages and replay-safe cleanup | P3 deploy, P4.R1 default-branch deploy run `34173873657`, and workflow/source parity | verified for dispatch; live signed-stage use required | use only the default-branch production workflow |
-| P4.A3 | A trusted provider or console channel is available to enroll the exact new VPS host key before the private-procfs workflow opens SSH | operator runbook and deployment-host pin contract | unresolved | after creation, stop before stage dispatch if enrollment cannot be independently established |
+| P4.A3 | A trusted provider or console channel is available to enroll the exact new VPS host key before the private-procfs workflow opens SSH | operator runbook, deployment-host pin contract, and Hivelocity's authenticated one-time VPS console | partially resolved: the console exists, but the guest key has not been displayed or enrolled | bind the console to the exact device/IP, display the guest public host key there, enroll it without logging the one-time URL or using network discovery as trust evidence, and stop before stage dispatch if that cannot be completed |
 | P4.A4 | The five canary stages can select their signed Runtime artifact without changing the process-global production `RUNTIME_*` tuple | P4.R1 task-scoped selector, bootstrap version/digest binding, registration mismatch rejection, DB constraint, and ordinary-user regression coverage | resolved in P4.R1 | use only operator-set exact signed selectors on live `is_test` tasks; clear on completion, expiry, and cancellation |
 | P4.A5 | Order-time three-sandbox intent yields a ready v0.1.24 supervisor and running baseline sandboxes before sensitivity starts | P4.R1 trusted-host preparation and root/non-root replay harness | resolved in P4.R1 | sensitivity must run the replay-safe signed-v0.1.24 preparation and require exactly three running medium sandboxes before freezing the baseline |
 | P4.A6 | An arbitrary owner-supplied existing VPS can replace the disposable production acceptance task | production workflow, operator task/selector checks, bootstrap/registration binding, canary checkpoint, and cancellation contract | false | an external VPS may support a separately authorized non-gating host inspection, but P4.S1-P4.S3 still require a provisioned live `is_test` task unless a new adoption contract is designed and reviewed |
+| P4.A7 | An existing operator path can place console-authenticated public host keys into the protected deployment-host pin without direct deployment-host SSH | default-branch workflow/source inspection and local SSH inventory | false | add a narrow protected enrollment action; never accept a console URL, credential, fingerprint-only value, or network scan as the key source |
 
 ### Live acceptance phase P4 entry-gate decision
 
 - Implementation authorized: the read-only preflight and repository recovery
-  are completed. Priced VPS creation, owner/sandbox key
-  generation, Runtime installation, temporary sandbox creation, policy
-  enable/disable, access grants/revocation, sandbox deletion, and final server
-  cancellation remain unauthorized until the owner confirms the exact fresh
-  quote and lifecycle effects immediately before the create dispatch.
+  are completed. After the owner chose a new disposable VPS instead of the
+  offered existing host, the owner explicitly approved the previously
+  disclosed full live lifecycle. Exactly one test VPS and its protected owner
+  SSH identity were created within the `$15.00` monthly provider-cost ceiling.
+  The same approval covers the guarded Runtime installation, sandbox-specific
+  keys, temporary sandbox expiry/deletion, policy enable/disable, grants and
+  revocation, and final server cancellation. Each later mutation remains
+  conditional on its frozen state and trust oracle; no retry is authorized on
+  an ambiguous result.
 - Decision evidence: owner authorized plan execution and asked to begin live VPS
   testing; managed-plan and WarpMetal safety contracts require the separate
   immediate mutation confirmation after live discovery.
@@ -729,7 +736,7 @@ test -z "$(git tag --list "$TAG")"
   request and response remain unchanged. P4.R1 adds only nullable internal test
   metadata, protected operator commands, and deployment-runbook coverage. Any
   live discrepancy reopens P2/P3 instead of editing the oracle to pass.
-- Decision timestamp or plan revision: 2026-09-08, release revision 12.
+- Decision timestamp or plan revision: 2026-09-08, release revision 13.
 
 ### Live acceptance phase P4 subparts
 
@@ -737,7 +744,8 @@ test -z "$(git tag --list "$TAG")"
 |---|---|---|---|---|---|---|---|---|
 | P4.S0 | Read-only current quote and readiness packet | P3 | production operator `action=preflight`, plan `agent` | plan evidence only | current purchasing readiness, exact OS, capacity, and monthly price; no key/order/resource mutation | inspect exact workflow run/logs and absence of create step | no | completed |
 | P4.R1 | Recover task-scoped signed artifact selection and establish a stable baseline-preparation path | P4.S0, false P4.A4-P4.A5 | backend Runtime/operator state and migration; acceptance workflow/driver/tests/runbook | internal operator contract and recovery docs; public bootstrap/OpenAPI stay unchanged | only live `is_test` tasks may receive an exact verified override; normal users retain global metadata; stage changes use fresh checkpoint-bound bootstrap keys while prior idempotent responses remain immutable; registration must report the selected version; sensitivity prepares v0.1.24 with `preserve`, nine Docker sentinels, and exactly three running medium sandboxes through trusted SSH | backend unit/DB/operator/security tests, canary contract tests, full frontend/backend gates, migration upgrade/downgrade, independent review, exact-head CI/deploy | no | completed; merged, deployed, and independently approved |
-| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R1 and fresh owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence only | one task/server, key-only SSH, out-of-band pinned host key, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, trusted-host-key precondition, bounded state inspection, baseline prepare run | no | pending |
+| P4.R2 | Recover a protected deployment-host enrollment path for console-authenticated host keys | P4.R1, partially resolved P4.A3, false P4.A7 | acceptance workflow/tests/runbook only | internal operator workflow; public API and ordinary-user behavior unchanged | accept one console-copied OpenSSH public host key for the exact live test task/hostname; derive and verify current IP/task state on the deployment host; atomically create the non-symlink mode-0600 pin under a mode-0700 directory; byte-identical replay succeeds and every mismatch refuses overwrite; log only fingerprint and file digest | workflow contract tests, shell syntax, exact-head CI/deploy, independent review | no | in_progress; frontend branch fast-forwarded from main before recovery edits |
+| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R2 and fresh owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence only | one task/server, key-only SSH, out-of-band pinned host key, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, trusted-host-key precondition, bounded state inspection, baseline prepare run | no | in_progress; one ready server exists, host-key enrollment and baseline preparation pending |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | pending |
 | P4.S3 | Final cancellation, absence verification, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no billable compute ambiguity; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | pending |
 
@@ -780,6 +788,32 @@ test -z "$(git tag --list "$TAG")"
   sandbox oracle. It does not create the generic canary's fourth persistent
   sandbox and never uses `ssh-keyscan` as trust evidence.
 
+### Live acceptance phase P4.R2 frozen recovery design
+
+- Keep provider-console interaction human and out of band. The workflow accepts
+  exactly one complete OpenSSH server public-key line copied from the console;
+  it must never accept or retrieve the one-time console URL, provider/API or OS
+  credentials, a fingerprint without the key body, or `ssh-keyscan` output.
+- Bind the action to the exact task ID and hostname. On the protected deployment
+  host, inspect the current task and require an operator-authorized test task in
+  `ready`, an active term, the expected hostname and Ubuntu OS, a syntactically
+  valid current IPv4 address, and the same provider-backed server/device.
+- Hold the existing deployment lock; require the parent directory to be a real
+  mode-0700 directory; parse and validate an allowed OpenSSH key type and base64
+  body; construct the pin with the control-plane-reported IP; and create it
+  atomically as a regular mode-0600 file. Refuse symlinks, unexpected entries,
+  or any non-identical existing file. An exact byte-identical replay is the only
+  permitted idempotent success.
+- Logs contain only the task/hostname binding, public algorithm/fingerprint,
+  and pin-file digest. Public HTTP/JSON contracts, Runtime state, sandbox state,
+  payment/provider state, and ordinary-user behavior remain unchanged.
+- Tests freeze the action/input validation, absence of `ssh-keyscan`, task/IP
+  derivation, active-test gates, lock and file-mode checks, mismatch refusal,
+  exact replay, bounded logging, and private-procfs driver consumption. Merge
+  current `main` into the frontend branch before edits and again before final
+  integration, then require exact-head CI, production deploy, and a fresh
+  read-only task inspection before using the action.
+
 ### Live acceptance phase P4 test matrix
 
 | Requirement / risk | Behavior or invariant | Test level | Oracle defined before action | Command or procedure |
@@ -788,6 +822,7 @@ test -z "$(git tag --list "$TAG")"
 | R3-R4/A2-A3 | OCI restrictions, nine Docker workloads, packages, services, and existing sandboxes remain exact | live snapshot | yes | compare frozen sensitivity host baseline after every stage |
 | R6/A4 | existing sandbox ID, marker, persistent lifetime, and behavior survive install transitions | live integration | yes | stage-specific grant/connect before and after install; exit 37 |
 | R10 | no credential or unbounded diagnostic exposure | workflow/log inspection | yes | inspect bounded stage markers and secret-redaction behavior only |
+| P4.A3/P4.A7 | only a complete console-copied host public key can become the exact live test task's protected pin | workflow security/integration | yes | enrollment contract tests cover task/IP binding, modes, atomic no-overwrite, exact replay, mismatch, malformed input, and bounded logs |
 | R11 | sensitivity begins absent; candidate enables; rollback retains policy; forward remains enabled; disable restores exact absent state | live lifecycle | yes | ordered stage checkpoint and exact final `post-disable-v0125-denied` oracle |
 | Billing/cleanup | only one approved monthly VPS exists and is cancelled; ephemeral stage resources are removed | live operator/lifecycle | yes | exact task/hostname binding, per-stage cleanup, cancel/inspect reconciliation |
 
@@ -920,7 +955,56 @@ test -z "$(git tag --list "$TAG")"
   `is_test` task. A true external-host substitution would require a separate
   reviewed adoption contract, complete workload baseline, approved maintenance
   window, non-cancellation restoration criteria, and retained full
-  control-plane canary. P4.S1 remains pending without mutation.
+  control-plane canary. At revision 12, P4.S1 remained pending without mutation.
+- The owner subsequently selected and explicitly approved the previously
+  disclosed new-disposable-VPS lifecycle. Protected workflow run `34177014854`
+  on deployed main commit `6da3f0ab35eab8136ecfa11c88ccdd2a1d79003d`
+  created exactly one monthly `agent` test authorization for hostname
+  `private-procfs-canary-20260908`, exact OS `Ubuntu 24.04 (VPS)`, six-hour
+  expiry, three medium sandbox intents, and hard monthly provider-cost ceiling
+  `$15.00`. The protected owner token remains stored only on the deployment
+  host. The safe task/server identifiers are
+  `task_bRE4vSeF8tE0a_bOLwq2FdTz` and
+  `srv_ZvQaOP05rGycwcX4vcKBTQnN`.
+- Initial read-only inspection run `34177051572` observed one accepted LAX2
+  provider order and device in `provisioning`, with Runtime `pending_server`,
+  three desired sandboxes, no public task IP, and no active term. The provider
+  projection simultaneously reported a failed AVS preauthorization. No retry,
+  replacement order, or second payment was attempted.
+- Read-only inspection run `34177278166` then observed the same task as `ready`
+  with `failure=null`, provider request `complete`, an active term from
+  `2026-09-08T01:35:17.716044Z` through the test expiry
+  `2026-09-08T07:33:04.758006Z`, and Runtime `pending_install` at desired/applied
+  revision `1/0` with exactly three desired sandboxes. The provider device is
+  powered on, but its projection still reports `Charge Failed` from the AVS
+  check. That contradictory billing evidence is retained as a residual and
+  forbids any duplicate create or charge attempt; the present device remains
+  the sole acceptance resource.
+- A fresh read-only reinspection in run `34177885511` confirmed the same task
+  remains `ready` with `failure=null`, the same active term, provider request
+  `complete`, device power `ON`, Runtime `pending_install`, desired/applied
+  revision `1/0`, and three desired sandboxes. No lifecycle mutation was
+  dispatched by that run.
+- P4.S1 is paused at the pre-SSH trust boundary. The canary will not scan and
+  trust the network host key. A provider- or console-authenticated host key must
+  be enrolled into the protected deployment-host path before any owner SSH,
+  Runtime installation, or sandbox mutation.
+- A fresh independent provider-interface review found that Hivelocity documents
+  an authenticated `POST /api/v2/vps/{deviceId}/console` operation that returns
+  a one-time VPS console URL, but no VPS API field or event/serial-log endpoint
+  that returns a server SSH host key. The documented `sshKeyIds` are client
+  login keys, not server identity. Therefore P4.A3 can use the provider console
+  as its out-of-band root only after binding the session to the expected device
+  and IP and displaying `/etc/ssh/ssh_host_*_key.pub` inside the guest. The URL
+  is credential-like and must never be logged. Guest console access may still
+  require an unavailable OS credential, and console output is not a
+  cryptographically signed provider attestation; those remain stop conditions.
+  Network `ssh-keyscan` output may not substitute for the console evidence.
+- A read-only attempt to open the provider dashboard reached the Hivelocity
+  login boundary; no authenticated in-app session or connected Chrome session
+  was available. No credential was requested, read, entered, or transmitted.
+  The owner must authenticate the retained provider tab before the exact VPS
+  console can supply the missing out-of-band evidence.
 
 ### Live acceptance phase P4.R1 verification log
 
