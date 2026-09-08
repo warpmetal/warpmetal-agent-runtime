@@ -670,8 +670,12 @@ test -z "$(git tag --list "$TAG")"
   irreversible and does not replace explicit cleanup; cancellation may enter
   manual review and must not be retried as though compute were absent.
 - Baseline test state: P3 exact-head release, source, hosted CI, production
-  deploy, and live public-document gates are green. No P4 server exists yet and
-  no P4 mutation has been attempted.
+  deploy, and live public-document gates are green. P4.R1 is merged and
+  deployed from frontend merge commit
+  `6da3f0ab35eab8136ecfa11c88ccdd2a1d79003d`; its exact-head and
+  default-branch gates are green, and a fresh deployed-main read-only preflight
+  passed. No P4 server exists yet and no P4 key, payment, Runtime, sandbox,
+  policy, grant, or cancellation mutation has been attempted.
 - Required documentation and API-contract changes: this plan records the quote,
   confirmation, task/server IDs, stage runs, bounded safe evidence, cleanup,
   and residuals. No public HTTP/JSON schema or product documentation change is
@@ -679,8 +683,9 @@ test -z "$(git tag --list "$TAG")"
 - Coordinating owner: primary managed-plan executor. The deployed production
   workflow is the only mutation path; a separate non-implementing verifier
   reviews exact run evidence before promotion.
-- Fresh recovery reviewer available: yes; a subagent that did not implement the
-  Runtime/canary will review P4 after all mutations stop.
+- Fresh recovery reviewer available: yes; two non-implementing reviewers
+  approved P4.R1 independently. A fresh non-implementing verifier will review
+  the live P4 evidence after all mutations stop.
 
 ### Live acceptance phase P4 assumption check
 
@@ -691,22 +696,20 @@ test -z "$(git tag --list "$TAG")"
 | A4 | Reconnect to an existing sandbox through a new stage-specific grant before and after Runtime install while preserving its resource and workspace marker | every staged run | unresolved live | stop on ID, grant, marker, lifetime, or exit-code drift |
 | A6 | Re-download and verify exact signed v0.1.24/v0.1.25 amd64 assets plus deployed metadata before each stage | protected workflow verification step | verified for P3; rerun required | no mutable or locally rebuilt artifact may substitute |
 | A8 | Confirm the enabled policy is host-scoped but only the signed exact helper attaches; generic, alternate, and deeper attempts remain denied | candidate and forward negative controls | unresolved live | stop on any broader grant |
-| P4.A1 | The production acceptance operator can obtain a current read-only quote without creating a prepared order, key, payment, or provider resource | workflow run `34166139308`, `action=preflight`, plan `agent` | verified | freeze the exact quote and continue to recovery before requesting mutation approval |
-| P4.A2 | The deployed workflow has all protected metadata and credentials needed for exact signed stages and replay-safe cleanup | P3 deploy and workflow/source parity | verified for dispatch; live use required | use only the default-branch production workflow |
+| P4.A1 | The production acceptance operator can obtain a current read-only quote without creating a prepared order, key, payment, or provider resource | workflow runs `34166139308` and deployed-main refresh `34175259049`, `action=preflight`, plan `agent` | verified | freeze the exact quote and require fresh owner confirmation before mutation |
+| P4.A2 | The deployed workflow has all protected metadata and credentials needed for exact signed stages and replay-safe cleanup | P3 deploy, P4.R1 default-branch deploy run `34173873657`, and workflow/source parity | verified for dispatch; live signed-stage use required | use only the default-branch production workflow |
 | P4.A3 | A trusted provider or console channel is available to enroll the exact new VPS host key before the private-procfs workflow opens SSH | operator runbook and deployment-host pin contract | unresolved | after creation, stop before stage dispatch if enrollment cannot be independently established |
-| P4.A4 | The five canary stages can select their signed Runtime artifact without changing the process-global production `RUNTIME_*` tuple | backend `_artifact()`, CLI bootstrap/install path, and canary metadata gate | false | add a task-scoped, operator-only artifact override for test-authorized tasks before creating a VPS |
-| P4.A5 | Order-time three-sandbox intent yields a ready v0.1.24 supervisor and running baseline sandboxes before sensitivity starts | order/runtime state transitions and current sensitivity driver ordering | false | add an explicit trusted-key baseline preparation step that installs v0.1.24 with `preserve` and waits for the requested sandboxes |
+| P4.A4 | The five canary stages can select their signed Runtime artifact without changing the process-global production `RUNTIME_*` tuple | P4.R1 task-scoped selector, bootstrap version/digest binding, registration mismatch rejection, DB constraint, and ordinary-user regression coverage | resolved in P4.R1 | use only operator-set exact signed selectors on live `is_test` tasks; clear on completion, expiry, and cancellation |
+| P4.A5 | Order-time three-sandbox intent yields a ready v0.1.24 supervisor and running baseline sandboxes before sensitivity starts | P4.R1 trusted-host preparation and root/non-root replay harness | resolved in P4.R1 | sensitivity must run the replay-safe signed-v0.1.24 preparation and require exactly three running medium sandboxes before freezing the baseline |
 
 ### Live acceptance phase P4 entry-gate decision
 
-- Implementation authorized: the read-only preflight is completed. Repository
-  recovery work is authorized to add and verify task-scoped artifact selection
-  plus trusted baseline preparation. Priced VPS creation, owner/sandbox key
+- Implementation authorized: the read-only preflight and repository recovery
+  are completed. Priced VPS creation, owner/sandbox key
   generation, Runtime installation, temporary sandbox creation, policy
   enable/disable, access grants/revocation, sandbox deletion, and final server
-  cancellation remain unauthorized until the recovery gate passes and the
-  owner confirms the exact fresh quote and lifecycle effects immediately before
-  the create dispatch.
+  cancellation remain unauthorized until the owner confirms the exact fresh
+  quote and lifecycle effects immediately before the create dispatch.
 - Decision evidence: owner authorized plan execution and asked to begin live VPS
   testing; managed-plan and WarpMetal safety contracts require the separate
   immediate mutation confirmation after live discovery.
@@ -725,14 +728,14 @@ test -z "$(git tag --list "$TAG")"
   request and response remain unchanged. P4.R1 adds only nullable internal test
   metadata, protected operator commands, and deployment-runbook coverage. Any
   live discrepancy reopens P2/P3 instead of editing the oracle to pass.
-- Decision timestamp or plan revision: 2026-09-07, release revision 10.
+- Decision timestamp or plan revision: 2026-09-08, release revision 11.
 
 ### Live acceptance phase P4 subparts
 
 | Subpart | Deliverable and owner boundary | Dependencies | Interfaces / likely files | Documentation / API impact | Acceptance and oracle | Focused + regression checks | Parallel-safe | Status |
 |---|---|---|---|---|---|---|---|---|
 | P4.S0 | Read-only current quote and readiness packet | P3 | production operator `action=preflight`, plan `agent` | plan evidence only | current purchasing readiness, exact OS, capacity, and monthly price; no key/order/resource mutation | inspect exact workflow run/logs and absence of create step | no | completed |
-| P4.R1 | Recover task-scoped signed artifact selection and establish a stable baseline-preparation path | P4.S0, false P4.A4-P4.A5 | backend Runtime/operator state and migration; acceptance workflow/driver/tests/runbook | internal operator contract and recovery docs; public bootstrap/OpenAPI stay unchanged | only live `is_test` tasks may receive an exact verified override; normal users retain global metadata; stage changes use fresh checkpoint-bound bootstrap keys while prior idempotent responses remain immutable; registration must report the selected version; sensitivity prepares v0.1.24 with `preserve`, nine Docker sentinels, and exactly three running medium sandboxes through trusted SSH | backend unit/DB/operator/security tests, canary contract tests, full frontend/backend gates, migration upgrade/downgrade, independent review, exact-head CI/deploy | no | in_progress |
+| P4.R1 | Recover task-scoped signed artifact selection and establish a stable baseline-preparation path | P4.S0, false P4.A4-P4.A5 | backend Runtime/operator state and migration; acceptance workflow/driver/tests/runbook | internal operator contract and recovery docs; public bootstrap/OpenAPI stay unchanged | only live `is_test` tasks may receive an exact verified override; normal users retain global metadata; stage changes use fresh checkpoint-bound bootstrap keys while prior idempotent responses remain immutable; registration must report the selected version; sensitivity prepares v0.1.24 with `preserve`, nine Docker sentinels, and exactly three running medium sandboxes through trusted SSH | backend unit/DB/operator/security tests, canary contract tests, full frontend/backend gates, migration upgrade/downgrade, independent review, exact-head CI/deploy | no | completed; merged, deployed, and independently approved |
 | P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R1 and fresh owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence only | one task/server, key-only SSH, out-of-band pinned host key, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, trusted-host-key precondition, bounded state inspection, baseline prepare run | no | pending |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | pending |
 | P4.S3 | Final cancellation, absence verification, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no billable compute ambiguity; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | pending |
@@ -812,8 +815,8 @@ test -z "$(git tag --list "$TAG")"
 ### Live acceptance phase P4 sequence and integration
 
 1. P4.S0 froze the live quote, then the entry audit exposed false P4.A4-P4.A5.
-2. Complete P4.R1 and its independent recovery gate before seeking owner
-   approval or creating a billable resource.
+2. P4.R1 and its independent recovery gate are complete; obtain the owner's
+   fresh explicit approval before creating any billable resource.
 3. Complete P4.S1 serially; do not start a canary until the trusted-host-key and
    initial-resource checks pass.
 4. Run P4.S2 strictly in stage order. A failed stage stops progression and
@@ -848,6 +851,74 @@ test -z "$(git tag --list "$TAG")"
   sandbox, while sensitivity currently snapshots and connects before its
   install branch. No VPS or key was created. P4.R1 is now the required recovery
   gate before immediate owner confirmation.
+- P4.R1 recovery landed in frontend PR #107 from exact head
+  `1d39a1b7b355287519c628ff953a8a298658e5ff` and merged as
+  `6da3f0ab35eab8136ecfa11c88ccdd2a1d79003d`. The branch was merged with
+  current `origin/main` before every edit and again immediately before
+  integration. Recovery commits added the missing operator-command coverage
+  (`9da3289d2cbe97a631ad1d159e38159122234fbb`), removed the UTC-midnight test
+  race (`078cb17a4c3c66dc6daa0e3d1cc9c4ca47b5a58e`), routed both preparation
+  recovery paths through the production validator so UID 1000 replay succeeds
+  (`75e993117f434448890d21ddf7824b4b9e2ef58c`), and added a direct production
+  ownership/mode/symlink security oracle
+  (`1d39a1b7b355287519c628ff953a8a298658e5ff`).
+- Exact-head PR workflow `34173254408` passed Ruff, Alembic upgrade, 1815
+  backend tests with one skip and 87.59% statement/74.02% branch coverage, all
+  139 Node tests including the Linux root/non-root preparation replay, admin
+  build, and all 30 admin tests. Local Linux replay passed all 14 crash
+  boundaries as root and UID 1000; the focused UID 1000 Node gate passed 13/13;
+  Bash syntax, ShellCheck, `git diff --check`, and the full local build/test gate
+  passed. Two independent non-implementing reviews approved the exact head: one
+  verified ownership, exact-file cleanup, and replay recovery; the other
+  verified test-only selector isolation, exact signed metadata, bootstrap and
+  registration binding, operator authorization/cleanup, baseline preparation,
+  and the unchanged public OpenAPI/Agent Kit/global-user contract.
+- Default-branch workflow `34173873657` succeeded for merge commit
+  `6da3f0ab35eab8136ecfa11c88ccdd2a1d79003d`: test completed in 4m12s,
+  all four production images published in 2m51s, and the 17m22s deploy passed
+  database migration, blue-green service promotion, admin promotion, bounded
+  production x402 header verification, and IndexNow notification. No new
+  Runtime, CLI, or sandbox image release was required; the recovery consumes
+  the already verified signed Runtime v0.1.24/v0.1.25 and existing signed
+  all-tools image.
+- The fresh deployed-main read-only preflight, workflow run `34175259049` on
+  exact merge commit `6da3f0ab35eab8136ecfa11c88ccdd2a1d79003d`, passed. The live `agent`
+  quote remains monthly `$15.00` in LAX2, OGB1, or TPA2, and exact OS
+  `Ubuntu 24.04 (VPS)` remains available with SSH-key and cloud-init support.
+  Checkout, release verification, create, inspect, canary, selector cleanup,
+  cancellation, and receipt reconciliation were all skipped; no priced or
+  destructive lifecycle action occurred. P4.S1 remains pending fresh explicit
+  owner confirmation.
+
+### Live acceptance phase P4.R1 verification log
+
+- Acceptance criteria checked: test-only all-null/all-populated selector state,
+  exact signed version/key/URL/digest validation, bootstrap version/digest
+  binding, registration mismatch failure, global stable artifact behavior for
+  ordinary users, operator-only set/inspect/clear, expiry/cancellation cleanup,
+  and replay-safe fresh-host baseline preparation all passed.
+- Cross-subpart behavior checked: the deployed operator workflow selects a
+  signed artifact only for a live authorized test task, uses a new
+  checkpoint-bound bootstrap for each stage, preserves old idempotent results,
+  requires the registered Runtime version to match, and clears the selector in
+  the guarded lifecycle. The public bootstrap schema, OpenAPI, Agent Kit 0.8.7,
+  Runtime releases, and signed sandbox image are unchanged.
+- Error-path and log-safety evidence: partial preparation state is owned by
+  root, mode 0600, a regular non-symlink, and exact-file cleanup refuses foreign
+  or malformed state. Both root and UID 1000 replay traversed all 14 crash
+  boundaries. Selector input rejects partial tuples, arbitrary or mismatched
+  metadata, non-test/expired tasks, and registration-version mismatch without
+  printing credentials, signatures, bootstrap values, or private keys.
+- Authentication and authorization evidence: selector mutation is reachable
+  only through protected operator commands with exact task/version/digest
+  confirmation and a live `is_test` task. No customer-facing enable option or
+  per-user toggle was added; the capability remains an explicit host lifecycle
+  choice while the canary artifact selector is task-scoped and internal.
+- Independent review: two fresh read-only reviewers returned approval on exact
+  head `1d39a1b7b355287519c628ff953a8a298658e5ff`; exact-head CI, merge, production
+  deploy, and deployed-main preflight all passed. P4.R1 status: completed at
+  release revision 11. The unresolved risks are now the intended live kernel,
+  preservation, host-key, billing, and cleanup oracles in P4.S1-P4.S3.
 
 ### Documentation phase P2D header
 
