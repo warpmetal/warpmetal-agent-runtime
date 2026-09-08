@@ -1878,8 +1878,20 @@ test -z "$(git tag --list "$TAG")"
   non-durable or corrupt journal bytes. No exact fault-injection assertion
   covered that barrier. Keep integration and live dispatch blocked; add the
   missing held-file fsync before rename, an executable fault/trace oracle for
-  that ordering, and any other controls from the reviewers' final reports, then
-  repeat the full affected gates and obtain fresh non-implementing approval.
+  that ordering, then repeat the full affected gates and obtain fresh
+  non-implementing approval. The same review also requires executable coverage
+  for recovery-parent/task-directory creation, candidate file/directory,
+  prepared/attempted/completed journal file/rename/directory barriers, pin
+  appearance across the claim boundary, active lock-path replacement,
+  `journal.json.new` type/mode/owner/link violations, and cleanup failure with
+  strict-only replay. Temporary work cleanup must be part of successful outcome
+  rather than silently suppressed. The runbook must explicitly treat the
+  deployment UID, root, and their PATH-resolved `docker`, `ssh`, and
+  `ssh-keygen` command environment as trusted; the descriptor checks do not
+  claim isolation from hostile same-UID code. The fresh backend-contract review
+  approved the operator scope after independent PostgreSQL lock probes showed
+  child payment/reload inserts serialize behind the task-row lock and exact
+  competing claims/completions produce one durable event.
 
 ### Documentation phase P2D header
 
