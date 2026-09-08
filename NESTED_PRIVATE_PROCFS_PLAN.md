@@ -802,7 +802,7 @@ test -z "$(git tag --list "$TAG")"
 | P4.R3 | Replace mandatory provider-console trust with safe first-use trust for the protected canary and ordinary CLI users | false P4.A3/P4.A8, completed P4.R2 | agent-kit host-trust/state/installer/CLI/tests/docs first; frontend protected workflow/driver/tests/operator and public docs last | CLI 0.8.8 plus public human/LLM trust contract; no Runtime HTTP schema | first harmless owner-key SSH for an exact server trust epoch may accept only Ed25519 into an isolated candidate; atomic no-overwrite pin precedes bootstrap; immediate and all later SSH is strict; existing mismatch and unauthorized epoch change fail closed; optional console pre-seed remains | local two-host-key SSH integration, filesystem/race/error tests, agent-kit full gate and release, frontend focused/full gates, two fresh security reviews, exact-head CI/deploy | no | completed at revision 19; PR #110 deployed and protected live TOFU plus immediate strict replay passed on the sole acceptance VPS |
 | P4.R4 | Reauthorize the exact cancelled-but-provider-live acceptance task without reopening billing | false P4.A9, completed cleanup recovery, owner same-VPS direction | backend operator/service plus protected acceptance workflow/helper/tests/runbook; existing task/server/device/key/pin only | internal operator contract and recovery docs; no public API/schema or ordinary-user behavior change | exact fixed UTC deadline; current cancelled test, prior successful cancellation, provider `ON` and exact bindings, selector null, pending-install revision `1/0` and three intended medium sandboxes, protected task record, owner identity, existing pin, and strict SSH all pass before atomically setting only `test_expires_at` and `term_ends_at`; exact replay succeeds, different extension is forever refused; final cancel replay closes access | backend DB/provider tests, executable helper failure matrix, workflow contract tests, full frontend/backend gate, independent security review, exact-head CI/deploy, protected live inspect/extend/replay | no | deployed; first live extension failed closed on existing-pin validation before SSH/operator mutation, and bounded recovery is active |
 | P4.R5 | Diagnose protected acceptance-pin drift without changing trust state | failed P4.R4 live attempt and independently closed mutation ambiguity | protected exact task/server/hostname/device-bound workflow/helper plus focused tests/runbook | internal operator diagnostic only; no public API, CLI, LLM, Runtime, image, or ordinary-user behavior change | under the production and deployment locks, revalidate the exact task/provider binding and report only safe pin predicate classifications from no-follow descriptor metadata/canonical validation; never print key bytes/path, perform SSH/TOFU/enrollment, change pin metadata/content/inode, or call a mutation operator | behavioral classification/TOCTOU/security tests, Bash/ShellCheck/actionlint, full gates, independent review, exact-head CI/deploy, one protected diagnostic run | no | completed and independently approved; exact live result `missing` blocks P4 under the frozen trust contract |
-| P4.R6 | Consume one incident-bound same-VPS re-trust after the protected pin was proven missing | false P4.A10-P4.A11, completed P4.R5, explicit owner continuation | internal backend reservation/completion events; protected acceptance workflow/helper/tests/runbook; exact existing task/server/device/key only | internal canary recovery and operator runbook only; no public API, CLI, LLM, Runtime, image, or ordinary-user behavior change | exact task/server/hostname/device and original-trust/diagnostic run IDs; missing pin and unchanged cancelled/provider-ON/pending-install/three-sandbox baseline; durable unique reservation before network contact; at most one owner-key Ed25519 `true` observation; incomplete replay uses only the exact persisted candidate/pin or fails permanently; atomic no-overwrite publication, immediate strict replay, safe completion event; no lease/lifecycle/provider/payment mutation | backend uniqueness/concurrency/provider tests, executable crash-boundary and two-key matrix, workflow contract tests, full frontend/backend gate, two independent security reviews, exact-head CI/deploy, protected live recovery and strict replay | no | in_progress; design authorized and independently approved, implementation pending |
+| P4.R6 | Consume one incident-bound same-VPS re-trust after the protected pin was proven missing | false P4.A10-P4.A11, completed P4.R5, explicit owner continuation | internal backend reservation/completion events; protected acceptance workflow/helper/tests/runbook; exact existing task/server/device/key only | internal canary recovery and operator runbook only; no public API, CLI, LLM, Runtime, image, or ordinary-user behavior change | exact task/server/hostname/device and original-trust/diagnostic run IDs; missing pin and unchanged cancelled/provider-ON/pending-install/three-sandbox baseline; durable unique reservation before network contact; at most one owner-key Ed25519 `true` observation; incomplete replay uses only the exact persisted candidate/pin or fails permanently; atomic no-overwrite publication, immediate strict replay, safe completion event; no lease/lifecycle/provider/payment mutation | backend uniqueness/concurrency/provider tests, executable crash-boundary and two-key matrix, workflow contract tests, full frontend/backend gate, two independent security reviews, exact-head CI/deploy, protected live recovery and strict replay | no | in_progress; first implementation exists but independent filesystem/backend gates rejected it; bounded recovery active |
 | P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3, P4.R4, and P4.R6 | existing exact cancelled task/server/device, six-hour continuation lease, three medium sandbox intents | operator evidence plus exact recovery event and strict pin metadata | same single server, key-only strict SSH with the recovered pin, cancelled state plus bounded active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | recovery/strict-replay/inspect/lease runs, bounded state inspection, baseline prepare run | no | blocked on P4.R6 implementation, integration, deployment, and one protected recovery; the failed P4.R4 deadline is not retried |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked only on deployed P4.R4 and its completed same-VPS P4.S1 baseline |
 | P4.S3 | Final cancellation, provider reconciliation, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no future-billing ambiguity; provider compute may remain through the already-created term; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | failed-attempt cancellation and guarded cleanup are complete and replay-verified; final whole-phase cleanup/review remains pending P4.S2 |
@@ -1829,6 +1829,45 @@ test -z "$(git tag --list "$TAG")"
   frontend diff, followed by two fresh non-implementing security/behavior
   reviewers. No live workflow dispatch occurs until exact-head CI, merge,
   production deployment, and a fresh read-only baseline inspection pass.
+- First implementation gate: the bounded implementation passed its focused
+  backend/operator suite, mocked Linux helper suite, site regression suite,
+  migration cycle, Ruff, Bash syntax, ShellCheck, actionlint, and diff checks,
+  but both fresh independent reviewers rejected promotion. This is a recovery
+  of the implementation and executable oracle, not a change to the one-shot
+  architecture or live authority. No production workflow was dispatched.
+- Filesystem-security recovery controls are mandatory. Durably anchor creation
+  of the per-task recovery directory by fsyncing its parent before the backend
+  claim; prove the final pin is still stably absent with descriptor-relative,
+  no-follow observations immediately before claim, including prepared-state
+  replay; exclusively create and path-stably validate candidate, journal,
+  journal-temporary, lock, and pin objects with owner/mode/type/link checks;
+  reconcile an allowed journal-temporary crash residue only from the exact
+  backend state; and avoid rewriting a valid completed journal on replay.
+  Publication must fsync the final pin and containing directory before unlinking
+  the exact same-inode candidate, then fsync the candidate directory. Every
+  ambiguity, unexpected link, path swap, owner/mode change, or foreign entry is
+  a permanent refusal and can never reopen `accept-new`.
+- Backend/key-binding recovery controls are mandatory. Validate that claim and
+  completion responses echo every frozen task, server, hostname, device,
+  service, IP, original-run, diagnostic-run, deadline, and owner-fingerprint
+  binding, not only status and pin metadata. Derive a public key from the
+  selected private owner identity with `ssh-keygen -y`, fingerprint that
+  protected derived public value without printing it, and prove it matches the
+  task-authorized public-key fingerprint before either SSH mode. Recovery events
+  have database-enforced one-row-per-task uniqueness and are append-only through
+  the trusted operator path; a direct database owner remains inside the trusted
+  boundary, so the plan does not claim a database trigger prevents that owner
+  from updating or deleting rows.
+- Executable evidence must no longer rely only on fake `ssh`, `flock`, or Docker
+  shims. A Linux gate must run an isolated real OpenSSH daemon and the production
+  helper against host key A for first observation and strict replay, then host
+  key B for deterministic mismatch, while proving the exact owner private/public
+  identity is used. Add crash-barrier and recovery tests for every durable
+  transition; pin/journal/candidate/lock symlink and swap tests; owner, mode,
+  type, and link-count matrices; completed and incomplete replay residue; and
+  exact completion-response binding failures. Fresh filesystem-security and
+  backend-contract reviewers must independently approve the corrected diff and
+  executable oracle before exact-head CI or any live action.
 
 ### Documentation phase P2D header
 
