@@ -107,6 +107,7 @@
 | R11 | Explicit host-scoped lifecycle | Default install/upgrade preserves existing disk and kernel policy state; `--nested-private-procfs enable` installs/loads it only on amd64; `disable` unloads/removes it and restores a pre-existing destination safely | unit, integration, recovery inspection |
 | R12 | Product-wide documentation and discovery | Runtime, sandbox-image, CLI help/README/skill, public `/agent-runtime` and `/docs` pages, and `llms.txt` explain who needs the capability, why nested Bubblewrap is used, the planning/coding/QA examples, the exact version/action contract, host scope, and when to preserve or disable it | documentation contract, CLI test, frontend route/backend tests, inspection |
 | R13 | Safe first-use SSH trust without provider-console access | On the first owner-authenticated connection for an exact server trust epoch, CLI 0.8.8 or the protected canary may trust the first observed Ed25519 host key once, atomically pin it, and reconnect strictly before any bootstrap or payload transfer; every replay is strict and any mismatch, malformed pin, unexpected IP, failed reload, or ambiguous state fails without replacing the pin | unit, contract, local SSH integration, protected live end-to-end |
+| R14 | Missing-pin incident recovery cannot become a reusable trust reset | The one existing acceptance canary may consume exactly one separately authorized, exact-task recovery reservation after a protected diagnostic proves its pin missing; the reservation is durable before network contact, a retry never performs a second first-contact observation, successful publication is followed by strict replay, and the path is unavailable to ordinary users or any other task/device | unit, contract, concurrency, failure-recovery, protected live end-to-end |
 
 ## Architecture
 
@@ -278,6 +279,7 @@
 | Policy activation | install on every restricted-AppArmor host; per-sandbox toggle; explicit host toggle | default `preserve`, explicit signed `enable`/`disable`; AppArmor pathname attachment cannot truthfully provide per-sandbox isolation without a separate outer profile/API design | hosts without nested Bubblewrap receive no policy mutation; enabled dedicated hosts grant all same-owner matching-path sandboxes |
 | Consumer scope | Nico-only feature; coding-only feature; general nested-Bubblewrap capability | general capability with Nico as the first acceptance consumer; need is determined by the inner isolation boundary rather than the agent brand, task category, GitHub use, or subagent use | product docs must use capability-based language and concrete planning/coding/QA examples |
 | Initial VPS host trust | mandatory provider-console enrollment; blind network scan; authenticated trust on first use with optional console pre-seed | trust the first host key observed during one harmless owner-key-authenticated SSH connection for an exact server trust epoch, then atomically pin and require strict matching; retain protected console enrollment as an optional stronger pre-seed and forbid `ssh-keyscan` | ordinary users do not need Hivelocity access; first-connection MITM remains an explicit accepted residual; mismatch bypass and generic pin reset remain forbidden |
+| Missing protected canary pin | abandon the canary; infer the old key; generic reset; one exact incident-bound recovery | do not claim restoration because the original public fingerprint was not retained; after the owner explicitly continued with the disclosed second trust event, permit one internal same-task recovery whose durable reservation is consumed before SSH and whose incomplete replay can use only the exact already-observed candidate or pin | this is a second accepted first-contact MITM window for one canary, not an ordinary-user reset or new trust epoch; any ambiguity exhausts the recovery and closes the canary |
 
 ## Assumption ledger
 
@@ -295,6 +297,7 @@
 | A10 | Ordinary WarpMetal users can obtain a provider-console-authenticated VPS host key before using the CLI | high | false | owner decision: users will not have Hivelocity access; the supported default must use first-observed-key trust once and preserve strict pin continuity afterward |
 | A11 | Cancelling an operator test task immediately destroys the provider device | medium | false | Hivelocity cancellation stops future billing but retains the device through its already-created term; the cleanup oracle is terminal task state plus unambiguous successful provider cancellation, while `hasProviderDevice=true` and powered compute may remain until provider retirement |
 | A12 | The cancelled acceptance task cannot be reused while its paid provider device remains live | high | false as stated; direct reuse is still blocked | `cancelled` is an intentionally manageable Runtime/SSH state only while the control-plane term is active, but this task's six-hour `test_expires_at` and capped `term_ends_at` both expired at `2026-09-08T07:33:04.758006Z`; reuse requires a protected one-time continuation lease for this exact task/device without changing cancellation or billing state |
+| A13 | The original successful protected TOFU retained an immutable public host-key fingerprint or canonical pin digest that can authenticate a replacement pin | high | false | GitHub run `34198472527` proves the exact trust step succeeded on deployed commit `7ae91ba5`, but its retained job log, check output, and artifact inventory contain no helper fingerprint/digest output; Runtime never registered and the protected diagnostic found the only pin missing, so continuity cannot be reconstructed |
 
 ## Test strategy
 
@@ -330,6 +333,7 @@
 | First SSH connection | an active attacker presents the first observed host key and becomes the durable pin | bind TOFU to the exact authenticated API server ID/IP and owner key, perform only `ssh true`, pin once per authorized trust epoch, then reconnect strictly before bootstrap; optional console pre-seed remains available | local two-host-key integration, protected canary, mismatch/no-overwrite and no-bootstrap-before-pin tests |
 | Later SSH connection or host reload | key substitution, blind reset, or stale pin weakens continuity | strict managed `UserKnownHostsFile`; no accept-new when a pin exists; only a successful authenticated reload operation that declares host-key refresh may create a new trust epoch | replay/mismatch tests and reload state-machine tests |
 | Cancelled-test continuation | a generic reopen path silently restores access, extends billing, trusts a new host, or reuses a different provider device | one protected fixed-deadline extension for the exact cancelled pending-install test shape; current provider/DB/record/key/pin binding plus strict SSH before DB change; state remains cancelled and final cancel replay closes the lease | operator DB/provider negative tests, workflow/helper behavioral tests, live inspect/strict probe/replay/final closure |
+| Missing protected pin recovery | repeated blind TOFU, an inferred old key, a crash that silently renews first-contact authority, or reuse for another task/device | exact one-task/source-bound reservation in the durable backend before SSH; exact protected local attempt state; one Ed25519 owner-key `true` observation; incomplete replay uses only an already-written candidate/pin and otherwise fails permanently; completion records only safe fingerprint/digest metadata; no lease or lifecycle mutation | backend uniqueness/concurrency tests, executable crash-boundary matrix, two-host-key negative oracle, protected live recovery and strict replay |
 
 ## Master phase map
 
@@ -341,7 +345,7 @@
 | P2R | Runtime policy lifecycle is explicit, default-off, architecture-gated, and reversibly recoverable | R2-R4, R10-R11, A2-A3, A7-A8 | P2 recovery review | default preserve is mutation-free; explicit amd64 enable is idempotent; disable unloads/removes Runtime policy and restores any displaced prior file/state; interruption evidence is durable; tests/docs green | completed |
 | P2D | General capability documentation is discoverable and example-driven | R11-R12, A7-A9 | P2R interface | Runtime and sandbox docs, CLI help/skill, public pages, and both LLM contract sources agree on purpose, examples, versions, actions, host scope, and non-goals; repository gates pass | completed |
 | P3 | Signed v0.1.25 prerelease, CLI 0.8.7, and five-stage frontend canary contract ready | R1-R5, R10-R12 | P1-P2R, P2D | exact heads pass CI/review; signed Runtime and npm CLI releases are independently verified; frontend workflow is available on its default branch | completed |
-| P4 | Rollback/forward/disable amd64 acceptance canary passes | R1-R6, R10-R11, R13, A1-A4, A10 | P3 | first-use trust is safely pinned, pre-policy sensitivity, positive capability, preservation, retained-policy binary rollback, forward, and exact disable/restore gates pass | in_progress |
+| P4 | Rollback/forward/disable amd64 acceptance canary passes | R1-R6, R10-R11, R13-R14, A1-A4, A10, A13 | P3 | first-use trust or its one authorized incident recovery is safely pinned, pre-policy sensitivity, positive capability, preservation, retained-policy binary rollback, forward, and exact disable/restore gates pass | in_progress |
 | P5 | Stable production Runtime/image and Nico sandbox refresh | R1-R7, R10 | P4 | stable assets; Nico upgrade plus both explicit refreshes verified | pending |
 | P6 | Nico code/deploy and real autonomous task pass | R7-R10 | P5 | full gates, deploy, coder/publisher/QA canary, staged flags | pending |
 
@@ -660,7 +664,8 @@ test -z "$(git tag --list "$TAG")"
   the signed Runtime can move through `sensitivity -> candidate -> rollback ->
   forward -> disable` while preserving host workloads and restoring the exact
   pre-enable AppArmor state.
-- Covered requirement and assumption IDs: R1-R6, R10-R11; A1-A4, A6, A8.
+- Covered requirement and assumption IDs: R1-R6, R10-R11, R13-R14; A1-A4,
+  A6, A8, A10, A13.
 - Entry criteria: P3 is complete; the signed Runtime v0.1.24 baseline, signed
   v0.1.25 prerelease, npm CLI 0.8.7, pinned amd64 sandbox image, and deployed
   workflow are immutable and independently verified. A read-only live preflight
@@ -740,6 +745,7 @@ test -z "$(git tag --list "$TAG")"
 | P4.A8 | The official CLI already supports a self-contained first-use host-key path for a fresh VPS | agent-kit 0.8.7 source audit of login, install, SSH/SCP, and canary pin mounting | false: login is API-only and install is strict against ambient `~/.ssh/known_hosts` | add managed server-ID/trust-epoch TOFU in CLI 0.8.8; the frozen 0.8.7 canary may use the protected P4.R3 pin mounted into the CLI container |
 | P4.A9 | The same cancelled acceptance task can resume immediately because provider compute remains powered | source audit plus post-cancel run `34198926210` | false for direct use; recoverable without a new VPS | backend and drivers accept `cancelled` only with an active control-plane term; add P4.R4 to extend this exact expired test/term deadline once after revalidating provider compute and the existing strict owner-key pin |
 | P4.A10 | The TOFU-established protected pin still exists after cancellation, guarded cleanup, and later production deployments | protected diagnostic run `34255110640` | false: exact task/provider binding passed but the task-derived pin path classified `missing` | stop P4 before SSH or lease mutation; no TOFU rerun, reset, replacement, or repair is authorized for missing trust state |
+| P4.A11 | The exact original host fingerprint or canonical pin digest can be recovered from immutable safe evidence and used to prove continuity without another first-contact decision | successful TOFU run `34198472527`, its retained job log/check output/artifact inventory, Runtime state, and diagnostic run `34255110640` | false: the step success is immutable but no fingerprint/digest was retained; Runtime remained uninstalled and the protected pin is missing | do not infer or claim restoration; P4.R6 may consume one explicitly authorized second trust event for only this exact canary, with durable pre-SSH reservation and fail-closed incomplete replay |
 
 ### Live acceptance phase P4 entry-gate decision
 
@@ -757,9 +763,13 @@ test -z "$(git tag --list "$TAG")"
   billing was terminally cancelled. The owner subsequently directed continued
   testing on that same still-live VPS and authorized required software upgrades.
   This authorizes the bounded P4.R4 continuation and previously disclosed
-  Runtime/sandbox/policy canary on the same device. It does not authorize a new
-  order, payment, renewal, provider reactivation, replacement VPS, host-key
-  reset, or direct/ad-hoc host mutation.
+  Runtime/sandbox/policy canary on the same device. After P4.R5 proved the pin
+  missing and the owner was told that continuation required a separately
+  designed and reviewed second first-contact trust event, the owner said
+  `continue`; that authorizes only P4.R6's exact one-shot recovery for this task
+  and provider device. It does not authorize a new order, payment, renewal,
+  provider reactivation, replacement VPS, generic host-key reset, ordinary-user
+  reset option, or direct/ad-hoc host mutation.
 - Decision evidence: owner authorized plan execution and asked to begin live VPS
   testing; managed-plan and WarpMetal safety contracts require the separate
   immediate mutation confirmation after live discovery.
@@ -780,7 +790,7 @@ test -z "$(git tag --list "$TAG")"
   request and response remain unchanged. P4.R1 adds only nullable internal test
   metadata, protected operator commands, and deployment-runbook coverage. Any
   live discrepancy reopens P2/P3 instead of editing the oracle to pass.
-- Decision timestamp or plan revision: 2026-09-08, release revision 21.
+- Decision timestamp or plan revision: 2026-09-08, release revision 23.
 
 ### Live acceptance phase P4 subparts
 
@@ -792,7 +802,8 @@ test -z "$(git tag --list "$TAG")"
 | P4.R3 | Replace mandatory provider-console trust with safe first-use trust for the protected canary and ordinary CLI users | false P4.A3/P4.A8, completed P4.R2 | agent-kit host-trust/state/installer/CLI/tests/docs first; frontend protected workflow/driver/tests/operator and public docs last | CLI 0.8.8 plus public human/LLM trust contract; no Runtime HTTP schema | first harmless owner-key SSH for an exact server trust epoch may accept only Ed25519 into an isolated candidate; atomic no-overwrite pin precedes bootstrap; immediate and all later SSH is strict; existing mismatch and unauthorized epoch change fail closed; optional console pre-seed remains | local two-host-key SSH integration, filesystem/race/error tests, agent-kit full gate and release, frontend focused/full gates, two fresh security reviews, exact-head CI/deploy | no | completed at revision 19; PR #110 deployed and protected live TOFU plus immediate strict replay passed on the sole acceptance VPS |
 | P4.R4 | Reauthorize the exact cancelled-but-provider-live acceptance task without reopening billing | false P4.A9, completed cleanup recovery, owner same-VPS direction | backend operator/service plus protected acceptance workflow/helper/tests/runbook; existing task/server/device/key/pin only | internal operator contract and recovery docs; no public API/schema or ordinary-user behavior change | exact fixed UTC deadline; current cancelled test, prior successful cancellation, provider `ON` and exact bindings, selector null, pending-install revision `1/0` and three intended medium sandboxes, protected task record, owner identity, existing pin, and strict SSH all pass before atomically setting only `test_expires_at` and `term_ends_at`; exact replay succeeds, different extension is forever refused; final cancel replay closes access | backend DB/provider tests, executable helper failure matrix, workflow contract tests, full frontend/backend gate, independent security review, exact-head CI/deploy, protected live inspect/extend/replay | no | deployed; first live extension failed closed on existing-pin validation before SSH/operator mutation, and bounded recovery is active |
 | P4.R5 | Diagnose protected acceptance-pin drift without changing trust state | failed P4.R4 live attempt and independently closed mutation ambiguity | protected exact task/server/hostname/device-bound workflow/helper plus focused tests/runbook | internal operator diagnostic only; no public API, CLI, LLM, Runtime, image, or ordinary-user behavior change | under the production and deployment locks, revalidate the exact task/provider binding and report only safe pin predicate classifications from no-follow descriptor metadata/canonical validation; never print key bytes/path, perform SSH/TOFU/enrollment, change pin metadata/content/inode, or call a mutation operator | behavioral classification/TOCTOU/security tests, Bash/ShellCheck/actionlint, full gates, independent review, exact-head CI/deploy, one protected diagnostic run | no | completed and independently approved; exact live result `missing` blocks P4 under the frozen trust contract |
-| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3 and P4.R4 | existing exact cancelled task/server/device, six-hour continuation lease, three medium sandbox intents | operator evidence plus existing safe TOFU metadata | same single server, key-only strict SSH with existing pin, cancelled state plus bounded active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | inspect/lease runs, strict-replay precondition, bounded state inspection, baseline prepare run | no | blocked: protected diagnosis found the required pin missing; no lease retry, TOFU rerun, reset, repair, replacement VPS, or trust bypass is authorized |
+| P4.R6 | Consume one incident-bound same-VPS re-trust after the protected pin was proven missing | false P4.A10-P4.A11, completed P4.R5, explicit owner continuation | internal backend reservation/completion events; protected acceptance workflow/helper/tests/runbook; exact existing task/server/device/key only | internal canary recovery and operator runbook only; no public API, CLI, LLM, Runtime, image, or ordinary-user behavior change | exact task/server/hostname/device and original-trust/diagnostic run IDs; missing pin and unchanged cancelled/provider-ON/pending-install/three-sandbox baseline; durable unique reservation before network contact; at most one owner-key Ed25519 `true` observation; incomplete replay uses only the exact persisted candidate/pin or fails permanently; atomic no-overwrite publication, immediate strict replay, safe completion event; no lease/lifecycle/provider/payment mutation | backend uniqueness/concurrency/provider tests, executable crash-boundary and two-key matrix, workflow contract tests, full frontend/backend gate, two independent security reviews, exact-head CI/deploy, protected live recovery and strict replay | no | in_progress; design authorized and independently approved, implementation pending |
+| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3, P4.R4, and P4.R6 | existing exact cancelled task/server/device, six-hour continuation lease, three medium sandbox intents | operator evidence plus exact recovery event and strict pin metadata | same single server, key-only strict SSH with the recovered pin, cancelled state plus bounded active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | recovery/strict-replay/inspect/lease runs, bounded state inspection, baseline prepare run | no | blocked on P4.R6 implementation, integration, deployment, and one protected recovery; the failed P4.R4 deadline is not retried |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked only on deployed P4.R4 and its completed same-VPS P4.S1 baseline |
 | P4.S3 | Final cancellation, provider reconciliation, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no future-billing ambiguity; provider compute may remain through the already-created term; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | failed-attempt cancellation and guarded cleanup are complete and replay-verified; final whole-phase cleanup/review remains pending P4.S2 |
 
@@ -994,6 +1005,7 @@ test -z "$(git tag --list "$TAG")"
 | R10 | no credential or unbounded diagnostic exposure | workflow/log inspection | yes | inspect bounded stage markers and secret-redaction behavior only |
 | P4.A3/P4.A7/P4.A8 | first observed key may be trusted only once for the exact owner-authenticated task epoch; console pre-seed remains optional | workflow and CLI security/integration | yes | actual SSH A pins; strict A replay succeeds; unexpected B fails with pin byte-identical and zero bootstrap calls; only an authenticated successful reload epoch may permit one B first-use; enrollment tests retain stronger pre-seed coverage |
 | P4.A9 | expired cancelled task may receive exactly one bounded continuation without billing or trust reset | operator/workflow/provider integration | yes | fixed-deadline action verifies exact provider-live pending-install shape and strict existing pin before changing only both lease deadlines; exact replay succeeds and every different extension fails |
+| P4.A10-P4.A11/R14 | missing canary pin consumes at most one explicitly authorized second first-contact observation and never becomes a reset | backend/workflow security, crash recovery, live end-to-end | yes | immutable claim commits before an attempted journal and the only accept-new SSH; every replay is strict against the retained candidate/pin or permanently refuses; completion records safe digest/fingerprint; another task, binding, key, or missing completed pin fails |
 | R11 | sensitivity begins absent; candidate enables; rollback retains policy; forward remains enabled; disable restores exact absent state | live lifecycle | yes | ordered stage checkpoint and exact final `post-disable-v0125-denied` oracle |
 | Billing/cleanup | only one approved monthly VPS exists and is cancelled; ephemeral stage resources are removed | live operator/lifecycle | yes | exact task/hostname binding, per-stage cleanup, cancel/inspect reconciliation |
 
@@ -1003,21 +1015,30 @@ test -z "$(git tag --list "$TAG")"
 1. Dispatch protected `inspect` for the exact existing task and require the same
    cancelled task/server/device/IP, provider compute powered `ON`, null selector,
    pending-install revision `1/0`, and no payment attempt or failure.
-2. Deploy and invoke `extend-cancelled-test-lease` once with a fixed six-hour UTC
+2. Merge, review, test, deploy, and invoke the canary-specific
+   `recover-missing-acceptance-host-pin` once. Require the exact original-trust
+   and diagnostic run IDs, hard-coded task/server/hostname/device/IP/service,
+   immutable pre-SSH claim, one owner-key Ed25519 `true` observation, atomic
+   publication, strict replay, and immutable safe completion evidence. Exact
+   replay must use strict SSH only. Any consumed ambiguous or empty attempt
+   closes the canary without a second observation.
+3. After a fresh protected inspect, obtain an exact new fixed deadline and
+   invoke `extend-cancelled-test-lease` once with that fixed six-hour UTC
    deadline, then inspect and replay it exactly. Require state still cancelled,
    both deadlines equal, one audit event, strict existing-pin SSH, and no
    order/payment/renewal/provider/Runtime/sandbox mutation.
-3. Complete P4.R1 so the test task, not the global production metadata, selects
+4. Complete P4.R1 so the test task, not the global production metadata, selects
    the signed stage artifact and sensitivity has an explicit stable baseline.
-4. Do not preflight, create, pay, renew, reactivate provider billing, generate a
-   key, or rerun TOFU. Reuse only the already protected owner identity and pin.
-5. Prepare the v0.1.24 baseline with `preserve` on the same exact VPS before any
+5. Do not preflight, create, pay, renew, reactivate provider billing, generate a
+   key, or run any trust reset. Reuse only the already protected owner identity
+   and the one completed P4.R6 pin after its explicit second-contact residual.
+6. Prepare the v0.1.24 baseline with `preserve` on the same exact VPS before any
    private-procfs policy stage.
-6. Dispatch sensitivity, candidate, rollback, forward, and disable separately,
+7. Dispatch sensitivity, candidate, rollback, forward, and disable separately,
    in order, with the exact baseline/candidate SHA-256 values.
-7. Inspect every run for its exact stage success line, host snapshot equality,
+8. Inspect every run for its exact stage success line, host snapshot equality,
    signed metadata, and temporary resource cleanup before advancing.
-8. Replay protected cancel after all stage cleanup to close the continuation
+9. Replay protected cancel after all stage cleanup to close the continuation
    lease without a second provider cancellation. Inspect expired deadlines,
    terminal task, null selector, and unambiguous prior provider cancellation,
    then perform an independent whole-phase review before promoting Runtime
@@ -1029,9 +1050,10 @@ test -z "$(git tag --list "$TAG")"
 1. P4.S0 froze the live quote, then the entry audit exposed false P4.A4-P4.A5.
 2. P4.R1 and its independent recovery gate are complete; the owner approved and
    the workflow created exactly one bounded billable resource.
-3. Complete P4.R3 and P4.R4, then resume P4.S1 on that same resource. Do not
-   start a canary until the existing pin strictly matches, the fixed continuation
-   deadline is active, and the initial-resource checks pass.
+3. Complete P4.R6, then re-enter P4.R4 and resume P4.S1 on that same resource.
+   Do not start a canary until the recovered pin strictly matches its immutable
+   completion event, a newly confirmed fixed continuation deadline is active,
+   and the initial-resource checks pass. Never retry the expired failed deadline.
 4. Run P4.S2 strictly in stage order. A failed stage stops progression and
    enters cleanup/recovery without weakening or skipping its oracle.
 5. Run P4.S3 even after a failed stage when safe cleanup is possible. Treat
@@ -1611,6 +1633,83 @@ test -z "$(git tag --list "$TAG")"
   and single-link candidates/existing/final pins without changing enrollment
   semantics. Require independent recovery approval before integration.
 
+### Live acceptance phase P4.R6 frozen one-shot re-trust recovery design
+
+- This is not restoration of the original pin. Protected TOFU run
+  `34198472527` proves that a trust event succeeded on exact deployed commit
+  `7ae91ba5745ba9f1ee436ae932d604f16a6f8d95`, but its retained job log, check
+  output, and artifact inventory contain no host fingerprint or canonical file
+  digest. Runtime never registered host keys, and diagnostic run `34255110640`
+  proved the only protected pin is missing. The owner explicitly accepted the
+  disclosed consequence by saying `continue`: one second first-contact trust
+  event, with the same MITM residual, for this canary only.
+- Add a separate protected `recover-missing-acceptance-host-pin` action. Hard
+  bind source, inputs, and confirmation to task
+  `task_bRE4vSeF8tE0a_bOLwq2FdTz`, server
+  `srv_ZvQaOP05rGycwcX4vcKBTQnN`, hostname
+  `private-procfs-canary-20260908`, provider device `69097`, service `315175`,
+  literal IP `23.227.167.104`, original trust run `34198472527`, missing-pin
+  diagnostic run `34255110640`, and the explicit phrase
+  `ACCEPT-SECOND-FIRST-CONTACT`. No other task, run, device, IP, service, or
+  confirmation is eligible, and the action accepts no submitted host key.
+- Add immutable internal task events for `claimed` and `completed`, each with a
+  database-enforced one-row-per-task uniqueness constraint. The protected helper
+  first revalidates the exact expired cancelled task, successful prior provider
+  cancellation, zero-payment/null-selector state, provider `ON` observation,
+  Runtime `pending_install` revision `1/0`, three exact persistent medium
+  intents, absence of any reload operation/event, original equal expired
+  deadlines, protected task record, owner identity/public fingerprint, correct
+  pin directory, stable missing final pin, and absence of foreign recovery
+  entries. It writes and fsyncs the exact local recovery directory, empty
+  deterministic candidate, and prepared journal before the claim, then the
+  backend atomically commits the exact `claimed` event before any network
+  contact. Claim detail binds every identifier, evidence-run ID, owner
+  fingerprint, original deadline, and expected baseline. A different or
+  malformed existing event refuses.
+- Persist and fsync an exact task-bound journal plus deterministic isolated
+  mode-0600 candidate. Only the process that newly created the backend claim may
+  publish and fsync an `attempted` journal state and invoke exactly one owner-key
+  `root@23.227.167.104 true` SSH attempt with `-F /dev/null`, Ed25519-only
+  `StrictHostKeyChecking=accept-new`, the isolated candidate as the only known-
+  hosts file, and ambient hosts, DNS verification, updates, agents, proxies,
+  forwarding, local commands, passwords, keyboard-interactive authentication,
+  and X11 disabled. Never use `ssh-keyscan`, print SSH diagnostics, or send a
+  bootstrap, bundle, token, command payload, or other host mutation.
+- Every invocation after an existing `claimed` event never invokes `accept-new`,
+  even if the first process crashed before starting SSH. It may continue only by
+  validating and strictly authenticating against the exact already-written
+  candidate or published pin. A claimed attempt with missing, empty, malformed,
+  foreign, ownership/mode/link, journal, or binding state is permanently
+  exhausted and closes the canary. A crash after final hard-link publication
+  may remove only the exact same-inode deterministic candidate after validating
+  both names; no other link or entry is repairable.
+- Re-inspect the complete backend/provider/task tuple after authentication,
+  atomically publish the canonical literal-IP Ed25519 candidate without
+  overwrite, fsync it and its directory, and immediately repeat the harmless
+  SSH with strict checking. Re-inspect the complete tuple again after strict
+  success. Only then may the backend append the
+  exact `completed` event containing the public algorithm, fingerprint, file
+  digest, bindings, and source run IDs. A completed replay requires the current
+  pin to match that event and performs only strict SSH. A missing or mismatched
+  pin after completion can never claim or observe another key.
+- The recovery action performs no lease extension, order, payment, renewal,
+  provider mutation/reactivation, Runtime install, sandbox/grant operation,
+  cancellation, reload, or generic trust reset. P4.R4 remains a separately
+  dispatched action after a fresh inspection and a newly owner-confirmed fixed
+  deadline; its failed expired deadline is never retried or silently replaced.
+  Documentation impact is limited to this plan and the internal backend
+  operator runbook. Public API/OpenAPI, CLI, LLM text, Runtime/image artifacts,
+  and ordinary-user behavior remain unchanged.
+- Tests freeze backend claim/completion validation, provider and baseline
+  predicates, immutable uniqueness and concurrent claims, exact-event replay,
+  every journal/candidate/pin crash boundary, the pre-SSH attempted durability
+  barrier, actual A-observe/A-strict/B-mismatch behavior, no second `accept-new`,
+  no-overwrite publication, incomplete/completed replay, output redaction,
+  lock contention, Python 3.8 compatibility, and static absence of every
+  forbidden lifecycle call. Two fresh non-implementing security reviewers and
+  a new exact-head CI/deployment gate are required before one protected live
+  dispatch.
+
 ### Live acceptance phase P4.R5 verification and CI-recovery log
 
 - Implementation commit `e684dd6` added the separate protected diagnostic
@@ -1694,6 +1793,42 @@ test -z "$(git tag --list "$TAG")"
   completed as a diagnostic, while P4 itself is blocked pending the owner choice
   to close this canary or separately authorize a new, reviewed trust-recovery
   design that explicitly accepts another first-contact trust event.
+
+### Live acceptance phase P4.R6 authorization and design-review log
+
+- The owner was told that a missing pin could not be restored under the prior
+  contract and that continuation required a separately designed, reviewed
+  re-trust path accepting another first-contact trust event. The owner's next
+  instruction was `continue`. This authorizes exactly one P4.R6 attempt for the
+  already cancelled and provider-live canary; it does not authorize a general
+  reset, another VPS, payment, renewal, lease mutation, or a retry after
+  ambiguous first-contact state.
+- Read-only evidence review reconfirmed original protected TOFU run
+  `34198472527` succeeded on exact commit
+  `7ae91ba5745ba9f1ee436ae932d604f16a6f8d95`, but the retained job log contains
+  no final fingerprint/digest output, the check output is empty, and the run has
+  zero artifacts. Repository and plan history contain only the output template,
+  not the observed value. Backend `sshFingerprint` is the owner login-key
+  fingerprint, Runtime host keys remain empty because installation never began,
+  and provider/task projections contain no server host-key identity. Therefore
+  P4.A11 is false and the recovery must not claim continuity with the first pin.
+- Fresh non-implementing reviewer `P4-R6-design-audit-01` returned `APPROVE WITH
+  MANDATORY CONTROLS`: hard-bind the exact task/server/hostname/device/service/IP
+  and both evidence-run IDs; explicitly acknowledge
+  `ACCEPT-SECOND-FIRST-CONTACT`; commit an immutable unique backend claim before
+  the one allowed `accept-new`; persist candidate/journal state; make every
+  invocation after an existing claim strict-only; record a separate safe
+  completion event; and refuse permanently on empty/ambiguous state or a later
+  missing completed pin. It independently confirmed that no prior public host
+  fingerprint/digest is recoverable.
+- Entry gate: implementation is authorized at release revision 23, with the
+  primary manager retaining plan and integration ownership. Frontend changes
+  remain deliberately last. Current frontend `main` must be fetched and merged
+  before the first edit and again immediately before PR integration; any
+  conflict stops for owner direction. One bounded implementer may own the
+  frontend diff, followed by two fresh non-implementing security/behavior
+  reviewers. No live workflow dispatch occurs until exact-head CI, merge,
+  production deployment, and a fresh read-only baseline inspection pass.
 
 ### Documentation phase P2D header
 
