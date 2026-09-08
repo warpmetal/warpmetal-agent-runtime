@@ -769,7 +769,7 @@ test -z "$(git tag --list "$TAG")"
 | P4.S0 | Read-only current quote and readiness packet | P3 | production operator `action=preflight`, plan `agent` | plan evidence only | current purchasing readiness, exact OS, capacity, and monthly price; no key/order/resource mutation | inspect exact workflow run/logs and absence of create step | no | completed |
 | P4.R1 | Recover task-scoped signed artifact selection and establish a stable baseline-preparation path | P4.S0, false P4.A4-P4.A5 | backend Runtime/operator state and migration; acceptance workflow/driver/tests/runbook | internal operator contract and recovery docs; public bootstrap/OpenAPI stay unchanged | only live `is_test` tasks may receive an exact verified override; normal users retain global metadata; stage changes use fresh checkpoint-bound bootstrap keys while prior idempotent responses remain immutable; registration must report the selected version; sensitivity prepares v0.1.24 with `preserve`, nine Docker sentinels, and exactly three running medium sandboxes through trusted SSH | backend unit/DB/operator/security tests, canary contract tests, full frontend/backend gates, migration upgrade/downgrade, independent review, exact-head CI/deploy | no | completed; merged, deployed, and independently approved |
 | P4.R2 | Recover a protected deployment-host enrollment path for console-authenticated host keys | P4.R1, partially resolved P4.A3, false P4.A7 | acceptance workflow/tests/runbook only | internal operator workflow; public API and ordinary-user behavior unchanged | accept one console-copied OpenSSH public host key for the exact live test task/hostname; derive and verify current IP/task state on the deployment host; atomically create the non-symlink mode-0600 pin under a mode-0700 directory; byte-identical replay succeeds and every mismatch refuses overwrite; log only fingerprint and file digest | workflow contract tests, shell syntax, exact-head CI/deploy, independent review | no | completed; PR #108 exact head, merge tree, default-branch deployment, fresh task inspection, and three independent reviews approved |
-| P4.R3 | Replace mandatory provider-console trust with safe first-use trust for the protected canary and ordinary CLI users | false P4.A3/P4.A8, completed P4.R2 | agent-kit host-trust/state/installer/CLI/tests/docs first; frontend protected workflow/driver/tests/operator and public docs last | CLI 0.8.8 plus public human/LLM trust contract; no Runtime HTTP schema | first harmless owner-key SSH for an exact server trust epoch may accept only Ed25519 into an isolated candidate; atomic no-overwrite pin precedes bootstrap; immediate and all later SSH is strict; existing mismatch and unauthorized epoch change fail closed; optional console pre-seed remains | local two-host-key SSH integration, filesystem/race/error tests, agent-kit full gate and release, frontend focused/full gates, two fresh security reviews, exact-head CI/deploy | no | in_progress; agent-kit 0.8.8 merged, tagged, and published by the green release workflow; frontend/protected-canary/public-doc implementation remains |
+| P4.R3 | Replace mandatory provider-console trust with safe first-use trust for the protected canary and ordinary CLI users | false P4.A3/P4.A8, completed P4.R2 | agent-kit host-trust/state/installer/CLI/tests/docs first; frontend protected workflow/driver/tests/operator and public docs last | CLI 0.8.8 plus public human/LLM trust contract; no Runtime HTTP schema | first harmless owner-key SSH for an exact server trust epoch may accept only Ed25519 into an isolated candidate; atomic no-overwrite pin precedes bootstrap; immediate and all later SSH is strict; existing mismatch and unauthorized epoch change fail closed; optional console pre-seed remains | local two-host-key SSH integration, filesystem/race/error tests, agent-kit full gate and release, frontend focused/full gates, two fresh security reviews, exact-head CI/deploy | no | completed at release revision 17; agent-kit 0.8.8 is published and frontend PR #109 is deployed with the protected TOFU action and public contract |
 | P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3 and existing owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence plus safe TOFU metadata | one task/server, key-only SSH, exact-task first-use pin or optional stronger pre-seed, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, first-use pin and strict-replay precondition, bounded state inspection, baseline prepare run | no | in_progress; one ready server exists, P4.R3 and baseline preparation pending |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | pending |
 | P4.S3 | Final cancellation, absence verification, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no billable compute ambiguity; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | pending |
@@ -1254,6 +1254,43 @@ test -z "$(git tag --list "$TAG")"
   P4.R3 remains in progress only for the deliberately last frontend protected
   TOFU path, strict live-driver conversion, operator/public/OpenAPI/LLM text,
   deployed verification, and fresh final reviews.
+
+### Live acceptance phase P4.R3 frontend verification log
+
+- Integration order: the frontend branch was fast-forwarded from `main` before
+  implementation and `origin/main` was fetched and merged again immediately
+  before the final gate; it was already up to date. The intended stable diff was
+  committed as `6060dac3b5159b08955ad22d088344e45c3c93ad`.
+- Acceptance criteria checked: the protected TOFU action binds the exact task,
+  hostname, provider device, API server/IP/state/term, and owner identity; rejects
+  submitted host-key bytes; retains one isolated Ed25519 candidate across bounded
+  retries; requires exact public-key authentication; reinspects the full tuple;
+  publishes atomically without overwrite; and completes immediate strict replay
+  before either canary driver may bootstrap. Existing mismatches remain fatal.
+- Driver and package evidence: both live drivers contain no `ssh-keyscan`, require
+  the protected canonical literal-IP pin, use CLI 0.8.8, preseed its exact
+  server-ID/trust-epoch state path, and require `hostKeyTrust.state` to be
+  `matched`. The signed all-tools sandbox-image policy and digest are unchanged.
+- Public contract evidence: English, Spanish, and Portuguese Runtime/docs pages,
+  canonical and backend LLM text, operator runbook, and description-only OpenAPI
+  text disclose the accepted first-contact MITM residual, strict continuity,
+  fatal mismatch behavior, operation-bound reload epochs, and optional stronger
+  Hivelocity-console preseeding without requiring console access for ordinary
+  users. Nested private procfs remains optional, host-scoped, workload-based, and
+  independent of Nico, coding, GitHub, CLI brand, or subagent use.
+- Local and review gates: 155 frontend tests passed with one expected macOS
+  Bash-4 skip; 47 backend public-surface tests, Ruff, ShellCheck, actionlint,
+  Bash syntax, OpenAPI synchronization, and diff checks passed; ESLint reported
+  zero errors and three pre-existing warnings. Three independent non-implementing
+  reviewers approved the workflow/security, CLI/public-doc, and whole-plan
+  contracts; the hostile-banner and API-drift cases were reproduced.
+- Release evidence: frontend PR #109 exact-head run `34192534162` passed and
+  merged as `2f60a16612703715bbb2407a616e9cf8eb298779`; default-branch run
+  `34192826912` passed test, publication, and production deployment. Live
+  `/agent-runtime`, `/docs`, `/llms.txt`, and
+  `https://api.warpmetal.com/openapi.json` each returned the deployed trust
+  contract. P4.R3 is complete at release revision 17; P4.S1 may now begin with
+  one protected first-use trust operation on the existing acceptance VPS.
 
 ### Documentation phase P2D header
 
