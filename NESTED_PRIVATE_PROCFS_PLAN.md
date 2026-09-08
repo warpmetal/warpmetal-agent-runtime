@@ -38,8 +38,9 @@
     default; explicitly enable or disable a narrowly attached host policy on an
     amd64 nested-Bubblewrap host; preserve all other container restrictions; and
     package/test the policy and reversible transaction;
-  - `agent-kit`: expose the explicit lifecycle through CLI 0.8.7, explain the
-    default and host scope in CLI help, and keep the bundled WarpMetal skill and
+  - `agent-kit`: expose the explicit lifecycle through CLI 0.8.7, add
+    self-contained managed first-use SSH host-key trust in CLI 0.8.8, explain
+    both contracts in CLI help, and keep the bundled WarpMetal skill and
     references aligned;
   - `warpmetal_frontend`: pin the signed Runtime candidate and existing signed
     image digest, extend the existing guarded amd64 acceptance canary, and add
@@ -105,6 +106,7 @@
 | R10 | No secret exposure | Keys/tokens never appear in command arguments, logs, task chat, artifacts, or PR comments | tests, log inspection |
 | R11 | Explicit host-scoped lifecycle | Default install/upgrade preserves existing disk and kernel policy state; `--nested-private-procfs enable` installs/loads it only on amd64; `disable` unloads/removes it and restores a pre-existing destination safely | unit, integration, recovery inspection |
 | R12 | Product-wide documentation and discovery | Runtime, sandbox-image, CLI help/README/skill, public `/agent-runtime` and `/docs` pages, and `llms.txt` explain who needs the capability, why nested Bubblewrap is used, the planning/coding/QA examples, the exact version/action contract, host scope, and when to preserve or disable it | documentation contract, CLI test, frontend route/backend tests, inspection |
+| R13 | Safe first-use SSH trust without provider-console access | On the first owner-authenticated connection for an exact server trust epoch, CLI 0.8.8 or the protected canary may trust the first observed Ed25519 host key once, atomically pin it, and reconnect strictly before any bootstrap or payload transfer; every replay is strict and any mismatch, malformed pin, unexpected IP, failed reload, or ambiguous state fails without replacing the pin | unit, contract, local SSH integration, protected live end-to-end |
 
 ## Architecture
 
@@ -248,7 +250,10 @@
 - Principals: WarpMetal account owner, Runtime supervisor, per-sandbox SSH grant,
   Nico exact administrator, coder worker, QA worker, publisher, and model proxy.
 - Trust boundaries: GitHub OIDC/signed artifacts, official CLI owner-key channel,
-  per-agent grant, Nico admin session, and one-time model leases.
+  a server-ID and trust-epoch scoped first-use SSH pin, per-agent grant, Nico
+  admin session, and one-time model leases. TOFU authenticates continuity after
+  the first observation; it does not provide provider attestation against an
+  active attacker on that first connection.
 - Credential lifecycle: reuse existing owner identity and distinct sandbox grants;
   no secret copying into source or task artifacts; existing rotation/revocation
   mechanisms remain authoritative.
@@ -272,6 +277,7 @@
 | Release | mutable artifacts; signed prerelease then promotion | signed immutable prerelease, rollback/forward canary, then promote same assets | version candidate is v0.1.25 |
 | Policy activation | install on every restricted-AppArmor host; per-sandbox toggle; explicit host toggle | default `preserve`, explicit signed `enable`/`disable`; AppArmor pathname attachment cannot truthfully provide per-sandbox isolation without a separate outer profile/API design | hosts without nested Bubblewrap receive no policy mutation; enabled dedicated hosts grant all same-owner matching-path sandboxes |
 | Consumer scope | Nico-only feature; coding-only feature; general nested-Bubblewrap capability | general capability with Nico as the first acceptance consumer; need is determined by the inner isolation boundary rather than the agent brand, task category, GitHub use, or subagent use | product docs must use capability-based language and concrete planning/coding/QA examples |
+| Initial VPS host trust | mandatory provider-console enrollment; blind network scan; authenticated trust on first use with optional console pre-seed | trust the first host key observed during one harmless owner-key-authenticated SSH connection for an exact server trust epoch, then atomically pin and require strict matching; retain protected console enrollment as an optional stronger pre-seed and forbid `ssh-keyscan` | ordinary users do not need Hivelocity access; first-connection MITM remains an explicit accepted residual; mismatch bypass and generic pin reset remain forbidden |
 
 ## Assumption ledger
 
@@ -286,6 +292,7 @@
 | A7 | Every restricted-AppArmor Runtime host needs nested private procfs and may receive the policy during an ordinary install/upgrade | high | false | independent recovery review found the capability is required only for workloads that create the nested private-procfs boundary; unconditional install expands scope and can fail unrelated installs |
 | A8 | Exact-path attachment can enforce a per-sandbox or per-user grant | high | false | AppArmor pathname attachment is host-scoped; all same-owner sandboxes containing the trusted path can invoke it |
 | A9 | Nested private procfs is a Nico-only or coding-user-only feature | high | false | owner decision: any verified Agent Runtime workload may use the trusted Bubblewrap boundary; Nico remains the first production canary |
+| A10 | Ordinary WarpMetal users can obtain a provider-console-authenticated VPS host key before using the CLI | high | false | owner decision: users will not have Hivelocity access; the supported default must use first-observed-key trust once and preserve strict pin continuity afterward |
 
 ## Test strategy
 
@@ -294,7 +301,8 @@
   exact command/oracle assertions.
 - Contract: release archive contents, exact AppArmor attachment/child transition,
   no Runtime API change, source digest and runner manifest parity, CLI help/skill
-  mirror parity, and frontend/backend LLM contract parity.
+  mirror parity, frontend/backend LLM contract parity, and first-use trust
+  ordering that forbids bootstrap or payload delivery before atomic pinning.
 - Integration: four supported distro coexistence jobs; AppArmor-enabled Ubuntu
   policy load and negative generic-unshare checks.
 - End-to-end: sensitivity failure before the candidate policy, positive
@@ -317,6 +325,8 @@
 | Sandbox refresh | workspace/grant loss | transactional replacement and persistent API resource | rollback tests + live markers |
 | Artifact supply chain | mutable or substituted binary/profile | pinned base/image, immutable digest, signed Runtime archives, independent verification | CI/signature/archive inspection |
 | Agent credentials | output or artifact exfiltration | stdin-only secrets, redaction scanner, bounded output, separate grants | tests + canary log inspection |
+| First SSH connection | an active attacker presents the first observed host key and becomes the durable pin | bind TOFU to the exact authenticated API server ID/IP and owner key, perform only `ssh true`, pin once per authorized trust epoch, then reconnect strictly before bootstrap; optional console pre-seed remains available | local two-host-key integration, protected canary, mismatch/no-overwrite and no-bootstrap-before-pin tests |
+| Later SSH connection or host reload | key substitution, blind reset, or stale pin weakens continuity | strict managed `UserKnownHostsFile`; no accept-new when a pin exists; only a successful authenticated reload operation that declares host-key refresh may create a new trust epoch | replay/mismatch tests and reload state-machine tests |
 
 ## Master phase map
 
@@ -328,7 +338,7 @@
 | P2R | Runtime policy lifecycle is explicit, default-off, architecture-gated, and reversibly recoverable | R2-R4, R10-R11, A2-A3, A7-A8 | P2 recovery review | default preserve is mutation-free; explicit amd64 enable is idempotent; disable unloads/removes Runtime policy and restores any displaced prior file/state; interruption evidence is durable; tests/docs green | completed |
 | P2D | General capability documentation is discoverable and example-driven | R11-R12, A7-A9 | P2R interface | Runtime and sandbox docs, CLI help/skill, public pages, and both LLM contract sources agree on purpose, examples, versions, actions, host scope, and non-goals; repository gates pass | completed |
 | P3 | Signed v0.1.25 prerelease, CLI 0.8.7, and five-stage frontend canary contract ready | R1-R5, R10-R12 | P1-P2R, P2D | exact heads pass CI/review; signed Runtime and npm CLI releases are independently verified; frontend workflow is available on its default branch | completed |
-| P4 | Rollback/forward/disable amd64 acceptance canary passes | R1-R6, R10-R11, A1-A4 | P3 | pre-policy sensitivity, positive capability, preservation, retained-policy binary rollback, forward, and exact disable/restore gates pass | in_progress |
+| P4 | Rollback/forward/disable amd64 acceptance canary passes | R1-R6, R10-R11, R13, A1-A4, A10 | P3 | first-use trust is safely pinned, pre-policy sensitivity, positive capability, preservation, retained-policy binary rollback, forward, and exact disable/restore gates pass | in_progress |
 | P5 | Stable production Runtime/image and Nico sandbox refresh | R1-R7, R10 | P4 | stable assets; Nico upgrade plus both explicit refreshes verified | pending |
 | P6 | Nico code/deploy and real autonomous task pass | R7-R10 | P5 | full gates, deploy, coder/publisher/QA canary, staged flags | pending |
 
@@ -655,18 +665,19 @@ test -z "$(git tag --list "$TAG")"
   name, and monthly price before any key or server mutation.
 - Exit criteria: the operator creates exactly one monthly acceptance VPS with a
   six-hour durable test expiry and three medium Runtime sandboxes; the VPS host
-  key is enrolled out of band before SSH; all five stages pass in order with
-  exact artifact pins and host snapshots; each stage's temporary small sandbox,
-  two distinct access keys/grants, sessions, and workspace are revoked/deleted;
-  final policy state equals the frozen initial absent state; the acceptance task
-  is cancelled and provider absence is verified without guessing through an
-  ambiguous outcome.
+  key is learned exactly once through the protected owner-key-authenticated TOFU
+  path, atomically pinned, and strictly reverified before bootstrap; all five
+  stages pass in order with exact artifact pins and host snapshots; each stage's
+  temporary small sandbox, two distinct access keys/grants, sessions, and
+  workspace are revoked/deleted; final policy state equals the frozen initial
+  absent state; the acceptance task is cancelled and provider absence is
+  verified without guessing through an ambiguous outcome.
 - Dependencies and risks: production operator credentials and environment
   approval; live `agent` plan availability and current price; exact
   `Ubuntu 24.04 (VPS)` catalog name; monthly billing may not be prorated or
   refunded by early cancellation; owner and per-sandbox SSH key generation;
-  trusted provider/console host-key enrollment; Runtime installation and
-  explicit host-policy mutation; one-hour temporary workspace expiry is
+  accepted first-connection TOFU risk and strict later host-key continuity;
+  Runtime installation and explicit host-policy mutation; one-hour temporary workspace expiry is
   irreversible and does not replace explicit cleanup; cancellation may enter
   manual review and must not be retried as though compute were absent.
 - Baseline test state: P3 exact-head release, source, hosted CI, production
@@ -676,22 +687,27 @@ test -z "$(git tag --list "$TAG")"
   default-branch gates are green. P4.R2 is merged and deployed from frontend
   merge commit `ae64f8539450b78fe68214c87b8cc31c94f03ba8`; PR exact-head CI,
   main tests/publication/deployment, an independent merge-tree audit, and a
-  fresh deployed-main read-only task inspection are green. One approved P4
+  fresh deployed-main read-only task inspection are green but its provider-
+  console-first assumption is superseded by P4.R3. One approved P4
   test server now exists and is ready with an active six-hour test term and
   Runtime `pending_install`; no second server or payment retry exists, and no
   Runtime installation, sandbox, policy, grant, or cancellation mutation has
   been attempted.
 - Required documentation and API-contract changes: this plan records the quote,
   confirmation, task/server IDs, stage runs, bounded safe evidence, cleanup,
-  and residuals. No public HTTP/JSON schema or product documentation change is
-  expected unless live behavior disproves the published contract.
+  and residuals. CLI 0.8.8 help/README/skill references and the public Runtime,
+  docs, localized message, canonical `llms.txt`, and backend LLM mirror surfaces
+  must explain managed first-use trust, strict later matching, reload epochs,
+  optional console pre-seeding, and the first-connection MITM residual. No
+  Runtime HTTP/JSON schema change is planned.
 - Coordinating owner: primary managed-plan executor. The deployed production
   workflow is the only mutation path; a separate non-implementing verifier
   reviews exact run evidence before promotion.
 - Fresh recovery reviewer available: yes; two non-implementing reviewers
   approved P4.R1 independently, two separate security/contract reviewers
   approved P4.R2 before integration, and a fresh verifier approved its exact
-  merge and deployed-main evidence. A fresh non-implementing verifier will
+  merge and deployed-main evidence. Fresh CLI and protected-canary security
+  reviewers are required for P4.R3, and a fresh non-implementing verifier will
   review the live P4 evidence after all mutations stop.
 
 ### Live acceptance phase P4 assumption check
@@ -705,11 +721,12 @@ test -z "$(git tag --list "$TAG")"
 | A8 | Confirm the enabled policy is host-scoped but only the signed exact helper attaches; generic, alternate, and deeper attempts remain denied | candidate and forward negative controls | unresolved live | stop on any broader grant |
 | P4.A1 | The production acceptance operator can obtain a current read-only quote without creating a prepared order, key, payment, or provider resource | workflow runs `34166139308` and deployed-main refresh `34175259049`, `action=preflight`, plan `agent` | verified | freeze the exact quote and require fresh owner confirmation before mutation |
 | P4.A2 | The deployed workflow has all protected metadata and credentials needed for exact signed stages and replay-safe cleanup | P3 deploy, P4.R1 default-branch deploy run `34173873657`, and workflow/source parity | verified for dispatch; live signed-stage use required | use only the default-branch production workflow |
-| P4.A3 | A trusted provider or console channel is available to enroll the exact new VPS host key before the private-procfs workflow opens SSH | operator runbook, deployment-host pin contract, and Hivelocity's authenticated one-time VPS console | partially resolved: the console exists, but the guest key has not been displayed or enrolled | bind the console to the exact device/IP, display the guest public host key there, enroll it without logging the one-time URL or using network discovery as trust evidence, and stop before stage dispatch if that cannot be completed |
+| P4.A3 | A trusted provider or console channel is available to enroll the exact new VPS host key before the private-procfs workflow opens SSH | operator runbook, deployment-host pin contract, and Hivelocity's authenticated one-time VPS console | false as a required ordinary-user dependency: the console exists but users will not have Hivelocity access | replace the mandatory console gate with exact-task owner-authenticated first-use trust; retain console enrollment only as an optional stronger pre-seed |
 | P4.A4 | The five canary stages can select their signed Runtime artifact without changing the process-global production `RUNTIME_*` tuple | P4.R1 task-scoped selector, bootstrap version/digest binding, registration mismatch rejection, DB constraint, and ordinary-user regression coverage | resolved in P4.R1 | use only operator-set exact signed selectors on live `is_test` tasks; clear on completion, expiry, and cancellation |
 | P4.A5 | Order-time three-sandbox intent yields a ready v0.1.24 supervisor and running baseline sandboxes before sensitivity starts | P4.R1 trusted-host preparation and root/non-root replay harness | resolved in P4.R1 | sensitivity must run the replay-safe signed-v0.1.24 preparation and require exactly three running medium sandboxes before freezing the baseline |
 | P4.A6 | An arbitrary owner-supplied existing VPS can replace the disposable production acceptance task | production workflow, operator task/selector checks, bootstrap/registration binding, canary checkpoint, and cancellation contract | false | an external VPS may support a separately authorized non-gating host inspection, but P4.S1-P4.S3 still require a provisioned live `is_test` task unless a new adoption contract is designed and reviewed |
 | P4.A7 | An existing operator path can place console-authenticated public host keys into the protected deployment-host pin without direct deployment-host SSH | deployed P4.R2 protected workflow, enrollment script, contract tests, and independent reviews | resolved in P4.R2 | use only the exact task/hostname/device-bound protected enrollment action; never accept a console URL, credential, fingerprint-only value, or network scan as the key source |
+| P4.A8 | The official CLI already supports a self-contained first-use host-key path for a fresh VPS | agent-kit 0.8.7 source audit of login, install, SSH/SCP, and canary pin mounting | false: login is API-only and install is strict against ambient `~/.ssh/known_hosts` | add managed server-ID/trust-epoch TOFU in CLI 0.8.8; the frozen 0.8.7 canary may use the protected P4.R3 pin mounted into the CLI container |
 
 ### Live acceptance phase P4 entry-gate decision
 
@@ -735,13 +752,15 @@ test -z "$(git tag --list "$TAG")"
   owner token, private keys, Runtime bootstrap, access tokens, full environment,
   payment envelopes, or raw secret-bearing output.
 - Authentication/authorization requirements reviewed: yes; protected GitHub
-  environment to deployment host, out-of-band host-key enrollment, owner-only
-  host SSH, and distinct sandbox-specific grants remain mandatory.
+  environment to deployment host, exact control-plane task/server/IP binding,
+  owner-key-only harmless first SSH, atomic host pin, strict later SSH, and
+  distinct sandbox-specific grants remain mandatory. Provider-console
+  enrollment remains optional and higher assurance.
 - Documentation/API requirements reviewed: yes; the public Runtime bootstrap
   request and response remain unchanged. P4.R1 adds only nullable internal test
   metadata, protected operator commands, and deployment-runbook coverage. Any
   live discrepancy reopens P2/P3 instead of editing the oracle to pass.
-- Decision timestamp or plan revision: 2026-09-08, release revision 14.
+- Decision timestamp or plan revision: 2026-09-08, release revision 15.
 
 ### Live acceptance phase P4 subparts
 
@@ -750,7 +769,8 @@ test -z "$(git tag --list "$TAG")"
 | P4.S0 | Read-only current quote and readiness packet | P3 | production operator `action=preflight`, plan `agent` | plan evidence only | current purchasing readiness, exact OS, capacity, and monthly price; no key/order/resource mutation | inspect exact workflow run/logs and absence of create step | no | completed |
 | P4.R1 | Recover task-scoped signed artifact selection and establish a stable baseline-preparation path | P4.S0, false P4.A4-P4.A5 | backend Runtime/operator state and migration; acceptance workflow/driver/tests/runbook | internal operator contract and recovery docs; public bootstrap/OpenAPI stay unchanged | only live `is_test` tasks may receive an exact verified override; normal users retain global metadata; stage changes use fresh checkpoint-bound bootstrap keys while prior idempotent responses remain immutable; registration must report the selected version; sensitivity prepares v0.1.24 with `preserve`, nine Docker sentinels, and exactly three running medium sandboxes through trusted SSH | backend unit/DB/operator/security tests, canary contract tests, full frontend/backend gates, migration upgrade/downgrade, independent review, exact-head CI/deploy | no | completed; merged, deployed, and independently approved |
 | P4.R2 | Recover a protected deployment-host enrollment path for console-authenticated host keys | P4.R1, partially resolved P4.A3, false P4.A7 | acceptance workflow/tests/runbook only | internal operator workflow; public API and ordinary-user behavior unchanged | accept one console-copied OpenSSH public host key for the exact live test task/hostname; derive and verify current IP/task state on the deployment host; atomically create the non-symlink mode-0600 pin under a mode-0700 directory; byte-identical replay succeeds and every mismatch refuses overwrite; log only fingerprint and file digest | workflow contract tests, shell syntax, exact-head CI/deploy, independent review | no | completed; PR #108 exact head, merge tree, default-branch deployment, fresh task inspection, and three independent reviews approved |
-| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R2 and fresh owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence only | one task/server, key-only SSH, out-of-band pinned host key, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, trusted-host-key precondition, bounded state inspection, baseline prepare run | no | in_progress; one ready server exists, host-key enrollment and baseline preparation pending |
+| P4.R3 | Replace mandatory provider-console trust with safe first-use trust for the protected canary and ordinary CLI users | false P4.A3/P4.A8, completed P4.R2 | agent-kit host-trust/state/installer/CLI/tests/docs first; frontend protected workflow/driver/tests/operator and public docs last | CLI 0.8.8 plus public human/LLM trust contract; no Runtime HTTP schema | first harmless owner-key SSH for an exact server trust epoch may accept only Ed25519 into an isolated candidate; atomic no-overwrite pin precedes bootstrap; immediate and all later SSH is strict; existing mismatch and unauthorized epoch change fail closed; optional console pre-seed remains | local two-host-key SSH integration, filesystem/race/error tests, agent-kit full gate and release, frontend focused/full gates, two fresh security reviews, exact-head CI/deploy | no | in_progress; revision 15 design frozen, implementation pending |
+| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3 and existing owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence plus safe TOFU metadata | one task/server, key-only SSH, exact-task first-use pin or optional stronger pre-seed, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, first-use pin and strict-replay precondition, bounded state inspection, baseline prepare run | no | in_progress; one ready server exists, P4.R3 and baseline preparation pending |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | pending |
 | P4.S3 | Final cancellation, absence verification, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no billable compute ambiguity; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | pending |
 
@@ -819,6 +839,81 @@ test -z "$(git tag --list "$TAG")"
   integration, then require exact-head CI, production deploy, and a fresh
   read-only task inspection before using the action.
 
+### Live acceptance phase P4.R3 frozen recovery design
+
+- Preserve P4.R2 `enroll-host-key` as an optional stronger console-authenticated
+  pre-seed. Add a separate protected `trust-host-key-tofu` path for the normal
+  case where the user cannot access Hivelocity. Its exact confirmation binds the
+  task ID, hostname, and provider device ID. It never accepts submitted host-key
+  bytes and never invokes `ssh-keyscan`.
+- Under the deployment lock, re-derive the live test task, permanent server,
+  device, literal public IPv4, expected FQDN, ready state, active term, test
+  expiry, Ubuntu 24.04 image, power state, acceptance tags, and protected task
+  record. Validate the exact ordering private-key path as owner-only, mode 0600,
+  regular, non-symlink, single-link storage; validate the separately stored
+  public key and require its fingerprint to equal the task's ordering-key
+  fingerprint. Pass the private-key path only to SSH; never inspect or print its
+  contents.
+- When no pin exists, retain one isolated empty mode-0600 same-directory
+  candidate across bounded readiness retries and run only `root@<exact-IP>
+  true` with the exact owner key, `-F /dev/null`,
+  `StrictHostKeyChecking=accept-new`, candidate `UserKnownHostsFile`, disabled
+  global known hosts, hashing, host-key updates, DNS verification, agents,
+  proxies, forwarding, local commands, passwords, and keyboard-interactive
+  authentication, and forced Ed25519 host keys. Successful public-key
+  authentication is mandatory. No bootstrap, bundle, token, or other payload
+  exists yet.
+- Re-inspect the complete task/server/device/IP tuple after authentication.
+  Validate exactly one canonical literal-IP Ed25519 entry; fsync and publish it
+  atomically without overwrite into the protected pin path. A losing race may
+  succeed only for byte-identical valid content. Symlinks, hard links,
+  malformed or foreign entries, unexpected ownership/modes, and every mismatch
+  fail without replacing the prior pin.
+- Immediately repeat the harmless owner-key SSH with
+  `StrictHostKeyChecking=yes` and the published pin. Existing-pin replay starts
+  directly at this strict step. Retain the pin if a later action fails. Both
+  live-canary drivers consume only the protected pin and use strict checking;
+  remove any remaining generic-canary `ssh-keyscan` path.
+- CLI 0.8.8 implements the same state-scoped contract under the WarpMetal state
+  directory using server ID and a canonical trust epoch, not mutable hostname
+  or ambient `~/.ssh/known_hosts`. It establishes and strictly rechecks the pin
+  before requesting `/runtime/bootstrap`; every SCP/SSH uses the same explicit
+  strict pin. The existing `--confirm INSTALL` authorizes the install and first-
+  use trust; output reports the safe algorithm/fingerprint and whether trust was
+  first observed or matched. There is no accept-new, ignore-mismatch, or generic
+  reset option.
+- The canonical CLI pin path is
+  `${WARPMETAL_HOME:-~/.config/warpmetal}/ssh/known-hosts/<serverId>/<trustEpoch>.known_hosts`:
+  owner-owned mode-0700 directories and a regular non-symlink mode-0600 file.
+  Expected agent-kit changes are `src/host-trust.js`, `src/cli.js`,
+  `src/installer.js`, `src/state.js`, package version/check metadata, focused
+  host-trust/CLI/installer/runtime/state tests, README, and all source/plugin
+  WarpMetal skill and runtime/safety/CLI-reference mirrors.
+- A successful authenticated reload operation whose impact explicitly requires
+  owner-host-key refresh may advance once to an operation-ID-bound trust epoch
+  while retaining the old pin. Failed, manual-review, unknown, or externally
+  initiated reload state never erases or replaces trust. A separate exact-
+  operation recovery contract is required before ordinary users can recover a
+  reload initiated outside local CLI state.
+- Implement and release agent-kit first after merging current `main`; require a
+  local disposable two-host-key SSH oracle, focused/full package gates, mirror
+  parity, exact-head CI, and fresh security review. Then implement frontend and
+  public/OpenAPI/LLM text last after merging current frontend `main`, merge
+  `main` again before final integration, and require focused/full gates, fresh
+  security review, exact-head CI/deploy, and deployed contract inspection.
+- Expected frontend changes are the protected acceptance workflow and host-key
+  helper, both live-canary drivers, focused host-trust/canary tests, backend
+  operator runbook, public OpenAPI guidance, English/Spanish/Portuguese message
+  sources, canonical `content/llms.md`, backend `public/llms.txt`, and their
+  rendered/parity tests. Existing page components should remain unchanged when
+  their localized message keys already render the new contract.
+- The accepted residual is explicit: an active attacker on the first connection
+  can become the durable pin and could receive the later Runtime bootstrap.
+  Owner-key authentication proves the user to the endpoint; it does not attest
+  the endpoint. Optional provider-console enrollment is the stronger path, and
+  a future provision-time authenticated guest-key registration would remove
+  this TOFU residual.
+
 ### Live acceptance phase P4 test matrix
 
 | Requirement / risk | Behavior or invariant | Test level | Oracle defined before action | Command or procedure |
@@ -827,7 +922,7 @@ test -z "$(git tag --list "$TAG")"
 | R3-R4/A2-A3 | OCI restrictions, nine Docker workloads, packages, services, and existing sandboxes remain exact | live snapshot | yes | compare frozen sensitivity host baseline after every stage |
 | R6/A4 | existing sandbox ID, marker, persistent lifetime, and behavior survive install transitions | live integration | yes | stage-specific grant/connect before and after install; exit 37 |
 | R10 | no credential or unbounded diagnostic exposure | workflow/log inspection | yes | inspect bounded stage markers and secret-redaction behavior only |
-| P4.A3/P4.A7 | only a complete console-copied host public key can become the exact live test task's protected pin | workflow security/integration | yes | enrollment contract tests cover task/IP binding, modes, atomic no-overwrite, exact replay, mismatch, malformed input, and bounded logs |
+| P4.A3/P4.A7/P4.A8 | first observed key may be trusted only once for the exact owner-authenticated task epoch; console pre-seed remains optional | workflow and CLI security/integration | yes | actual SSH A pins; strict A replay succeeds; unexpected B fails with pin byte-identical and zero bootstrap calls; only an authenticated successful reload epoch may permit one B first-use; enrollment tests retain stronger pre-seed coverage |
 | R11 | sensitivity begins absent; candidate enables; rollback retains policy; forward remains enabled; disable restores exact absent state | live lifecycle | yes | ordered stage checkpoint and exact final `post-disable-v0125-denied` oracle |
 | Billing/cleanup | only one approved monthly VPS exists and is cancelled; ephemeral stage resources are removed | live operator/lifecycle | yes | exact task/hostname binding, per-stage cleanup, cancel/inspect reconciliation |
 
@@ -843,8 +938,10 @@ test -z "$(git tag --list "$TAG")"
    lifecycle effect before action=create.
 5. Dispatch action=create once with the confirmed hostname, OS, six-hour expiry,
    exact max monthly price, and three medium sandboxes; inspect to ready.
-6. Enroll and verify the exact VPS host key out of band; prepare the v0.1.24
-   baseline with `preserve` before any private-procfs stage.
+6. Establish the exact VPS host pin once through protected owner-authenticated
+   TOFU, immediately reverify it strictly, and prepare the v0.1.24 baseline with
+   `preserve` before any private-procfs stage. A P4.R2 console pre-seed may be
+   used as the optional stronger alternative.
 7. Dispatch sensitivity, candidate, rollback, forward, and disable separately,
    in order, with the exact baseline/candidate SHA-256 values.
 8. Inspect every run for its exact stage success line, host snapshot equality,
@@ -856,10 +953,10 @@ test -z "$(git tag --list "$TAG")"
 ### Live acceptance phase P4 sequence and integration
 
 1. P4.S0 froze the live quote, then the entry audit exposed false P4.A4-P4.A5.
-2. P4.R1 and its independent recovery gate are complete; obtain the owner's
-   fresh explicit approval before creating any billable resource.
-3. Complete P4.S1 serially; do not start a canary until the trusted-host-key and
-   initial-resource checks pass.
+2. P4.R1 and its independent recovery gate are complete; the owner approved and
+   the workflow created exactly one bounded billable resource.
+3. Complete P4.R3 and then P4.S1 serially; do not start a canary until the
+   first-use pin, immediate strict replay, and initial-resource checks pass.
 4. Run P4.S2 strictly in stage order. A failed stage stops progression and
    enters cleanup/recovery without weakening or skipping its oracle.
 5. Run P4.S3 even after a failed stage when safe cleanup is possible. Treat
@@ -1033,6 +1130,20 @@ test -z "$(git tag --list "$TAG")"
   `pending_install`, desired/applied revision `1/0`, and exactly three desired
   sandboxes. The AVS/charge projection contradiction remains unchanged. No SSH,
   Runtime, sandbox, policy, grant, payment, or cancellation mutation occurred.
+- The owner then rejected provider-console access as a product prerequisite:
+  ordinary WarpMetal users will never have Hivelocity access and the plan must
+  trust the first observed host key. Revision 15 therefore marks mandatory
+  console trust false, accepts the bounded first-contact MITM residual, retains
+  P4.R2 only as an optional stronger pre-seed, and inserts P4.R3 before further
+  live mutation. All first-use paths must authenticate with the exact ordering
+  owner key, perform only a harmless command, atomically pin before bootstrap,
+  and immediately reconnect strictly; all later mismatches remain fatal.
+- Independent read-only CLI review proved version 0.8.7 cannot perform this
+  ordinary-user flow: `server login` is API-only, while `runtime install`
+  requests bootstrap before strict SSH against ambient known-hosts. The frozen
+  canary may still use 0.8.7 after the protected driver pins and mounts the host
+  key. CLI 0.8.8 is the required self-contained product recovery and must land
+  before the frontend/public-document portion of P4.R3, which remains last.
 
 ### Live acceptance phase P4.R1 verification log
 
@@ -1085,15 +1196,19 @@ test -z "$(git tag --list "$TAG")"
 - Authentication and authorization evidence: the workflow runs only through
   the protected production environment and can validate and bind submitted key
   bytes, but cannot prove how a human obtained them. Authenticated provider-
-  console observation remains the required out-of-band provenance gate; a
-  structurally valid network-scanned or attacker-supplied key is forbidden even
-  though software cannot distinguish its source.
+  console observation was the revision-14 provenance gate; a structurally valid
+  network-scanned or attacker-supplied key was forbidden even though software
+  cannot distinguish its source. Revision 15 preserves this route as optional
+  higher assurance and moves the default path to the separately reviewed P4.R3
+  owner-authenticated first-use contract.
 - Independent review: pre-integration contract and security reviewers approved,
   then a fresh read-only verifier reproduced exact merge-tree identity, intended
   file scope, PR CI, default-branch test/publication/deployment, and the unrelated
   attempt-1 flake classification. P4.R2 status: completed at release revision
-  14. P4.S1 remains stopped before SSH until the owner-authenticated provider
-  console supplies the exact guest ED25519 public host key.
+  14. Revision 15 supersedes the mandatory provider-console dependency but not
+  P4.R2's implementation or security properties. P4.S1 remains stopped before
+  SSH until P4.R3 safely establishes and strictly replays the exact first-
+  observed pin.
 
 ### Documentation phase P2D header
 
