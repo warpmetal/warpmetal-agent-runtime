@@ -1582,12 +1582,17 @@ test -z "$(git tag --list "$TAG")"
   payment, renewal, provider mutation, or VPS SSH path.
 - Reuse the exact read-only task/provider binding parser from P4.R4 before
   diagnosing the task-derived pin path. Inspect the final component with
-  `lstat` and a no-follow file descriptor, compare descriptor/path identity to
-  close swaps, and classify only: missing, symlink/wrong type, empty, wrong
-  mode, wrong owner, multiple links, malformed canonical literal-IP Ed25519 pin,
-  or healthy. Output only stable classification and safe booleans/numeric
-  metadata plus public fingerprint/digest when canonical; never output the key
-  line, key material, task record/token, private-key path/content, or SSH logs.
+  `lstat` and a no-follow file descriptor, compare initial path, pre-read
+  descriptor, post-read descriptor, and final path identity and mutable metadata
+  to close swaps and same-inode rewrites, and classify only: missing,
+  symlink/wrong type, empty, wrong mode, wrong owner, multiple links, malformed
+  canonical literal-IP Ed25519 pin, healthy, or the fail-closed
+  `path_identity_unstable`. Stable classifications require two consistent path
+  observations; the unstable result is the only allowed report when observations
+  disagree and is never eligible for recovery. Output only the classification
+  and safe booleans/numeric metadata plus public fingerprint/digest when a stable
+  pin is canonical; never output the key line, key material, task record/token,
+  private-key path/content, or SSH logs.
 - Diagnosis is read-only and cannot repair even an apparently safe mode or
   interrupted-publication condition. A mode-only normalization may be designed
   only after the live classification proves all content/inode/owner/link/binding
@@ -1595,11 +1600,14 @@ test -z "$(git tag --list "$TAG")"
   digest, inode, and strict trust. Missing, wrong type, empty, wrong owner,
   malformed content, or unexplained links remain blocked. An exact two-link
   orphan candidate requires separate prior-digest/inode evidence and review.
-- Add executable fixtures for every classification, descriptor/path-swap and
-  lock contention, exact confirmation/routing, output redaction, and proof that
-  no diagnostic branch invokes SSH or a backend/provider mutation. Also close
-  the independently found enrollment consistency gap by enforcing nonempty and
-  single-link candidates/existing/final pins without changing enrollment
+- Add executable fixtures for every classification, including unreadable
+  owner-owned wrong modes and `path_identity_unstable`; actual interleaved
+  same-inode rewrite detection; descriptor/path-swap defense; descriptor-verified
+  nonblocking deployment-lock contention; Linux atime and all other inode/byte
+  metadata preservation; exact confirmation/routing; output redaction; and proof
+  that no diagnostic branch invokes SSH or a backend/provider mutation. Also
+  close the independently found enrollment consistency gap by enforcing nonempty
+  and single-link candidates/existing/final pins without changing enrollment
   semantics. Require independent recovery approval before integration.
 
 ### Documentation phase P2D header
