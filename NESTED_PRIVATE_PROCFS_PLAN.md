@@ -701,6 +701,7 @@ test -z "$(git tag --list "$TAG")"
 | P4.A3 | A trusted provider or console channel is available to enroll the exact new VPS host key before the private-procfs workflow opens SSH | operator runbook and deployment-host pin contract | unresolved | after creation, stop before stage dispatch if enrollment cannot be independently established |
 | P4.A4 | The five canary stages can select their signed Runtime artifact without changing the process-global production `RUNTIME_*` tuple | P4.R1 task-scoped selector, bootstrap version/digest binding, registration mismatch rejection, DB constraint, and ordinary-user regression coverage | resolved in P4.R1 | use only operator-set exact signed selectors on live `is_test` tasks; clear on completion, expiry, and cancellation |
 | P4.A5 | Order-time three-sandbox intent yields a ready v0.1.24 supervisor and running baseline sandboxes before sensitivity starts | P4.R1 trusted-host preparation and root/non-root replay harness | resolved in P4.R1 | sensitivity must run the replay-safe signed-v0.1.24 preparation and require exactly three running medium sandboxes before freezing the baseline |
+| P4.A6 | An arbitrary owner-supplied existing VPS can replace the disposable production acceptance task | production workflow, operator task/selector checks, bootstrap/registration binding, canary checkpoint, and cancellation contract | false | an external VPS may support a separately authorized non-gating host inspection, but P4.S1-P4.S3 still require a provisioned live `is_test` task unless a new adoption contract is designed and reviewed |
 
 ### Live acceptance phase P4 entry-gate decision
 
@@ -728,7 +729,7 @@ test -z "$(git tag --list "$TAG")"
   request and response remain unchanged. P4.R1 adds only nullable internal test
   metadata, protected operator commands, and deployment-runbook coverage. Any
   live discrepancy reopens P2/P3 instead of editing the oracle to pass.
-- Decision timestamp or plan revision: 2026-09-08, release revision 11.
+- Decision timestamp or plan revision: 2026-09-08, release revision 12.
 
 ### Live acceptance phase P4 subparts
 
@@ -889,6 +890,37 @@ test -z "$(git tag --list "$TAG")"
   cancellation, and receipt reconciliation were all skipped; no priced or
   destructive lifecycle action occurred. P4.S1 remains pending fresh explicit
   owner confirmation.
+- The owner then offered an existing VPS as the test target. Read-only access
+  discovery confirmed that its SSH host key is already pinned locally, but the
+  default and dedicated Ubuntu identities were rejected; the CLI's safe state
+  listing did not map the address to a known server identity. No private key,
+  SSH configuration secret, host data, or external state was read or changed.
+- Two fresh non-implementing reviews rejected treating an arbitrary existing
+  VPS as a P4.S1-P4.S3 substitute. The production canary has no existing-IP
+  adoption input: task-scoped artifact selection requires a live, unexpired
+  `is_test` `PurchaseTask`, provider-backed device, active term, and enabled
+  `ServerRuntime`; bootstrap and registration bind the exact task/server and
+  selected artifact; sensitivity requires the three control-plane-created
+  sandboxes; and final cleanup is task/provider cancellation with verified
+  absence. Bypassing those boundaries would lose the ordinary-user isolation,
+  artifact-binding, provisioning, preservation, grant, expiry, and cleanup
+  evidence that P4 exists to prove.
+- Reuse also has broader preservation risk than the disposable design. Runtime
+  installation writes binaries, systemd and Runtime SSH files, may install
+  packages, starts the private Podman service, and restarts `warpmetald`; the
+  preparation path installs Docker when needed and creates nine fixed-name
+  sentinels plus a network. Its preservation oracle covers the defined Runtime
+  processes and running Docker workloads, not every arbitrary service, stopped
+  container, network, volume, image, or application-level invariant. Policy
+  enablement is host-scoped, and the rollback stage deliberately retains it
+  until the final signed disable.
+- An owner-supplied host may therefore be used only for an explicitly
+  authorized, non-gating read-only/static feasibility probe unless it can first
+  be uniquely proven to be the intended dedicated WarpMetal acceptance
+  `is_test` task. A true external-host substitution would require a separate
+  reviewed adoption contract, complete workload baseline, approved maintenance
+  window, non-cancellation restoration criteria, and retained full
+  control-plane canary. P4.S1 remains pending without mutation.
 
 ### Live acceptance phase P4.R1 verification log
 
@@ -917,7 +949,8 @@ test -z "$(git tag --list "$TAG")"
 - Independent review: two fresh read-only reviewers returned approval on exact
   head `1d39a1b7b355287519c628ff953a8a298658e5ff`; exact-head CI, merge, production
   deploy, and deployed-main preflight all passed. P4.R1 status: completed at
-  release revision 11. The unresolved risks are now the intended live kernel,
+  release revision 11. Revision 12 records that an arbitrary existing VPS is
+  not a valid substitute. The unresolved risks are now the intended live kernel,
   preservation, host-key, billing, and cleanup oracles in P4.S1-P4.S3.
 
 ### Documentation phase P2D header
