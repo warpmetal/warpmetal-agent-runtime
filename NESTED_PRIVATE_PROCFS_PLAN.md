@@ -294,6 +294,7 @@
 | A9 | Nested private procfs is a Nico-only or coding-user-only feature | high | false | owner decision: any verified Agent Runtime workload may use the trusted Bubblewrap boundary; Nico remains the first production canary |
 | A10 | Ordinary WarpMetal users can obtain a provider-console-authenticated VPS host key before using the CLI | high | false | owner decision: users will not have Hivelocity access; the supported default must use first-observed-key trust once and preserve strict pin continuity afterward |
 | A11 | Cancelling an operator test task immediately destroys the provider device | medium | false | Hivelocity cancellation stops future billing but retains the device through its already-created term; the cleanup oracle is terminal task state plus unambiguous successful provider cancellation, while `hasProviderDevice=true` and powered compute may remain until provider retirement |
+| A12 | The cancelled acceptance task cannot be reused while its paid provider device remains live | high | false as stated; direct reuse is still blocked | `cancelled` is an intentionally manageable Runtime/SSH state only while the control-plane term is active, but this task's six-hour `test_expires_at` and capped `term_ends_at` both expired at `2026-09-08T07:33:04.758006Z`; reuse requires a protected one-time continuation lease for this exact task/device without changing cancellation or billing state |
 
 ## Test strategy
 
@@ -328,6 +329,7 @@
 | Agent credentials | output or artifact exfiltration | stdin-only secrets, redaction scanner, bounded output, separate grants | tests + canary log inspection |
 | First SSH connection | an active attacker presents the first observed host key and becomes the durable pin | bind TOFU to the exact authenticated API server ID/IP and owner key, perform only `ssh true`, pin once per authorized trust epoch, then reconnect strictly before bootstrap; optional console pre-seed remains available | local two-host-key integration, protected canary, mismatch/no-overwrite and no-bootstrap-before-pin tests |
 | Later SSH connection or host reload | key substitution, blind reset, or stale pin weakens continuity | strict managed `UserKnownHostsFile`; no accept-new when a pin exists; only a successful authenticated reload operation that declares host-key refresh may create a new trust epoch | replay/mismatch tests and reload state-machine tests |
+| Cancelled-test continuation | a generic reopen path silently restores access, extends billing, trusts a new host, or reuses a different provider device | one protected fixed-deadline extension for the exact cancelled pending-install test shape; current provider/DB/record/key/pin binding plus strict SSH before DB change; state remains cancelled and final cancel replay closes the lease | operator DB/provider negative tests, workflow/helper behavioral tests, live inspect/strict probe/replay/final closure |
 
 ## Master phase map
 
@@ -697,7 +699,11 @@ test -z "$(git tag --list "$TAG")"
   the failed-run selector and guarded deployment-host directory are cleared,
   and no second server, payment retry, Runtime installation, sandbox, policy,
   or grant mutation exists. Provider compute may remain powered through the
-  already-created term under the verified cancellation contract.
+  already-created term under the verified cancellation contract. The last live
+  inspection found it powered `ON`, while the six-hour operator authorization
+  and capped control-plane term have since expired. Local official CLI 0.8.8 is
+  installed, but the acceptance owner identity and recovery credential remain
+  correctly isolated on the protected deployment host.
 - Required documentation and API-contract changes: this plan records the quote,
   confirmation, task/server IDs, stage runs, bounded safe evidence, cleanup,
   and residuals. CLI 0.8.8 help/README/skill references and the public Runtime,
@@ -732,6 +738,7 @@ test -z "$(git tag --list "$TAG")"
 | P4.A6 | An arbitrary owner-supplied existing VPS can replace the disposable production acceptance task | production workflow, operator task/selector checks, bootstrap/registration binding, canary checkpoint, and cancellation contract | false | an external VPS may support a separately authorized non-gating host inspection, but P4.S1-P4.S3 still require a provisioned live `is_test` task unless a new adoption contract is designed and reviewed |
 | P4.A7 | An existing operator path can place console-authenticated public host keys into the protected deployment-host pin without direct deployment-host SSH | deployed P4.R2 protected workflow, enrollment script, contract tests, and independent reviews | resolved in P4.R2 | use only the exact task/hostname/device-bound protected enrollment action; never accept a console URL, credential, fingerprint-only value, or network scan as the key source |
 | P4.A8 | The official CLI already supports a self-contained first-use host-key path for a fresh VPS | agent-kit 0.8.7 source audit of login, install, SSH/SCP, and canary pin mounting | false: login is API-only and install is strict against ambient `~/.ssh/known_hosts` | add managed server-ID/trust-epoch TOFU in CLI 0.8.8; the frozen 0.8.7 canary may use the protected P4.R3 pin mounted into the CLI container |
+| P4.A9 | The same cancelled acceptance task can resume immediately because provider compute remains powered | source audit plus post-cancel run `34198926210` | false for direct use; recoverable without a new VPS | backend and drivers accept `cancelled` only with an active control-plane term; add P4.R4 to extend this exact expired test/term deadline once after revalidating provider compute and the existing strict owner-key pin |
 
 ### Live acceptance phase P4 entry-gate decision
 
@@ -745,10 +752,13 @@ test -z "$(git tag --list "$TAG")"
   revocation, and final server cancellation. Each later mutation remains
   conditional on its frozen state and trust oracle; no retry is authorized on
   an ambiguous result.
-- Authorization state: that one-VPS authorization was exercised and ended with
-  terminal cancellation. It does not authorize a replacement order or payment;
-  resuming P4.S1 requires fresh owner authorization for exactly one replacement
-  VPS after a new read-only quote/readiness check.
+- Authorization state: the one-VPS authorization was exercised and future
+  billing was terminally cancelled. The owner subsequently directed continued
+  testing on that same still-live VPS and authorized required software upgrades.
+  This authorizes the bounded P4.R4 continuation and previously disclosed
+  Runtime/sandbox/policy canary on the same device. It does not authorize a new
+  order, payment, renewal, provider reactivation, replacement VPS, host-key
+  reset, or direct/ad-hoc host mutation.
 - Decision evidence: owner authorized plan execution and asked to begin live VPS
   testing; managed-plan and WarpMetal safety contracts require the separate
   immediate mutation confirmation after live discovery.
@@ -769,7 +779,7 @@ test -z "$(git tag --list "$TAG")"
   request and response remain unchanged. P4.R1 adds only nullable internal test
   metadata, protected operator commands, and deployment-runbook coverage. Any
   live discrepancy reopens P2/P3 instead of editing the oracle to pass.
-- Decision timestamp or plan revision: 2026-09-08, release revision 20.
+- Decision timestamp or plan revision: 2026-09-08, release revision 21.
 
 ### Live acceptance phase P4 subparts
 
@@ -779,8 +789,9 @@ test -z "$(git tag --list "$TAG")"
 | P4.R1 | Recover task-scoped signed artifact selection and establish a stable baseline-preparation path | P4.S0, false P4.A4-P4.A5 | backend Runtime/operator state and migration; acceptance workflow/driver/tests/runbook | internal operator contract and recovery docs; public bootstrap/OpenAPI stay unchanged | only live `is_test` tasks may receive an exact verified override; normal users retain global metadata; stage changes use fresh checkpoint-bound bootstrap keys while prior idempotent responses remain immutable; registration must report the selected version; sensitivity prepares v0.1.24 with `preserve`, nine Docker sentinels, and exactly three running medium sandboxes through trusted SSH | backend unit/DB/operator/security tests, canary contract tests, full frontend/backend gates, migration upgrade/downgrade, independent review, exact-head CI/deploy | no | completed; merged, deployed, and independently approved |
 | P4.R2 | Recover a protected deployment-host enrollment path for console-authenticated host keys | P4.R1, partially resolved P4.A3, false P4.A7 | acceptance workflow/tests/runbook only | internal operator workflow; public API and ordinary-user behavior unchanged | accept one console-copied OpenSSH public host key for the exact live test task/hostname; derive and verify current IP/task state on the deployment host; atomically create the non-symlink mode-0600 pin under a mode-0700 directory; byte-identical replay succeeds and every mismatch refuses overwrite; log only fingerprint and file digest | workflow contract tests, shell syntax, exact-head CI/deploy, independent review | no | completed; PR #108 exact head, merge tree, default-branch deployment, fresh task inspection, and three independent reviews approved |
 | P4.R3 | Replace mandatory provider-console trust with safe first-use trust for the protected canary and ordinary CLI users | false P4.A3/P4.A8, completed P4.R2 | agent-kit host-trust/state/installer/CLI/tests/docs first; frontend protected workflow/driver/tests/operator and public docs last | CLI 0.8.8 plus public human/LLM trust contract; no Runtime HTTP schema | first harmless owner-key SSH for an exact server trust epoch may accept only Ed25519 into an isolated candidate; atomic no-overwrite pin precedes bootstrap; immediate and all later SSH is strict; existing mismatch and unauthorized epoch change fail closed; optional console pre-seed remains | local two-host-key SSH integration, filesystem/race/error tests, agent-kit full gate and release, frontend focused/full gates, two fresh security reviews, exact-head CI/deploy | no | completed at revision 19; PR #110 deployed and protected live TOFU plus immediate strict replay passed on the sole acceptance VPS |
-| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3 and fresh owner confirmation for a replacement | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence plus safe TOFU metadata | one task/server, key-only SSH, exact-task first-use pin or optional stronger pre-seed, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, first-use pin and strict-replay precondition, bounded state inspection, baseline prepare run | no | recovery code is merged, deployed, independently approved, and cleanup-replayed; live rerun requires fresh owner authorization for exactly one replacement acceptance VPS |
-| P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked only on fresh owner authorization for exactly one replacement acceptance VPS and its completed P4.S1 baseline |
+| P4.R4 | Reauthorize the exact cancelled-but-provider-live acceptance task without reopening billing | false P4.A9, completed cleanup recovery, owner same-VPS direction | backend operator/service plus protected acceptance workflow/helper/tests/runbook; existing task/server/device/key/pin only | internal operator contract and recovery docs; no public API/schema or ordinary-user behavior change | exact fixed UTC deadline; current cancelled test, prior successful cancellation, provider `ON` and exact bindings, selector null, pending-install revision `1/0` and three intended medium sandboxes, protected task record, owner identity, existing pin, and strict SSH all pass before atomically setting only `test_expires_at` and `term_ends_at`; exact replay succeeds, different extension is forever refused; final cancel replay closes access | backend DB/provider tests, executable helper failure matrix, workflow contract tests, full frontend/backend gate, independent security review, exact-head CI/deploy, protected live inspect/extend/replay | no | in progress; source audit approved the bounded design, current provider inspection is queued behind an unrelated production deploy |
+| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3 and P4.R4 | existing exact cancelled task/server/device, six-hour continuation lease, three medium sandbox intents | operator evidence plus existing safe TOFU metadata | same single server, key-only strict SSH with existing pin, cancelled state plus bounded active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | inspect/lease runs, strict-replay precondition, bounded state inspection, baseline prepare run | no | recovery implementation pending P4.R4; no replacement VPS is required or authorized |
+| P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked only on deployed P4.R4 and its completed same-VPS P4.S1 baseline |
 | P4.S3 | Final cancellation, provider reconciliation, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no future-billing ambiguity; provider compute may remain through the already-created term; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | failed-attempt cancellation and guarded cleanup are complete and replay-verified; final whole-phase cleanup/review remains pending P4.S2 |
 
 ### Live acceptance phase P4.R1 frozen recovery design
@@ -923,6 +934,54 @@ test -z "$(git tag --list "$TAG")"
   a future provision-time authenticated guest-key registration would remove
   this TOFU residual.
 
+### Live acceptance phase P4.R4 frozen same-device continuation design
+
+- Add one internal operator command and protected production-workflow action,
+  `extend-cancelled-test-lease`. Inputs are the exact task ID, server ID,
+  hostname, provider device ID, and a fixed second-precision UTC deadline. The
+  confirmation string includes every input. The deadline must be in the future,
+  no more than 24 hours from the command, and no later than
+  `term_starts_at + 30 days`, matching the existing monthly-term calculation.
+- This is not a generic cancelled-server resume feature. Require the exact P4
+  baseline: `is_test=true`, state `cancelled`, failure null, provider request
+  `complete`, prior successful `instance_cancelled`, exact device/server/IP/OS,
+  a null test-artifact selector, Runtime `pending_install`, desired/applied
+  revision `1/0`, no node token, and exactly the three intended persistent
+  medium sandboxes. Refuse ready, expired, cancellation-pending, installed,
+  degraded, mismatched, foreign, or partially mutated shapes.
+- Read the provider compute record without invoking any mutation and require the
+  exact device, service, FQDN, literal IP, Ubuntu 24.04 image, powered `ON`
+  state, and both `warpmetal` and `acceptance-test` tags. Revalidate the
+  protected task record, mode-0600 owner identity, mode-0600 existing Ed25519
+  pin, task ordering-key fingerprint, and exact server/device/IP tuple. Run
+  only strict `root@<exact-IP> true` with the existing key and pin before the
+  backend write. Do not rerun TOFU or replace/reset the pin.
+- Under the database transaction, recheck the complete task/Runtime/sandbox
+  shape and the provider observation before atomically setting only
+  `test_expires_at` and `term_ends_at` to the fixed deadline. Keep state
+  `cancelled`; never change provider, payment, order, service, renewal, owner,
+  Runtime, sandbox, artifact, or credential state. Write one bounded audit event
+  containing only IDs and the deadline.
+- Exactly one continuation event may exist. Byte-identical replay for the same
+  bindings/deadline returns the original result without extending it or adding
+  an event. Any different deadline or binding is permanently refused, including
+  after the lease expires. Final protected `cancel` replay clears any selector,
+  caps both deadlines at the current time, revokes management tokens, and logs
+  bounded lease closure without calling provider cancellation again.
+- Tests must prove the success/replay path, exact one-event invariant, every
+  binding/state/provider/pin/SSH/Runtime/sandbox/deadline failure, no provider
+  mutation, no state reopening, no credential logging, no TOFU, and final
+  closure. Documentation impact is limited to this plan and the internal
+  operator runbook; public API/OpenAPI, CLI, public/LLM text, Runtime releases,
+  and sandbox image are unchanged.
+- Implementation authorized: yes for the fail-closed internal recovery after
+  the owner explicitly directed reuse of the same still-live VPS and approved
+  required upgrades. Live invocation remains gated on a fresh protected inspect
+  reporting the exact provider device powered `ON`; any drift stops without a
+  replacement, renewal, payment, or relaxed check. Coordinating owner is the
+  primary managed-plan executor, with a separate implementer and fresh security
+  verifier available.
+
 ### Live acceptance phase P4 test matrix
 
 | Requirement / risk | Behavior or invariant | Test level | Oracle defined before action | Command or procedure |
@@ -932,34 +991,35 @@ test -z "$(git tag --list "$TAG")"
 | R6/A4 | existing sandbox ID, marker, persistent lifetime, and behavior survive install transitions | live integration | yes | stage-specific grant/connect before and after install; exit 37 |
 | R10 | no credential or unbounded diagnostic exposure | workflow/log inspection | yes | inspect bounded stage markers and secret-redaction behavior only |
 | P4.A3/P4.A7/P4.A8 | first observed key may be trusted only once for the exact owner-authenticated task epoch; console pre-seed remains optional | workflow and CLI security/integration | yes | actual SSH A pins; strict A replay succeeds; unexpected B fails with pin byte-identical and zero bootstrap calls; only an authenticated successful reload epoch may permit one B first-use; enrollment tests retain stronger pre-seed coverage |
+| P4.A9 | expired cancelled task may receive exactly one bounded continuation without billing or trust reset | operator/workflow/provider integration | yes | fixed-deadline action verifies exact provider-live pending-install shape and strict existing pin before changing only both lease deadlines; exact replay succeeds and every different extension fails |
 | R11 | sensitivity begins absent; candidate enables; rollback retains policy; forward remains enabled; disable restores exact absent state | live lifecycle | yes | ordered stage checkpoint and exact final `post-disable-v0125-denied` oracle |
 | Billing/cleanup | only one approved monthly VPS exists and is cancelled; ephemeral stage resources are removed | live operator/lifecycle | yes | exact task/hostname binding, per-stage cleanup, cancel/inspect reconciliation |
 
 ### Live acceptance phase P4 frozen command manifest
 
 ```text
-1. Dispatch production acceptance workflow with action=preflight and plan=agent.
-2. Inspect exact preflight run; freeze purchasing readiness, OS name, capacity,
-   monthly price, and absence of mutation.
+1. Dispatch protected `inspect` for the exact existing task and require the same
+   cancelled task/server/device/IP, provider compute powered `ON`, null selector,
+   pending-install revision `1/0`, and no payment attempt or failure.
+2. Deploy and invoke `extend-cancelled-test-lease` once with a fixed six-hour UTC
+   deadline, then inspect and replay it exactly. Require state still cancelled,
+   both deadlines equal, one audit event, strict existing-pin SSH, and no
+   order/payment/renewal/provider/Runtime/sandbox mutation.
 3. Complete P4.R1 so the test task, not the global production metadata, selects
    the signed stage artifact and sensitivity has an explicit stable baseline.
-4. Obtain immediate explicit owner confirmation for every priced/destructive
-   lifecycle effect before action=create.
-5. Dispatch action=create once with the confirmed hostname, OS, six-hour expiry,
-   exact max monthly price, and three medium sandboxes; inspect to ready.
-6. Establish the exact VPS host pin once through protected owner-authenticated
-   TOFU, immediately reverify it strictly, and prepare the v0.1.24 baseline with
-   `preserve` before any private-procfs stage. A P4.R2 console pre-seed may be
-   used as the optional stronger alternative.
-7. Dispatch sensitivity, candidate, rollback, forward, and disable separately,
+4. Do not preflight, create, pay, renew, reactivate provider billing, generate a
+   key, or rerun TOFU. Reuse only the already protected owner identity and pin.
+5. Prepare the v0.1.24 baseline with `preserve` on the same exact VPS before any
+   private-procfs policy stage.
+6. Dispatch sensitivity, candidate, rollback, forward, and disable separately,
    in order, with the exact baseline/candidate SHA-256 values.
-8. Inspect every run for its exact stage success line, host snapshot equality,
+7. Inspect every run for its exact stage success line, host snapshot equality,
    signed metadata, and temporary resource cleanup before advancing.
-9. Dispatch cancel once, reconcile a terminal task and unambiguous successful
-   provider cancellation, and perform an independent whole-phase review before
-   promoting Runtime v0.1.25. Provider compute may remain powered through its
-   already-created term; cancellation prevents future billing rather than
-   proving immediate physical absence.
+8. Replay protected cancel after all stage cleanup to close the continuation
+   lease without a second provider cancellation. Inspect expired deadlines,
+   terminal task, null selector, and unambiguous prior provider cancellation,
+   then perform an independent whole-phase review before promoting Runtime
+   v0.1.25. Provider compute may remain powered through its already-created term.
 ```
 
 ### Live acceptance phase P4 sequence and integration
@@ -967,8 +1027,9 @@ test -z "$(git tag --list "$TAG")"
 1. P4.S0 froze the live quote, then the entry audit exposed false P4.A4-P4.A5.
 2. P4.R1 and its independent recovery gate are complete; the owner approved and
    the workflow created exactly one bounded billable resource.
-3. Complete P4.R3 and then P4.S1 serially; do not start a canary until the
-   first-use pin, immediate strict replay, and initial-resource checks pass.
+3. Complete P4.R3 and P4.R4, then resume P4.S1 on that same resource. Do not
+   start a canary until the existing pin strictly matches, the fixed continuation
+   deadline is active, and the initial-resource checks pass.
 4. Run P4.S2 strictly in stage order. A failed stage stops progression and
    enters cleanup/recovery without weakening or skipping its oracle.
 5. Run P4.S3 even after a failed stage when safe cleanup is possible. Treat
@@ -1364,9 +1425,10 @@ test -z "$(git tag --list "$TAG")"
   Provider cancellation is unambiguous, but the device remains powered through
   the already-created term by the provider contract; it is not a new billing
   attempt. No replacement server, payment, or duplicate order was created.
-  The recovery below is now reviewed, merged, deployed, and replay-verified;
-  P4.S1-P4.S3 cannot resume live execution until the owner authorizes exactly
-  one replacement VPS.
+  The deployment-host recovery below is reviewed, merged, deployed, and
+  replay-verified. Revision 20 initially treated the cancelled task as
+  non-reusable and required a replacement; the owner correction and revision-21
+  source audit supersede that conclusion with bounded P4.R4 same-device reuse.
 
 ### Live acceptance phase P4.S1 deployment-host recovery log
 
@@ -1412,10 +1474,37 @@ test -z "$(git tag --list "$TAG")"
   canary; post-cancel state remains `cancelled`, `pending_install`, revision
   `1/0`, with provider power retained through the paid term as expected.
 - Gate status: the recovery implementation and early P4.S3 cleanup are complete
-  at release revision 20. P4.S1-P4.S3 remain incomplete only because the live
-  baseline and five signed stages require fresh owner authorization for exactly
-  one replacement acceptance VPS; the cancelled task cannot be reused. Runtime
-  v0.1.24/v0.1.25 and the signed all-tools sandbox image remain unchanged.
+  at release revision 20. Revision 21 confirms the cancelled state itself is
+  supported while a control-plane term is active, but this task's capped term
+  and test authorization expired. P4.S1-P4.S3 now depend on P4.R4's exact
+  same-device continuation lease; no replacement VPS is required or authorized.
+  Runtime v0.1.24/v0.1.25 and the signed all-tools sandbox image remain
+  unchanged.
+
+### Live acceptance phase P4.R4 same-device correction log
+
+- Owner decision: continue on provider device `69097` and server
+  `srv_ZvQaOP05rGycwcX4vcKBTQnN`, which remain the sole acceptance resource;
+  upgrade required tooling but do not order another VPS. The local official CLI
+  was upgraded from 0.8.6 to the reviewed published 0.8.8. It correctly cannot
+  read deployment-host credentials or identity state, so live operations remain
+  restricted to the protected production workflow.
+- Source audit: `has_active_server_term`, SSH authentication, Runtime enable,
+  sandbox creation, bootstrap, both canary drivers, and explicit regression
+  tests intentionally accept `cancelled` during an active control-plane term.
+  Direct reuse is currently blocked only because both `test_expires_at` and the
+  test-capped `term_ends_at` expired at `2026-09-08T07:33:04.758006Z`.
+  Renewal rejects cancelled tasks and is forbidden because it could introduce
+  billing ambiguity; no supported resume/adoption command currently exists.
+- Trust reuse: cancellation did not delete the protected task record, ordering
+  owner key, or atomically published Ed25519 pin. No reload, host-key epoch
+  change, or host mutation occurred. P4.R4 must strictly authenticate the same
+  task/server/device/IP with that existing key and pin before its database-only
+  lease update; any mismatch is fatal and TOFU must not run again.
+- Entry evidence: current protected inspect run `34228195328` is queued behind
+  unrelated default-branch deployment `34227368757`. P4.R4 implementation may
+  proceed fail-closed, but its live action cannot run until that inspect reports
+  the exact provider compute still powered `ON` and unchanged.
 
 ### Documentation phase P2D header
 
