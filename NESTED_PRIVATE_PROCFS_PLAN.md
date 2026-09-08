@@ -789,7 +789,7 @@ test -z "$(git tag --list "$TAG")"
 | P4.R1 | Recover task-scoped signed artifact selection and establish a stable baseline-preparation path | P4.S0, false P4.A4-P4.A5 | backend Runtime/operator state and migration; acceptance workflow/driver/tests/runbook | internal operator contract and recovery docs; public bootstrap/OpenAPI stay unchanged | only live `is_test` tasks may receive an exact verified override; normal users retain global metadata; stage changes use fresh checkpoint-bound bootstrap keys while prior idempotent responses remain immutable; registration must report the selected version; sensitivity prepares v0.1.24 with `preserve`, nine Docker sentinels, and exactly three running medium sandboxes through trusted SSH | backend unit/DB/operator/security tests, canary contract tests, full frontend/backend gates, migration upgrade/downgrade, independent review, exact-head CI/deploy | no | completed; merged, deployed, and independently approved |
 | P4.R2 | Recover a protected deployment-host enrollment path for console-authenticated host keys | P4.R1, partially resolved P4.A3, false P4.A7 | acceptance workflow/tests/runbook only | internal operator workflow; public API and ordinary-user behavior unchanged | accept one console-copied OpenSSH public host key for the exact live test task/hostname; derive and verify current IP/task state on the deployment host; atomically create the non-symlink mode-0600 pin under a mode-0700 directory; byte-identical replay succeeds and every mismatch refuses overwrite; log only fingerprint and file digest | workflow contract tests, shell syntax, exact-head CI/deploy, independent review | no | completed; PR #108 exact head, merge tree, default-branch deployment, fresh task inspection, and three independent reviews approved |
 | P4.R3 | Replace mandatory provider-console trust with safe first-use trust for the protected canary and ordinary CLI users | false P4.A3/P4.A8, completed P4.R2 | agent-kit host-trust/state/installer/CLI/tests/docs first; frontend protected workflow/driver/tests/operator and public docs last | CLI 0.8.8 plus public human/LLM trust contract; no Runtime HTTP schema | first harmless owner-key SSH for an exact server trust epoch may accept only Ed25519 into an isolated candidate; atomic no-overwrite pin precedes bootstrap; immediate and all later SSH is strict; existing mismatch and unauthorized epoch change fail closed; optional console pre-seed remains | local two-host-key SSH integration, filesystem/race/error tests, agent-kit full gate and release, frontend focused/full gates, two fresh security reviews, exact-head CI/deploy | no | completed at revision 19; PR #110 deployed and protected live TOFU plus immediate strict replay passed on the sole acceptance VPS |
-| P4.R4 | Reauthorize the exact cancelled-but-provider-live acceptance task without reopening billing | false P4.A9, completed cleanup recovery, owner same-VPS direction | backend operator/service plus protected acceptance workflow/helper/tests/runbook; existing task/server/device/key/pin only | internal operator contract and recovery docs; no public API/schema or ordinary-user behavior change | exact fixed UTC deadline; current cancelled test, prior successful cancellation, provider `ON` and exact bindings, selector null, pending-install revision `1/0` and three intended medium sandboxes, protected task record, owner identity, existing pin, and strict SSH all pass before atomically setting only `test_expires_at` and `term_ends_at`; exact replay succeeds, different extension is forever refused; final cancel replay closes access | backend DB/provider tests, executable helper failure matrix, workflow contract tests, full frontend/backend gate, independent security review, exact-head CI/deploy, protected live inspect/extend/replay | no | in progress; source audit and fresh live provider inspection approved the bounded design and implementation is active |
+| P4.R4 | Reauthorize the exact cancelled-but-provider-live acceptance task without reopening billing | false P4.A9, completed cleanup recovery, owner same-VPS direction | backend operator/service plus protected acceptance workflow/helper/tests/runbook; existing task/server/device/key/pin only | internal operator contract and recovery docs; no public API/schema or ordinary-user behavior change | exact fixed UTC deadline; current cancelled test, prior successful cancellation, provider `ON` and exact bindings, selector null, pending-install revision `1/0` and three intended medium sandboxes, protected task record, owner identity, existing pin, and strict SSH all pass before atomically setting only `test_expires_at` and `term_ends_at`; exact replay succeeds, different extension is forever refused; final cancel replay closes access | backend DB/provider tests, executable helper failure matrix, workflow contract tests, full frontend/backend gate, independent security review, exact-head CI/deploy, protected live inspect/extend/replay | no | implemented, independently approved, merged, and deployed; protected live inspect/extend/replay remains pending |
 | P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3 and P4.R4 | existing exact cancelled task/server/device, six-hour continuation lease, three medium sandbox intents | operator evidence plus existing safe TOFU metadata | same single server, key-only strict SSH with existing pin, cancelled state plus bounded active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | inspect/lease runs, strict-replay precondition, bounded state inspection, baseline prepare run | no | recovery implementation pending P4.R4; no replacement VPS is required or authorized |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked only on deployed P4.R4 and its completed same-VPS P4.S1 baseline |
 | P4.S3 | Final cancellation, provider reconciliation, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no future-billing ambiguity; provider compute may remain through the already-created term; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | failed-attempt cancellation and guarded cleanup are complete and replay-verified; final whole-phase cleanup/review remains pending P4.S2 |
@@ -1510,6 +1510,39 @@ test -z "$(git tag --list "$TAG")"
   monthly period, and acceptance tags. No mutation step ran. P4.R4's live entry
   assumption is verified; the lease action itself remains gated on reviewed,
   merged, and deployed code.
+- Implementation: frontend commit `eb63a108d8feffccce2a284b0c2898d22cb851b5`
+  added the internal one-shot lease event/index, exact operator and provider
+  baseline checks, protected workflow action, strict-pin helper, cancellation
+  closure behavior, recovery runbook, and executable failure/replay coverage.
+  It changes no public API or OpenAPI contract, ordinary-user CLI or LLM text,
+  Agent Runtime release, sandbox image, or all-tools image contents.
+- Safety closure: the final baseline requires the exact cancelled test with no
+  failure, charge, payment attempt, selected artifact, Runtime mutation, or
+  sandbox drift; exact expired/equal deadlines; the original provider device,
+  service, FQDN, IP, OS, power state, and required tags; the protected ordering
+  owner identity; and the existing canonical Ed25519 IP pin. A harmless strict
+  SSH probe and a second exact binding inspection precede the database-only
+  update. Exact replay is idempotent; another deadline or binding is refused.
+  Final cancel replay closes both deadlines, revokes task access/bootstrap
+  tokens, clears the selector and Runtime node token, and never repeats provider
+  cancellation for this already-cancelled task.
+- Verification: the final PostgreSQL backend suite passed `2083` tests with one
+  skip and met the branch gate at 88.12% statement and 75.02% branch coverage;
+  migration clean upgrade/downgrade/re-upgrade passed; site tests passed `174`
+  with one expected macOS-only Bash 4 skip; admin tests passed `52`; Ruff,
+  compileall, Bash syntax, ShellCheck, actionlint, and diff checks passed. The
+  five lint warnings are pre-existing current-main pricing/translation warnings.
+  Independent backend and workflow/security reviewers both returned APPROVE,
+  including concurrent identical and competing database calls and the nine-case
+  executable protected-helper matrix.
+- Integration: immediately before PR integration, frontend `main` was merged
+  again and was already current, with no conflicts or overwritten changes. PR
+  `#115` exact-head run `34236306309` passed; merge commit
+  `bb327e075db86fc3be4f89c4f703bf357847ed27` was deployed by default-branch run
+  `34237060167`, whose test, publication, blue-green deployment, production
+  verification, and notification jobs all passed. P4.R4 is therefore deployed;
+  its protected live inspect, one mutation, exact replay, and final closure are
+  still pending and no VPS action has yet been dispatched from this revision.
 
 ### Documentation phase P2D header
 
