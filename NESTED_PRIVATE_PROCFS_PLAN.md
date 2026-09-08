@@ -673,11 +673,14 @@ test -z "$(git tag --list "$TAG")"
   deploy, and live public-document gates are green. P4.R1 is merged and
   deployed from frontend merge commit
   `6da3f0ab35eab8136ecfa11c88ccdd2a1d79003d`; its exact-head and
-  default-branch gates are green, and a fresh deployed-main read-only preflight
-  passed. One approved P4 test server now exists and is ready with an active
-  six-hour test term and Runtime `pending_install`; no second server or payment
-  retry exists, and no Runtime installation, sandbox, policy, grant, or
-  cancellation mutation has been attempted.
+  default-branch gates are green. P4.R2 is merged and deployed from frontend
+  merge commit `ae64f8539450b78fe68214c87b8cc31c94f03ba8`; PR exact-head CI,
+  main tests/publication/deployment, an independent merge-tree audit, and a
+  fresh deployed-main read-only task inspection are green. One approved P4
+  test server now exists and is ready with an active six-hour test term and
+  Runtime `pending_install`; no second server or payment retry exists, and no
+  Runtime installation, sandbox, policy, grant, or cancellation mutation has
+  been attempted.
 - Required documentation and API-contract changes: this plan records the quote,
   confirmation, task/server IDs, stage runs, bounded safe evidence, cleanup,
   and residuals. No public HTTP/JSON schema or product documentation change is
@@ -686,8 +689,10 @@ test -z "$(git tag --list "$TAG")"
   workflow is the only mutation path; a separate non-implementing verifier
   reviews exact run evidence before promotion.
 - Fresh recovery reviewer available: yes; two non-implementing reviewers
-  approved P4.R1 independently. A fresh non-implementing verifier will review
-  the live P4 evidence after all mutations stop.
+  approved P4.R1 independently, two separate security/contract reviewers
+  approved P4.R2 before integration, and a fresh verifier approved its exact
+  merge and deployed-main evidence. A fresh non-implementing verifier will
+  review the live P4 evidence after all mutations stop.
 
 ### Live acceptance phase P4 assumption check
 
@@ -704,7 +709,7 @@ test -z "$(git tag --list "$TAG")"
 | P4.A4 | The five canary stages can select their signed Runtime artifact without changing the process-global production `RUNTIME_*` tuple | P4.R1 task-scoped selector, bootstrap version/digest binding, registration mismatch rejection, DB constraint, and ordinary-user regression coverage | resolved in P4.R1 | use only operator-set exact signed selectors on live `is_test` tasks; clear on completion, expiry, and cancellation |
 | P4.A5 | Order-time three-sandbox intent yields a ready v0.1.24 supervisor and running baseline sandboxes before sensitivity starts | P4.R1 trusted-host preparation and root/non-root replay harness | resolved in P4.R1 | sensitivity must run the replay-safe signed-v0.1.24 preparation and require exactly three running medium sandboxes before freezing the baseline |
 | P4.A6 | An arbitrary owner-supplied existing VPS can replace the disposable production acceptance task | production workflow, operator task/selector checks, bootstrap/registration binding, canary checkpoint, and cancellation contract | false | an external VPS may support a separately authorized non-gating host inspection, but P4.S1-P4.S3 still require a provisioned live `is_test` task unless a new adoption contract is designed and reviewed |
-| P4.A7 | An existing operator path can place console-authenticated public host keys into the protected deployment-host pin without direct deployment-host SSH | default-branch workflow/source inspection and local SSH inventory | false | add a narrow protected enrollment action; never accept a console URL, credential, fingerprint-only value, or network scan as the key source |
+| P4.A7 | An existing operator path can place console-authenticated public host keys into the protected deployment-host pin without direct deployment-host SSH | deployed P4.R2 protected workflow, enrollment script, contract tests, and independent reviews | resolved in P4.R2 | use only the exact task/hostname/device-bound protected enrollment action; never accept a console URL, credential, fingerprint-only value, or network scan as the key source |
 
 ### Live acceptance phase P4 entry-gate decision
 
@@ -736,7 +741,7 @@ test -z "$(git tag --list "$TAG")"
   request and response remain unchanged. P4.R1 adds only nullable internal test
   metadata, protected operator commands, and deployment-runbook coverage. Any
   live discrepancy reopens P2/P3 instead of editing the oracle to pass.
-- Decision timestamp or plan revision: 2026-09-08, release revision 13.
+- Decision timestamp or plan revision: 2026-09-08, release revision 14.
 
 ### Live acceptance phase P4 subparts
 
@@ -744,7 +749,7 @@ test -z "$(git tag --list "$TAG")"
 |---|---|---|---|---|---|---|---|---|
 | P4.S0 | Read-only current quote and readiness packet | P3 | production operator `action=preflight`, plan `agent` | plan evidence only | current purchasing readiness, exact OS, capacity, and monthly price; no key/order/resource mutation | inspect exact workflow run/logs and absence of create step | no | completed |
 | P4.R1 | Recover task-scoped signed artifact selection and establish a stable baseline-preparation path | P4.S0, false P4.A4-P4.A5 | backend Runtime/operator state and migration; acceptance workflow/driver/tests/runbook | internal operator contract and recovery docs; public bootstrap/OpenAPI stay unchanged | only live `is_test` tasks may receive an exact verified override; normal users retain global metadata; stage changes use fresh checkpoint-bound bootstrap keys while prior idempotent responses remain immutable; registration must report the selected version; sensitivity prepares v0.1.24 with `preserve`, nine Docker sentinels, and exactly three running medium sandboxes through trusted SSH | backend unit/DB/operator/security tests, canary contract tests, full frontend/backend gates, migration upgrade/downgrade, independent review, exact-head CI/deploy | no | completed; merged, deployed, and independently approved |
-| P4.R2 | Recover a protected deployment-host enrollment path for console-authenticated host keys | P4.R1, partially resolved P4.A3, false P4.A7 | acceptance workflow/tests/runbook only | internal operator workflow; public API and ordinary-user behavior unchanged | accept one console-copied OpenSSH public host key for the exact live test task/hostname; derive and verify current IP/task state on the deployment host; atomically create the non-symlink mode-0600 pin under a mode-0700 directory; byte-identical replay succeeds and every mismatch refuses overwrite; log only fingerprint and file digest | workflow contract tests, shell syntax, exact-head CI/deploy, independent review | no | in_progress; frontend branch fast-forwarded from main before recovery edits |
+| P4.R2 | Recover a protected deployment-host enrollment path for console-authenticated host keys | P4.R1, partially resolved P4.A3, false P4.A7 | acceptance workflow/tests/runbook only | internal operator workflow; public API and ordinary-user behavior unchanged | accept one console-copied OpenSSH public host key for the exact live test task/hostname; derive and verify current IP/task state on the deployment host; atomically create the non-symlink mode-0600 pin under a mode-0700 directory; byte-identical replay succeeds and every mismatch refuses overwrite; log only fingerprint and file digest | workflow contract tests, shell syntax, exact-head CI/deploy, independent review | no | completed; PR #108 exact head, merge tree, default-branch deployment, fresh task inspection, and three independent reviews approved |
 | P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R2 and fresh owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence only | one task/server, key-only SSH, out-of-band pinned host key, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, trusted-host-key precondition, bounded state inspection, baseline prepare run | no | in_progress; one ready server exists, host-key enrollment and baseline preparation pending |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | pending |
 | P4.S3 | Final cancellation, absence verification, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no billable compute ambiguity; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | pending |
@@ -1005,6 +1010,29 @@ test -z "$(git tag --list "$TAG")"
   was available. No credential was requested, read, entered, or transmitted.
   The owner must authenticate the retained provider tab before the exact VPS
   console can supply the missing out-of-band evidence.
+- P4.R2 implementation was isolated to the acceptance workflow, protected-host
+  enrollment script, operator runbook, and contract tests. The frontend branch
+  was fast-forwarded to current `main` before the edit and merged `main` again
+  before commit. Commit `a28dae75e17f256a2c73759f18af0fd7a9e36256`
+  passed local syntax, ShellCheck, actionlint, diff, 19 focused runnable tests,
+  145/146 full Node tests with the existing macOS Bash-3 skip, and 68 backend
+  deployment/admin tests. Separate contract and security reviewers approved.
+- Frontend PR #108 exact-head run `34180566125` passed and merged as
+  `ae64f8539450b78fe68214c87b8cc31c94f03ba8`. PR head and merge have the
+  identical tree `20d69422b2245bf1a346f43a0fcc15033aff444b`; the merge parents
+  are exactly prior main and the PR head, and only the four intended files
+  changed. Default-branch run `34180810995` attempt 2 passed 1,815 backend
+  tests with one skip, frontend/admin gates, four-image publication, blue-green
+  service deployment, admin promotion, and the bounded production x402 check.
+  Attempt 1's only failure was an unchanged commerce-database assertion that
+  passed on attempt 2; it is retained as a separate nondeterministic-test
+  residual rather than attributed to P4.R2.
+- Fresh deployed-main read-only inspection run `34182422911` confirmed the same
+  sole test task remains `ready` with `failure=null`, provider request
+  `complete`, device power `ON`, the same active term and Ubuntu image, Runtime
+  `pending_install`, desired/applied revision `1/0`, and exactly three desired
+  sandboxes. The AVS/charge projection contradiction remains unchanged. No SSH,
+  Runtime, sandbox, policy, grant, payment, or cancellation mutation occurred.
 
 ### Live acceptance phase P4.R1 verification log
 
@@ -1036,6 +1064,36 @@ test -z "$(git tag --list "$TAG")"
   release revision 11. Revision 12 records that an arbitrary existing VPS is
   not a valid substitute. The unresolved risks are now the intended live kernel,
   preservation, host-key, billing, and cleanup oracles in P4.S1-P4.S3.
+
+### Live acceptance phase P4.R2 verification log
+
+- Acceptance criteria checked: the protected action accepts only one canonical,
+  comment-free ED25519 public-host-key line and an exact task/hostname/device
+  confirmation; the deployment-host script re-derives and binds the current
+  ready test task, server, provider device, IP, OS, power, tags, and active term.
+- Filesystem and replay evidence: the shared deployment lock, owner/mode and
+  non-symlink checks, mode-0700 pin directory, mode-0600 candidate/pin, atomic
+  hard-link no-overwrite publication, exact byte-identical replay, mismatch
+  refusal, and candidate/pin/parent fsync paths passed focused tests. Existing
+  pin, task-record, and pin-directory symlink cases fail closed.
+- Error-path and log-safety evidence: malformed, multiline, commented, private,
+  noncanonical, non-ED25519, mismatched task/server/provider/state, and foreign
+  filesystem inputs fail before publication. Logs are limited to safe bindings,
+  public algorithm/fingerprint, file digest, and replay state. Neither the
+  workflow nor its consumer invokes `ssh-keyscan` or relaxes strict host-key
+  checking.
+- Authentication and authorization evidence: the workflow runs only through
+  the protected production environment and can validate and bind submitted key
+  bytes, but cannot prove how a human obtained them. Authenticated provider-
+  console observation remains the required out-of-band provenance gate; a
+  structurally valid network-scanned or attacker-supplied key is forbidden even
+  though software cannot distinguish its source.
+- Independent review: pre-integration contract and security reviewers approved,
+  then a fresh read-only verifier reproduced exact merge-tree identity, intended
+  file scope, PR CI, default-branch test/publication/deployment, and the unrelated
+  attempt-1 flake classification. P4.R2 status: completed at release revision
+  14. P4.S1 remains stopped before SSH until the owner-authenticated provider
+  console supplies the exact guest ED25519 public host key.
 
 ### Documentation phase P2D header
 
