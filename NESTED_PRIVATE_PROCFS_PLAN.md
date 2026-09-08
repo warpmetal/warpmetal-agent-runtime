@@ -1908,6 +1908,18 @@ test -z "$(git tag --list "$TAG")"
   event inspection, and the real A/A/B SSH oracle. Integration remains blocked
   only on the owner-required fresh `main` merge, post-merge tests, exact-head CI,
   production deployment, and the single protected live dispatch.
+- Pre-PR integration gate: reviewed recovery commit `5a79d30` was created with a
+  clean worktree. Frontend `origin/main` was fetched at `f287710` and merged
+  cleanly as `97ecd7f`; no conflict or manual side selection occurred, and the
+  merge touched only the newer Admin/checkout files outside P4.R6. On that exact
+  merge head, Ruff, Bash syntax, ShellCheck, actionlint, diff checks, and lint
+  passed with five pre-existing warnings; the site build and 210 tests passed
+  with 190 passes and 20 expected platform skips; all 54 Admin tests passed; a
+  fresh PostgreSQL database migrated to sole head `0037_host_pin_recovery`,
+  downgraded to `0036`, re-upgraded, and passed 2,117 backend tests with one skip
+  plus the 88.16% statement/75.12% branch gate; and the privileged Linux
+  recovery suite passed 23/23 with the real isolated OpenSSH oracle. Exact-head
+  hosted CI remains required before integration.
 
 ### Documentation phase P2D header
 
