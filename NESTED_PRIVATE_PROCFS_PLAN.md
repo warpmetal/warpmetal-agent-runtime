@@ -293,6 +293,7 @@
 | A8 | Exact-path attachment can enforce a per-sandbox or per-user grant | high | false | AppArmor pathname attachment is host-scoped; all same-owner sandboxes containing the trusted path can invoke it |
 | A9 | Nested private procfs is a Nico-only or coding-user-only feature | high | false | owner decision: any verified Agent Runtime workload may use the trusted Bubblewrap boundary; Nico remains the first production canary |
 | A10 | Ordinary WarpMetal users can obtain a provider-console-authenticated VPS host key before using the CLI | high | false | owner decision: users will not have Hivelocity access; the supported default must use first-observed-key trust once and preserve strict pin continuity afterward |
+| A11 | Cancelling an operator test task immediately destroys the provider device | medium | false | Hivelocity cancellation stops future billing but retains the device through its already-created term; the cleanup oracle is terminal task state plus unambiguous successful provider cancellation, while `hasProviderDevice=true` and powered compute may remain until provider retirement |
 
 ## Test strategy
 
@@ -769,10 +770,10 @@ test -z "$(git tag --list "$TAG")"
 | P4.S0 | Read-only current quote and readiness packet | P3 | production operator `action=preflight`, plan `agent` | plan evidence only | current purchasing readiness, exact OS, capacity, and monthly price; no key/order/resource mutation | inspect exact workflow run/logs and absence of create step | no | completed |
 | P4.R1 | Recover task-scoped signed artifact selection and establish a stable baseline-preparation path | P4.S0, false P4.A4-P4.A5 | backend Runtime/operator state and migration; acceptance workflow/driver/tests/runbook | internal operator contract and recovery docs; public bootstrap/OpenAPI stay unchanged | only live `is_test` tasks may receive an exact verified override; normal users retain global metadata; stage changes use fresh checkpoint-bound bootstrap keys while prior idempotent responses remain immutable; registration must report the selected version; sensitivity prepares v0.1.24 with `preserve`, nine Docker sentinels, and exactly three running medium sandboxes through trusted SSH | backend unit/DB/operator/security tests, canary contract tests, full frontend/backend gates, migration upgrade/downgrade, independent review, exact-head CI/deploy | no | completed; merged, deployed, and independently approved |
 | P4.R2 | Recover a protected deployment-host enrollment path for console-authenticated host keys | P4.R1, partially resolved P4.A3, false P4.A7 | acceptance workflow/tests/runbook only | internal operator workflow; public API and ordinary-user behavior unchanged | accept one console-copied OpenSSH public host key for the exact live test task/hostname; derive and verify current IP/task state on the deployment host; atomically create the non-symlink mode-0600 pin under a mode-0700 directory; byte-identical replay succeeds and every mismatch refuses overwrite; log only fingerprint and file digest | workflow contract tests, shell syntax, exact-head CI/deploy, independent review | no | completed; PR #108 exact head, merge tree, default-branch deployment, fresh task inspection, and three independent reviews approved |
-| P4.R3 | Replace mandatory provider-console trust with safe first-use trust for the protected canary and ordinary CLI users | false P4.A3/P4.A8, completed P4.R2 | agent-kit host-trust/state/installer/CLI/tests/docs first; frontend protected workflow/driver/tests/operator and public docs last | CLI 0.8.8 plus public human/LLM trust contract; no Runtime HTTP schema | first harmless owner-key SSH for an exact server trust epoch may accept only Ed25519 into an isolated candidate; atomic no-overwrite pin precedes bootstrap; immediate and all later SSH is strict; existing mismatch and unauthorized epoch change fail closed; optional console pre-seed remains | local two-host-key SSH integration, filesystem/race/error tests, agent-kit full gate and release, frontend focused/full gates, two fresh security reviews, exact-head CI/deploy | no | recovery in progress at revision 18; PR #109 deployed, but the first protected run exposed deployment-host Python 3.8 incompatibility before SSH; reviewed PR #110 is merged and exact production deployment is pending |
-| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3 and existing owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence plus safe TOFU metadata | one task/server, key-only SSH, exact-task first-use pin or optional stronger pre-seed, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, first-use pin and strict-replay precondition, bounded state inspection, baseline prepare run | no | in_progress; one ready server exists, P4.R3 and baseline preparation pending |
-| P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | pending |
-| P4.S3 | Final cancellation, absence verification, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no billable compute ambiguity; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | pending |
+| P4.R3 | Replace mandatory provider-console trust with safe first-use trust for the protected canary and ordinary CLI users | false P4.A3/P4.A8, completed P4.R2 | agent-kit host-trust/state/installer/CLI/tests/docs first; frontend protected workflow/driver/tests/operator and public docs last | CLI 0.8.8 plus public human/LLM trust contract; no Runtime HTTP schema | first harmless owner-key SSH for an exact server trust epoch may accept only Ed25519 into an isolated candidate; atomic no-overwrite pin precedes bootstrap; immediate and all later SSH is strict; existing mismatch and unauthorized epoch change fail closed; optional console pre-seed remains | local two-host-key SSH integration, filesystem/race/error tests, agent-kit full gate and release, frontend focused/full gates, two fresh security reviews, exact-head CI/deploy | no | completed at revision 19; PR #110 deployed and protected live TOFU plus immediate strict replay passed on the sole acceptance VPS |
+| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3 and existing owner confirmation | `action=create`, unique hostname, exact OS/price cap, six-hour expiry, three medium sandboxes | operator evidence plus safe TOFU metadata | one task/server, key-only SSH, exact-task first-use pin or optional stronger pre-seed, ready state, active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | create/inspect runs, first-use pin and strict-replay precondition, bounded state inspection, baseline prepare run | no | recovery required; trust passed, but baseline driver preflight rejected an undeclared deployment-host `jq` dependency before any Runtime or sandbox mutation; the task was safely cancelled |
+| P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked on reviewed driver/cleanup recovery and fresh owner authorization for one replacement acceptance VPS |
+| P4.S3 | Final cancellation, provider reconciliation, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no future-billing ambiguity; provider compute may remain through the already-created term; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | recovery in progress; early cancellation is terminal, artifact selector is cleared, and the exact failed-run directory still requires guarded cleanup |
 
 ### Live acceptance phase P4.R1 frozen recovery design
 
@@ -946,8 +947,11 @@ test -z "$(git tag --list "$TAG")"
    in order, with the exact baseline/candidate SHA-256 values.
 8. Inspect every run for its exact stage success line, host snapshot equality,
    signed metadata, and temporary resource cleanup before advancing.
-9. Dispatch cancel once, reconcile to terminal provider absence, and perform an
-   independent whole-phase review before promoting Runtime v0.1.25.
+9. Dispatch cancel once, reconcile a terminal task and unambiguous successful
+   provider cancellation, and perform an independent whole-phase review before
+   promoting Runtime v0.1.25. Provider compute may remain powered through its
+   already-created term; cancellation prevents future billing rather than
+   proving immediate physical absence.
 ```
 
 ### Live acceptance phase P4 sequence and integration
@@ -1321,8 +1325,38 @@ test -z "$(git tag --list "$TAG")"
   passed PR #110 exact-head run `34196016590`, including the full TOFU happy path
   under Python 3.8, and merged as
   `7ae91ba5745ba9f1ee436ae932d604f16a6f8d95`. Default-branch production run
-  `34196415129` is the remaining revision-18 gate. No live retry is permitted
-  until its test, publication, and deployment jobs all pass.
+  `34196415129` passed its test, publication, and production deployment jobs.
+- Live recovery: fresh inspect run `34198424369` re-established the exact ready,
+  unexpired Ubuntu 24.04 task/device/IP tuple with Runtime `pending_install`,
+  three desired sandboxes, and desired/applied revision `1/0`. Protected TOFU
+  run `34198472527` then passed. The helper can exit successfully only after its
+  exact-task owner-key probe, atomic Ed25519 pin publication, and immediate
+  strict replay have all succeeded; no bootstrap or Runtime mutation is part of
+  that action. P4.R3 is therefore complete at revision 19.
+- Failed P4.S1 gate: sensitivity run `34198567199` verified the immutable signed
+  v0.1.24 artifact and set the task-scoped selector, then stopped at driver line
+  37 while checking deployment-host commands. Correlation with the already
+  passing TOFU dependencies isolates the undeclared `jq` dependency. The driver
+  exited before task/artifact binding, checkpoint creation, VPS SSH, bootstrap,
+  Runtime installation, sandbox creation, or policy mutation. Stage progression
+  stopped; candidate, rollback, forward, and disable were not dispatched.
+- Cleanup evidence: the failed run's backend artifact-clear operation succeeded
+  and reported `selectedArtifact=null` and `cleared=true`. Its subsequent exact
+  run-directory removal failed closed because the ownership marker remained.
+  Independent review found that the cleanup-side `docker compose exec` lacked
+  `</dev/null`, allowing Docker to consume the remainder of the remote
+  `bash -s` input after the successful clear. Recovery must replace the three
+  `jq` uses with Python 3.8-compatible JSON handling, name any missing command,
+  redirect container stdin, prove post-clear marker removal in tests, and remove
+  only the validated failed-run marker/directory under the deployment lock.
+- Safety stop: exact cancel run `34198721496` passed. Post-cancel inspect run
+  `34198926210` verified task state `cancelled`, Runtime still
+  `pending_install`, desired/applied revision `1/0`, and no Runtime mutation.
+  Provider cancellation is unambiguous, but the device remains powered through
+  the already-created term by the provider contract; it is not a new billing
+  attempt. No replacement server, payment, or duplicate order was created.
+  P4.S1-P4.S3 cannot resume live execution until the code recovery is reviewed,
+  merged, deployed, and the owner authorizes exactly one replacement VPS.
 
 ### Documentation phase P2D header
 
