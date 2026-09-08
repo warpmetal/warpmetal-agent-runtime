@@ -790,7 +790,7 @@ test -z "$(git tag --list "$TAG")"
 | P4.R2 | Recover a protected deployment-host enrollment path for console-authenticated host keys | P4.R1, partially resolved P4.A3, false P4.A7 | acceptance workflow/tests/runbook only | internal operator workflow; public API and ordinary-user behavior unchanged | accept one console-copied OpenSSH public host key for the exact live test task/hostname; derive and verify current IP/task state on the deployment host; atomically create the non-symlink mode-0600 pin under a mode-0700 directory; byte-identical replay succeeds and every mismatch refuses overwrite; log only fingerprint and file digest | workflow contract tests, shell syntax, exact-head CI/deploy, independent review | no | completed; PR #108 exact head, merge tree, default-branch deployment, fresh task inspection, and three independent reviews approved |
 | P4.R3 | Replace mandatory provider-console trust with safe first-use trust for the protected canary and ordinary CLI users | false P4.A3/P4.A8, completed P4.R2 | agent-kit host-trust/state/installer/CLI/tests/docs first; frontend protected workflow/driver/tests/operator and public docs last | CLI 0.8.8 plus public human/LLM trust contract; no Runtime HTTP schema | first harmless owner-key SSH for an exact server trust epoch may accept only Ed25519 into an isolated candidate; atomic no-overwrite pin precedes bootstrap; immediate and all later SSH is strict; existing mismatch and unauthorized epoch change fail closed; optional console pre-seed remains | local two-host-key SSH integration, filesystem/race/error tests, agent-kit full gate and release, frontend focused/full gates, two fresh security reviews, exact-head CI/deploy | no | completed at revision 19; PR #110 deployed and protected live TOFU plus immediate strict replay passed on the sole acceptance VPS |
 | P4.R4 | Reauthorize the exact cancelled-but-provider-live acceptance task without reopening billing | false P4.A9, completed cleanup recovery, owner same-VPS direction | backend operator/service plus protected acceptance workflow/helper/tests/runbook; existing task/server/device/key/pin only | internal operator contract and recovery docs; no public API/schema or ordinary-user behavior change | exact fixed UTC deadline; current cancelled test, prior successful cancellation, provider `ON` and exact bindings, selector null, pending-install revision `1/0` and three intended medium sandboxes, protected task record, owner identity, existing pin, and strict SSH all pass before atomically setting only `test_expires_at` and `term_ends_at`; exact replay succeeds, different extension is forever refused; final cancel replay closes access | backend DB/provider tests, executable helper failure matrix, workflow contract tests, full frontend/backend gate, independent security review, exact-head CI/deploy, protected live inspect/extend/replay | no | deployed; first live extension failed closed on existing-pin validation before SSH/operator mutation, and bounded recovery is active |
-| P4.R5 | Diagnose protected acceptance-pin drift without changing trust state | failed P4.R4 live attempt and independently closed mutation ambiguity | protected exact task/server/hostname/device-bound workflow/helper plus focused tests/runbook | internal operator diagnostic only; no public API, CLI, LLM, Runtime, image, or ordinary-user behavior change | under the production and deployment locks, revalidate the exact task/provider binding and report only safe pin predicate classifications from no-follow descriptor metadata/canonical validation; never print key bytes/path, perform SSH/TOFU/enrollment, change pin metadata/content/inode, or call a mutation operator | behavioral classification/TOCTOU/security tests, Bash/ShellCheck/actionlint, full gates, independent review, exact-head CI/deploy, one protected diagnostic run | no | recovery design frozen; implementation pending before any lease retry |
+| P4.R5 | Diagnose protected acceptance-pin drift without changing trust state | failed P4.R4 live attempt and independently closed mutation ambiguity | protected exact task/server/hostname/device-bound workflow/helper plus focused tests/runbook | internal operator diagnostic only; no public API, CLI, LLM, Runtime, image, or ordinary-user behavior change | under the production and deployment locks, revalidate the exact task/provider binding and report only safe pin predicate classifications from no-follow descriptor metadata/canonical validation; never print key bytes/path, perform SSH/TOFU/enrollment, change pin metadata/content/inode, or call a mutation operator | behavioral classification/TOCTOU/security tests, Bash/ShellCheck/actionlint, full gates, independent review, exact-head CI/deploy, one protected diagnostic run | no | implementation and independent security/contract review complete; exact-head CI exposed a pre-existing admin visual-harness race, and bounded test-only recovery is active before integration |
 | P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3 and P4.R4 | existing exact cancelled task/server/device, six-hour continuation lease, three medium sandbox intents | operator evidence plus existing safe TOFU metadata | same single server, key-only strict SSH with existing pin, cancelled state plus bounded active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | inspect/lease runs, strict-replay precondition, bounded state inspection, baseline prepare run | no | blocked on operation-bound pin-metadata diagnosis/recovery; the failed lease attempt made no state change and no replacement VPS is authorized |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked only on deployed P4.R4 and its completed same-VPS P4.S1 baseline |
 | P4.S3 | Final cancellation, provider reconciliation, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no future-billing ambiguity; provider compute may remain through the already-created term; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | failed-attempt cancellation and guarded cleanup are complete and replay-verified; final whole-phase cleanup/review remains pending P4.S2 |
@@ -1609,6 +1609,57 @@ test -z "$(git tag --list "$TAG")"
   close the independently found enrollment consistency gap by enforcing nonempty
   and single-link candidates/existing/final pins without changing enrollment
   semantics. Require independent recovery approval before integration.
+
+### Live acceptance phase P4.R5 verification and CI-recovery log
+
+- Implementation commit `e684dd6` added the separate protected diagnostic
+  action and read-only helper, secure descriptor-based deployment locking,
+  exact cancelled-task/provider/runtime/sandbox binding, bounded safe
+  classifications, and the enrollment single-link/nonempty consistency checks.
+  The helper holds the lock throughout observation and compares initial path,
+  pre-read descriptor, post-read descriptor, and final path identity and mutable
+  metadata before reporting any stable classification.
+- The full local gate passed 2,088 PostgreSQL backend tests with one skip and
+  the branch-coverage threshold, 183 site tests with one expected macOS Bash-4
+  skip, 53 admin tests, Ruff, migrations, lint with only five pre-existing
+  warnings, Bash syntax, ShellCheck, actionlint, and diff checks. Two independent
+  reviewers approved the diagnostic contract and security boundary on native
+  and Linux/Python 3.8 environments.
+- PR #117 exact-head run `34247868945` passed and the implementation merged as
+  `0a60b238394a19d1a078735a9ff141199dd88288`. Default-branch run
+  `34248510162` stopped before publication/deployment because the concurrent
+  same-inode rewrite fixture did not reliably overlap the intentionally narrow
+  production observation window. No production diagnostic failure or external
+  mutation occurred.
+- Test-only commit `7da936e` replaces that probabilistic writer with a
+  fixture-scoped Python import interceptor that performs one real same-inode,
+  same-size, fsynced rewrite after the first real `lstat`, then returns the
+  pre-rewrite observation. The production helper remains unchanged and must
+  deterministically classify `path_identity_unstable`. The diagnostic suite
+  passed repeatedly on native and Linux amd64, including Python 3.8, and both
+  independent reviewers approved the exact recovery.
+- PR #119 exact-head run `34249905479` passed the backend, site, diagnostic,
+  and lint gates, then stopped before publication/deployment in the unchanged
+  admin visual test while waiting for a new pricing preview. A fresh independent
+  audit proved the PR branch has a byte-identical `admin` tree to its main base,
+  reproduced the timeout locally, and identified a pre-existing harness race:
+  the test observes the successful pricing-version confirmation before the
+  asynchronous refresh clears the production `busy` state, immediately submits
+  the form, and production correctly ignores the request while busy.
+- Bounded recovery: do not rerun the failed gate blindly and do not alter
+  production pricing behavior or any pricing oracle. Change only the admin
+  visual harness to wait until the existing preview control is present and
+  enabled after the version-11 confirmation before submitting the next preview.
+  Reproduce the formerly failing sequence, rerun the complete admin and frontend
+  gates, obtain fresh independent review, and require a new exact-head PR run.
+- Test-only recovery commit `6f94ba9` now waits for the actual enabled
+  `Preview complete policy` control and clicks it. Five consecutive focused
+  visual runs, the full 53-test admin suite, the full 183-pass/one expected-skip
+  site suite, the eight-test diagnostic suite, lint with zero errors, and diff
+  checks passed. The fresh independent recovery reviewer approved the exact
+  two-test-file branch diff and confirmed that a stuck production `busy` state,
+  failed preview, or failed edit-invalidation oracle still fails the test. A new
+  exact-head PR run is pending before integration.
 
 ### Documentation phase P2D header
 
