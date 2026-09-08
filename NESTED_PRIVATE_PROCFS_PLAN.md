@@ -789,7 +789,8 @@ test -z "$(git tag --list "$TAG")"
 | P4.R1 | Recover task-scoped signed artifact selection and establish a stable baseline-preparation path | P4.S0, false P4.A4-P4.A5 | backend Runtime/operator state and migration; acceptance workflow/driver/tests/runbook | internal operator contract and recovery docs; public bootstrap/OpenAPI stay unchanged | only live `is_test` tasks may receive an exact verified override; normal users retain global metadata; stage changes use fresh checkpoint-bound bootstrap keys while prior idempotent responses remain immutable; registration must report the selected version; sensitivity prepares v0.1.24 with `preserve`, nine Docker sentinels, and exactly three running medium sandboxes through trusted SSH | backend unit/DB/operator/security tests, canary contract tests, full frontend/backend gates, migration upgrade/downgrade, independent review, exact-head CI/deploy | no | completed; merged, deployed, and independently approved |
 | P4.R2 | Recover a protected deployment-host enrollment path for console-authenticated host keys | P4.R1, partially resolved P4.A3, false P4.A7 | acceptance workflow/tests/runbook only | internal operator workflow; public API and ordinary-user behavior unchanged | accept one console-copied OpenSSH public host key for the exact live test task/hostname; derive and verify current IP/task state on the deployment host; atomically create the non-symlink mode-0600 pin under a mode-0700 directory; byte-identical replay succeeds and every mismatch refuses overwrite; log only fingerprint and file digest | workflow contract tests, shell syntax, exact-head CI/deploy, independent review | no | completed; PR #108 exact head, merge tree, default-branch deployment, fresh task inspection, and three independent reviews approved |
 | P4.R3 | Replace mandatory provider-console trust with safe first-use trust for the protected canary and ordinary CLI users | false P4.A3/P4.A8, completed P4.R2 | agent-kit host-trust/state/installer/CLI/tests/docs first; frontend protected workflow/driver/tests/operator and public docs last | CLI 0.8.8 plus public human/LLM trust contract; no Runtime HTTP schema | first harmless owner-key SSH for an exact server trust epoch may accept only Ed25519 into an isolated candidate; atomic no-overwrite pin precedes bootstrap; immediate and all later SSH is strict; existing mismatch and unauthorized epoch change fail closed; optional console pre-seed remains | local two-host-key SSH integration, filesystem/race/error tests, agent-kit full gate and release, frontend focused/full gates, two fresh security reviews, exact-head CI/deploy | no | completed at revision 19; PR #110 deployed and protected live TOFU plus immediate strict replay passed on the sole acceptance VPS |
-| P4.R4 | Reauthorize the exact cancelled-but-provider-live acceptance task without reopening billing | false P4.A9, completed cleanup recovery, owner same-VPS direction | backend operator/service plus protected acceptance workflow/helper/tests/runbook; existing task/server/device/key/pin only | internal operator contract and recovery docs; no public API/schema or ordinary-user behavior change | exact fixed UTC deadline; current cancelled test, prior successful cancellation, provider `ON` and exact bindings, selector null, pending-install revision `1/0` and three intended medium sandboxes, protected task record, owner identity, existing pin, and strict SSH all pass before atomically setting only `test_expires_at` and `term_ends_at`; exact replay succeeds, different extension is forever refused; final cancel replay closes access | backend DB/provider tests, executable helper failure matrix, workflow contract tests, full frontend/backend gate, independent security review, exact-head CI/deploy, protected live inspect/extend/replay | no | deployed; first live extension failed closed on existing-pin metadata before SSH/operator mutation, and bounded recovery is active |
+| P4.R4 | Reauthorize the exact cancelled-but-provider-live acceptance task without reopening billing | false P4.A9, completed cleanup recovery, owner same-VPS direction | backend operator/service plus protected acceptance workflow/helper/tests/runbook; existing task/server/device/key/pin only | internal operator contract and recovery docs; no public API/schema or ordinary-user behavior change | exact fixed UTC deadline; current cancelled test, prior successful cancellation, provider `ON` and exact bindings, selector null, pending-install revision `1/0` and three intended medium sandboxes, protected task record, owner identity, existing pin, and strict SSH all pass before atomically setting only `test_expires_at` and `term_ends_at`; exact replay succeeds, different extension is forever refused; final cancel replay closes access | backend DB/provider tests, executable helper failure matrix, workflow contract tests, full frontend/backend gate, independent security review, exact-head CI/deploy, protected live inspect/extend/replay | no | deployed; first live extension failed closed on existing-pin validation before SSH/operator mutation, and bounded recovery is active |
+| P4.R5 | Diagnose protected acceptance-pin drift without changing trust state | failed P4.R4 live attempt and independently closed mutation ambiguity | protected exact task/server/hostname/device-bound workflow/helper plus focused tests/runbook | internal operator diagnostic only; no public API, CLI, LLM, Runtime, image, or ordinary-user behavior change | under the production and deployment locks, revalidate the exact task/provider binding and report only safe pin predicate classifications from no-follow descriptor metadata/canonical validation; never print key bytes/path, perform SSH/TOFU/enrollment, change pin metadata/content/inode, or call a mutation operator | behavioral classification/TOCTOU/security tests, Bash/ShellCheck/actionlint, full gates, independent review, exact-head CI/deploy, one protected diagnostic run | no | recovery design frozen; implementation pending before any lease retry |
 | P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3 and P4.R4 | existing exact cancelled task/server/device, six-hour continuation lease, three medium sandbox intents | operator evidence plus existing safe TOFU metadata | same single server, key-only strict SSH with existing pin, cancelled state plus bounded active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | inspect/lease runs, strict-replay precondition, bounded state inspection, baseline prepare run | no | blocked on operation-bound pin-metadata diagnosis/recovery; the failed lease attempt made no state change and no replacement VPS is authorized |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked only on deployed P4.R4 and its completed same-VPS P4.S1 baseline |
 | P4.S3 | Final cancellation, provider reconciliation, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no future-billing ambiguity; provider compute may remain through the already-created term; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | failed-attempt cancellation and guarded cleanup are complete and replay-verified; final whole-phase cleanup/review remains pending P4.S2 |
@@ -1557,9 +1558,11 @@ test -z "$(git tag --list "$TAG")"
   deadline `2026-09-08T20:45:15Z` and passed workflow input validation, pinned
   deployment-host setup, and exact helper routing, then refused with
   `invalid_existing_pin`. The refusal occurs in the helper's local protected-pin
-  existence/type/nonempty/mode/owner/link-count checks, before task/provider
-  reinspection, owner-key SSH, or the backend lease operator. No retry is
-  authorized while the exact failed predicate remains unknown.
+  validation before owner-key VPS SSH or the backend lease operator. The same
+  stable reason covers both initial existence/type/nonempty/mode/owner/link-count
+  checks and later canonical-content validation; timing suggests the early group
+  but does not prove it. No retry is authorized while the exact failed predicate
+  remains unknown.
 - Ambiguity closure: immediate protected read-only inspect run `34240408968`
   passed and reconfirmed both task deadlines are still the original expired
   `2026-09-08T07:33:04.758006Z`; task, zero-payment, provider `ON`, Runtime
@@ -1568,6 +1571,36 @@ test -z "$(git tag --list "$TAG")"
   order, payment, renewal, or cancellation mutation. Recovery must diagnose
   metadata without reading key bytes, rerunning TOFU, resetting/replacing the
   pin, or weakening strict verification.
+
+### Live acceptance phase P4.R5 frozen pin-diagnostic recovery design
+
+- Add a separate protected `diagnose-acceptance-host-pin` action rather than
+  turning the mutation-capable extension into a diagnostic. Bind its exact
+  confirmation to task ID, server ID, hostname, and provider device ID. Retain
+  the production environment, global production concurrency, and deployment
+  lock. The action must run no TOFU, enrollment, extension, canary, cancellation,
+  payment, renewal, provider mutation, or VPS SSH path.
+- Reuse the exact read-only task/provider binding parser from P4.R4 before
+  diagnosing the task-derived pin path. Inspect the final component with
+  `lstat` and a no-follow file descriptor, compare descriptor/path identity to
+  close swaps, and classify only: missing, symlink/wrong type, empty, wrong
+  mode, wrong owner, multiple links, malformed canonical literal-IP Ed25519 pin,
+  or healthy. Output only stable classification and safe booleans/numeric
+  metadata plus public fingerprint/digest when canonical; never output the key
+  line, key material, task record/token, private-key path/content, or SSH logs.
+- Diagnosis is read-only and cannot repair even an apparently safe mode or
+  interrupted-publication condition. A mode-only normalization may be designed
+  only after the live classification proves all content/inode/owner/link/binding
+  predicates healthy except restrictive mode, and it must preserve bytes,
+  digest, inode, and strict trust. Missing, wrong type, empty, wrong owner,
+  malformed content, or unexplained links remain blocked. An exact two-link
+  orphan candidate requires separate prior-digest/inode evidence and review.
+- Add executable fixtures for every classification, descriptor/path-swap and
+  lock contention, exact confirmation/routing, output redaction, and proof that
+  no diagnostic branch invokes SSH or a backend/provider mutation. Also close
+  the independently found enrollment consistency gap by enforcing nonempty and
+  single-link candidates/existing/final pins without changing enrollment
+  semantics. Require independent recovery approval before integration.
 
 ### Documentation phase P2D header
 
