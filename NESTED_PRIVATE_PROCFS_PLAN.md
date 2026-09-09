@@ -2322,9 +2322,12 @@ test -z "$(git tag --list "$TAG")"
   missing strict host pin and a working SSH session, add a narrowly bound
   deployment-host operator action that validates the frozen cancelled-task
   baseline, the unconsumed P4.R8 state, the provider's exact device/service/IP,
-  and an exact confirmation before requesting the provider reboot. Poll and
-  require the same device to return powered `ON`; an ambiguous or failed
-  provider result stops recovery.
+  and an exact confirmation before requesting the provider reboot. Its terminal
+  provider evidence is narrowly defined as a successful provider response plus
+  the same exact device returning powered `ON`; this does not overclaim an
+  observed boot-ID change. An ambiguous or failed provider result stops
+  recovery, and P4.R8's two-banner preclaim gate remains the SSH-readiness
+  oracle.
 - Recovery attempt bounds and non-goals: do not reload, reinstall, replace,
   order, pay, renew, extend a lease, run P4.R6, alter Runtime or sandbox intent,
   or reset trust. The reboot is expected to preserve disk and host-key state,
