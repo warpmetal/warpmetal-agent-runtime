@@ -10,6 +10,9 @@ fail_install() {
   exit "${2:-1}"
 }
 
+# Preserve mode never sources or invokes the optional AppArmor policy helper.
+warpmetal_apparmor_policy_initialized=0
+
 is_warpmetal_podman_service_process() {
   process_id=$1
   [ -n "$warpmetal_podman_pid" ] || return 1
@@ -269,14 +272,31 @@ fi
 api_origin=""
 server_id=""
 bundle_dir=""
+nested_private_procfs_mode=preserve
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --api) api_origin=$2; shift 2 ;;
-    --server) server_id=$2; shift 2 ;;
-    --bundle) bundle_dir=$2; shift 2 ;;
+    --api) [ "$#" -ge 2 ] || { echo "invalid_installer_argument" >&2; exit 2; }; api_origin=$2; shift 2 ;;
+    --server) [ "$#" -ge 2 ] || { echo "invalid_installer_argument" >&2; exit 2; }; server_id=$2; shift 2 ;;
+    --bundle) [ "$#" -ge 2 ] || { echo "invalid_installer_argument" >&2; exit 2; }; bundle_dir=$2; shift 2 ;;
+    --nested-private-procfs)
+      [ "$#" -ge 2 ] || { echo "invalid_installer_argument" >&2; exit 2; }
+      nested_private_procfs_mode=$2
+      shift 2
+      ;;
     *) echo "invalid_installer_argument" >&2; exit 2 ;;
   esac
 done
+
+case "$nested_private_procfs_mode" in
+  preserve|enable|disable) ;;
+  *) echo "runtime_nested_private_procfs_mode_invalid" >&2; exit 2 ;;
+esac
+if [ "$nested_private_procfs_mode" = enable ]; then
+  case "$(uname -m)" in
+    x86_64) ;;
+    *) fail_install runtime_nested_private_procfs_architecture_unsupported ;;
+  esac
+fi
 
 case "$api_origin" in https://*) ;; *) echo "invalid_api_origin" >&2; exit 2 ;; esac
 case "$server_id" in srv_*) ;; *) echo "invalid_server_id" >&2; exit 2 ;; esac
@@ -310,9 +330,26 @@ umask 077
 install_state_dir=$(mktemp -d /run/warpmetal-install.XXXXXX) || \
   fail_install runtime_install_state_unavailable
 cleanup_install_state() {
-  case "$install_state_dir" in
-    /run/warpmetal-install.*) rm -rf -- "$install_state_dir" ;;
-  esac
+  apparmor_rollback_status=0
+  if [ "$warpmetal_apparmor_policy_initialized" -eq 1 ]; then
+    if ! warpmetal_rollback_apparmor_policy; then
+      apparmor_rollback_status=1
+      echo runtime_apparmor_policy_rollback_failed >&2
+    fi
+  fi
+  # Assigned by the signed helper sourced below.
+  # shellcheck disable=SC2154
+  if [ "${warpmetal_apparmor_policy_recovery_required:-0}" -eq 1 ]; then
+    apparmor_rollback_status=1
+  fi
+  if [ "$apparmor_rollback_status" -eq 0 ]; then
+    case "$install_state_dir" in
+      /run/warpmetal-install.*) rm -rf -- "$install_state_dir" ;;
+    esac
+  else
+    printf 'runtime_apparmor_policy_recovery_state_preserved %s\n' \
+      "${warpmetal_apparmor_policy_durable_state:-$install_state_dir}" >&2
+  fi
 }
 trap cleanup_install_state 0
 trap 'exit 130' 1 2 15
@@ -328,6 +365,52 @@ fi
 assert_host_workloads_unchanged
 command -v podman >/dev/null 2>&1 || fail_install runtime_podman_unavailable
 command -v crun >/dev/null 2>&1 || fail_install runtime_oci_runtime_unavailable
+
+if [ "$nested_private_procfs_mode" != preserve ]; then
+  apparmor_policy_source=$bundle_dir/warpmetal-agent-runtime-bwrap
+  apparmor_policy_library=$bundle_dir/warpmetal-apparmor-policy.sh
+  [ -f "$apparmor_policy_library" ] && [ ! -L "$apparmor_policy_library" ] || \
+    fail_install runtime_apparmor_policy_bundle_invalid
+  # shellcheck source=/dev/null
+  . "$apparmor_policy_library"
+  warpmetal_apparmor_policy_initialized=1
+  apparmor_requirement_status=0
+  warpmetal_detect_apparmor_policy_requirement \
+    /sys/module/apparmor/parameters/enabled \
+    /proc/sys/kernel/apparmor_restrict_unprivileged_userns || \
+    apparmor_requirement_status=$?
+  case "$apparmor_requirement_status:$nested_private_procfs_mode" in
+    0:enable|0:disable|1:disable)
+    apparmor_parser_path=$(command -v apparmor_parser 2>/dev/null || true)
+    [ -n "$apparmor_parser_path" ] || fail_install runtime_apparmor_policy_unsupported
+    apparmor_policy_destination=/etc/apparmor.d/warpmetal-agent-runtime-bwrap
+    apparmor_policy_durable_state=/var/lib/warpmetal/apparmor-policy-state
+    apparmor_metadata_helper=$bundle_dir/warpmetal-policy-metadata
+    [ -f "$apparmor_metadata_helper" ] && [ ! -L "$apparmor_metadata_helper" ] && \
+      [ -x "$apparmor_metadata_helper" ] || \
+      fail_install runtime_apparmor_policy_bundle_invalid
+    if ! warpmetal_configure_apparmor_policy \
+      "$nested_private_procfs_mode" \
+      "$(uname -m)" \
+      "$apparmor_policy_source" \
+      "$apparmor_policy_destination" \
+      "$apparmor_policy_durable_state" \
+      "$apparmor_parser_path" \
+      /sys/kernel/security/apparmor/profiles \
+      "$apparmor_metadata_helper"; then
+      # Assigned by the signed helper sourced above.
+      # shellcheck disable=SC2154
+      fail_install "$warpmetal_apparmor_policy_error"
+    fi
+      ;;
+    1:enable) ;;
+    *)
+      # Assigned by the signed helper sourced above.
+      # shellcheck disable=SC2154
+      fail_install "$warpmetal_apparmor_policy_error"
+      ;;
+  esac
+fi
 
 getent passwd warpmetal-runtime >/dev/null 2>&1 || \
   useradd --system --create-home --home-dir /var/lib/warpmetal-runtime --shell /usr/sbin/nologin warpmetal-runtime
@@ -422,3 +505,11 @@ assert_host_workloads_unchanged
 /usr/local/sbin/warpmetald register --api "$api_origin" --server "$server_id"
 systemctl enable warpmetald.service
 systemctl restart warpmetald.service
+if [ "$nested_private_procfs_mode" != preserve ]; then
+  if ! warpmetal_commit_apparmor_policy_operation; then
+    fail_install runtime_apparmor_policy_recovery_failed
+  fi
+fi
+# Read by the helper-backed EXIT trap.
+# shellcheck disable=SC2034
+warpmetal_apparmor_policy_committed=1

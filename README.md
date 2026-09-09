@@ -31,6 +31,14 @@ Security boundaries:
 - The root supervisor performs ext4 mount operations through PID 1's host mount
   namespace so the separate rootless engine sees only the intended workspace
   mounts; the rest of the supervisor stays inside its hardened mount namespace.
+- On amd64 hosts that actively enforce AppArmor's
+  restricted-unprivileged-userns control, an explicit signed-installer option
+  can load a narrowly attached policy for the exact root-owned Codex Bubblewrap
+  helper in the signed coding image. The setup profile permits Bubblewrap to
+  construct an inner user/PID namespace and new procfs, then stacks every child
+  executable with a capability-denying profile. The capability is off by
+  default, does not apply to `/usr/bin/bwrap`, workspace binaries, or generic
+  `unshare`, and does not change sandbox container-create arguments.
 
 ## Baked-in CLI availability reports
 
@@ -91,6 +99,20 @@ cosign verify-blob \
   warpmetal-runtime-<version>-linux-<arch>.tar.gz
 ```
 
+The archive also contains the amd64 coding-host AppArmor policy, its
+transactional installer helper, and `nested-private-procfs-oracle.sh`. Runtime
+continues to publish arm64 supervisor archives, but explicit capability enable
+fails closed there because the current signed coding image and exact helper path
+are amd64-only. The oracle is credential-free: inside the matching signed
+sandbox image it verifies the helper ownership,
+creates its own short-lived outer sentinel, mounts a new procfs in a new PID
+namespace, checks that the inner process is PID 1, checks a descendant's
+`/proc/self`, and confirms the outer sentinel is absent. It clears the inherited
+environment before starting the inner process. Passing this userspace oracle is
+not by itself a production promotion: the guarded provider canary must also
+prove generic user namespaces remain restricted and all host workload
+invariants remain unchanged.
+
 Only install a release through an authenticated WarpMetal runtime-install
 session. The installer requires root because it creates the dedicated runtime
 and SSH gateway accounts, installs host firewall rules, and enables the
@@ -121,6 +143,78 @@ instead of restarted. This keeps persistent Agent Runtime sandboxes and their
 delegated cgroups running while the supervisor binaries are replaced. A fresh
 install, or an inactive service, is still started before registration.
 
+Ordinary installs and upgrades use
+`--nested-private-procfs preserve` by default. Preserve mode does not inspect,
+parse, load, unload, create, replace, or remove the Runtime AppArmor policy.
+Dedicated amd64 hosts for verified nested-Bubblewrap workloads may explicitly use
+`--nested-private-procfs enable`; other architectures fail closed. Explicit
+`--nested-private-procfs disable` unloads/removes the Runtime policy and restores
+the exact file and loaded/unloaded state that preceded its first enable. These
+are host-scoped operations, not per-user or per-sandbox grants: after enable,
+every same-owner sandbox on that Runtime host containing the trusted exact
+helper path can invoke it. The authenticated backend remains the trusted
+immutable-image selection boundary; AppArmor pathname attachment does not
+verify an image digest.
+
+### Why and when to enable nested private procfs
+
+This capability is general Agent Runtime infrastructure; Nico is its first
+production consumer, not a requirement or product boundary. Enable it when a
+trusted workload launches the signed, fixed-path Bubblewrap helper inside a
+Runtime sandbox and needs a second process/filesystem boundary. It is unrelated
+to ordinary GitHub operations, which AI CLI is installed, or whether an agent
+delegates to subagents.
+
+The supported public interface requires WarpMetal CLI 0.8.7 or newer and signed
+Agent Runtime 0.1.25 or newer. The owner selects `preserve`, `enable`, or
+`disable` during the guarded Runtime installation; no sandbox manifest or HTTP
+API field is added.
+
+Typical uses include:
+
+- planning: mount the exact checkout read-only while hiding sibling workspaces,
+  runner state, and outer processes;
+- coding: make only one approved checkout, its output directory, and private
+  temporary storage writable while repository-controlled commands execute; and
+- QA: review an exact candidate read-only, then run untrusted tests with a
+  private process view, scrubbed environment, and isolated scratch space.
+
+Bubblewrap supplies mount, PID, IPC, and related namespace boundaries; a
+consumer may add a filesystem control such as Landlock. The outer Runtime
+sandbox remains the host/tenant boundary. A deployment that creates one fresh,
+credential-minimal Runtime sandbox for every attempt may choose not to add the
+inner Bubblewrap layer. A persistent worker that processes multiple attempts or
+retains trusted state should keep the inner boundary so prompt instructions are
+backed by kernel-enforced read/write and process visibility rules.
+
+On an AppArmor-enabled host where
+`kernel.apparmor_restrict_unprivileged_userns=1`, explicit enable requires the
+host's existing `apparmor_parser`. Runtime does not install an AppArmor package,
+change that sysctl, reload/restart the AppArmor service, or restart Podman. It
+parses the signed candidate first, atomically replaces only
+`/etc/apparmor.d/warpmetal-agent-runtime-bwrap`, and loads only that file. A
+root-only durable baseline under `/var/lib/warpmetal/apparmor-policy-state`
+retains the exact pre-enable file and loaded state until disable. Each mutating
+operation first writes and syncs an atomic transaction snapshot there; ordinary
+installer failure restores it through the EXIT trap, and the next explicit
+enable/disable recovers a transaction left by interruption before applying a
+new operation. A completed enable or disable is committed only after Runtime
+registration and service restart succeed.
+
+Disk/kernel mismatches and partial profile loads, including non-enforce modes,
+fail closed. The signed Linux metadata helper copies through
+`O_NOATIME|O_NOFOLLOW`, rejects nonregular or pre-existing targets, clears
+inherited attributes, and reapplies ownership, every xattr, raw mode, and
+nanosecond timestamps in a fail-closed order. It verifies source stability plus
+exact content, UID/GID, raw mode, timestamps, and xattr identity on both backup
+and restoration, including POSIX ACL and SELinux context xattrs. Copy or
+comparison failure preserves durable recovery evidence. If parser reads advance
+a restored file's atime, the installer reapplies the baseline timestamps before
+its final non-atime-mutating comparison. Unsupported, conflicting, parse, load,
+architecture, and recovery conditions use distinct safe `runtime_*` errors.
+The capability remains unproven for a release until the Ubuntu 24.04 live
+acceptance oracle passes.
+
 Workspace mounts receive a private Podman SELinux label on enforcing hosts.
 The ordinary installer does not install or replace a kernel. If a reboot is
 already pending, it exits with status 75 and `runtime_reboot_required` before
@@ -136,7 +230,9 @@ reviewed migration procedure instead of deleting container metadata implicitly.
 The fixed userspace image is maintained separately in
 [`warpmetal/warpmetal-agent-sandbox`](https://github.com/warpmetal/warpmetal-agent-sandbox).
 That repository publishes `ghcr.io/warpmetal/warpmetal-agent-sandbox` for
-`linux/amd64` and `linux/arm64` with SBOM, provenance, and a keyless signature.
+`linux/amd64` with SBOM, provenance, and a keyless signature. Runtime release
+archives remain multi-architecture, but this pinned all-tools sandbox image is
+currently amd64-only.
 Production must use the complete registry digest emitted by that workflow, and
 the package must permit unauthenticated pulls from customer servers. A new
 default digest applies only to newly created sandboxes; existing sandboxes

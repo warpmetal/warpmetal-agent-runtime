@@ -23,6 +23,32 @@ func TestCreateArgumentsKeepRootlessIdentityAndIsolation(t *testing.T) {
 		"/var/lib/warpmetal-workspaces/sandboxes/sbx_example123/workspace",
 		"registry.example/agent@sha256:example",
 	)
+	wantArguments := []string{
+		"create",
+		"--name", "warpmetal-sbx_example123",
+		"--pull", "missing",
+		"--read-only",
+		"--user", "1000:1000",
+		"--userns", "keep-id:uid=1000,gid=1000",
+		"--cpus", "0.750",
+		"--memory", "1024m",
+		"--memory-swap", "1024m",
+		"--pids-limit", "256",
+		"--cgroup-parent", "/system.slice/warpmetal-podman.service",
+		"--cap-drop", "ALL",
+		"--security-opt", "no-new-privileges",
+		"--label", imageDigestLabel + "=registry.example/agent@sha256:example",
+		"--network", "slirp4netns:allow_host_loopback=false",
+		"--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=256m",
+		"--volume", "/var/lib/warpmetal-workspaces/sandboxes/sbx_example123/workspace:/home/agent:rw,nodev,nosuid,Z",
+		"--workdir", "/home/agent",
+		"--entrypoint", "/bin/sh",
+		"registry.example/agent@sha256:example",
+		"-c", "trap : TERM INT; sleep infinity & wait",
+	}
+	if !reflect.DeepEqual(arguments, wantArguments) {
+		t.Fatalf("Podman create arguments changed:\n got: %#v\nwant: %#v", arguments, wantArguments)
+	}
 	wantPairs := [][2]string{
 		{"--pull", "missing"},
 		{"--user", "1000:1000"},
