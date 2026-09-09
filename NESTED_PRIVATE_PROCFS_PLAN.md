@@ -3026,9 +3026,12 @@ test -z "$(git tag --list "$TAG")"
   test/runbook corrections. Kepler and Leibniz then independently returned
   `APPROVE_FINAL_EXACT_DIFF` for the exact committed tree. Neither verifier made
   edits or live/provider/SSH/workflow/Git actions.
-- Release remains gated on the second current-`main` merge in both repositories,
-  exact branch push, PR exact-head CI, exact production deployment, and one
-  protected P4.R14 live diagnostic. No lifecycle request, SSH, workflow
+- Immediately before PR creation, both repositories fetched and merged current
+  `main` again; both were already current and there was no conflict or newer
+  `main` change to overwrite. The exact reviewed frontend head
+  `0d817f41200050dd6cabdc29060597d538c93e7a` and this plan branch are pushed.
+  Release remains gated on PR exact-head CI, exact production deployment, and
+  one protected P4.R14 live diagnostic. No lifecycle request, SSH, workflow
   dispatch, or provider read occurred during implementation or review.
 
 ### Documentation phase P2D header
