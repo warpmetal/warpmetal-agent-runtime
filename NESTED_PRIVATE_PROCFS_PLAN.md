@@ -2836,6 +2836,43 @@ test -z "$(git tag --list "$TAG")"
   unclaimed before P4.R8. No live provider mutation occurs before all preceding
   gates and two independent approvals pass.
 
+#### P4.R13 local implementation and review checkpoint
+
+- The bounded implementation adds the six globally unique recovery events,
+  reversible `0041_host_recovery_cycle` migration, protected main-only workflow
+  action, count-only inspection, P4.R8 prerequisite extension, and internal
+  operator runbook. It reuses the existing provider stop/start and task-read
+  adapters; no Runtime, sandbox, image, public documentation, CLI, LLM text, or
+  public frontend surface changed in this subpart.
+- The first implementation review found no production-code defect but blocked
+  promotion because the novel P4.R13 wiring lacked explicit negative and
+  start-boundary coverage. The same bounded implementer added 19 PostgreSQL
+  cases for watermark identity/device/client/metadata/result/update/stability
+  and persisted digest mismatch; provider-account, original-claim, and shutdown
+  completion drift; boot lost-response and failed discovery; crash-before-start
+  permanent GET-only refusal; accepted exact-UUID replay; and concurrent start
+  claim and completion. Every case proves exact provider mutation counts,
+  recovery event counts, immutable old reboot/P4.R11 journals, and P4.R8 still
+  unclaimed.
+- Verification is green: the expanded incident database suite passed `129`;
+  the full backend suite passed `2376` with one expected skip on a fresh
+  PostgreSQL database; the site suite passed `198` with `41` expected skips out
+  of `239`; the Admin production build and `54` tests passed; Ruff, compileall,
+  actionlint, root ESLint with zero errors, `git diff --check`, and the sole
+  Alembic-head check passed. Migration `0041 -> 0040 -> 0041` succeeded.
+- Kepler and Leibniz independently returned `APPROVE_FINAL_EXACT_DIFF` after the
+  correction. They confirmed claim-before-POST, GET-only claimed/accepted
+  replay, stable exact-task and client attribution, the two independent `OFF`
+  gates before start, exact one-start concurrency, completion idempotence,
+  journal immutability, count-only output, and redaction. No live provider call,
+  SSH, workflow dispatch, commit, or deployment occurred during implementation
+  or review.
+- Release remains gated on committing this reviewed diff, fetching and merging
+  current frontend `main` again without conflict immediately before PR,
+  proportional post-merge verification, exact-head CI, exact production
+  deployment, and a fresh protected read-only inspection. The single authorized
+  stop has not been consumed.
+
 ### Documentation phase P2D header
 
 - Phase ID and outcome: P2D, make the nested-private-procfs capability
