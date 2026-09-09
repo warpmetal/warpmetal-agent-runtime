@@ -2707,6 +2707,11 @@ test -z "$(git tag --list "$TAG")"
   one environment skip, all `198` frontend tests with `41` environment skips,
   the admin build and all `54` admin tests, Ruff, compileall, actionlint, lint
   with no errors, and diff checking.
+- PR `#136` passed exact-head CI run `34368572182`, merged as
+  `24b83016addb4a12e7ff192abf11ed1045499e60`, and production run
+  `34369351193` completed successfully at that exact SHA: test, publish, and
+  deploy all passed. The protected live P4.R12 read-only diagnosis is now the
+  remaining gate for this phase.
 - If P4.R12 proves one stable exact stop task inside the claim window with
   terminal `Success` and exact compute `OFF`, a separately reviewed GET-only
   recovery may append acceptance/completion for the existing claim and only
