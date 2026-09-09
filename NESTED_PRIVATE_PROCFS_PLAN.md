@@ -813,12 +813,13 @@ test -z "$(git tag --list "$TAG")"
 | P4.R5 | Diagnose protected acceptance-pin drift without changing trust state | failed P4.R4 live attempt and independently closed mutation ambiguity | protected exact task/server/hostname/device-bound workflow/helper plus focused tests/runbook | internal operator diagnostic only; no public API, CLI, LLM, Runtime, image, or ordinary-user behavior change | under the production and deployment locks, revalidate the exact task/provider binding and report only safe pin predicate classifications from no-follow descriptor metadata/canonical validation; never print key bytes/path, perform SSH/TOFU/enrollment, change pin metadata/content/inode, or call a mutation operator | behavioral classification/TOCTOU/security tests, Bash/ShellCheck/actionlint, full gates, independent review, exact-head CI/deploy, one protected diagnostic run | no | completed and independently approved; exact live result `missing` blocks P4 under the frozen trust contract |
 | P4.R6 | Consume one incident-bound same-VPS re-trust after the protected pin was proven missing | false P4.A10-P4.A11, completed P4.R5, explicit owner continuation | internal backend reservation/completion events; protected acceptance workflow/helper/tests/runbook; exact existing task/server/device/key only | internal canary recovery and operator runbook only; no public API, CLI, LLM, Runtime, image, or ordinary-user behavior change | exact task/server/hostname/device and original-trust/diagnostic run IDs; missing pin and unchanged cancelled/provider-ON/pending-install/three-sandbox baseline; durable unique reservation before network contact; at most one owner-key Ed25519 `true` observation; incomplete replay uses only the exact persisted candidate/pin or fails permanently; atomic no-overwrite publication, immediate strict replay, safe completion event; no lease/lifecycle/provider/payment mutation | backend uniqueness/concurrency/provider tests, executable crash-boundary and two-key matrix, workflow contract tests, full frontend/backend gate, two independent security reviews, exact-head CI/deploy, protected live recovery and strict replay | no | blocked and permanently exhausted under its frozen authority: the one authorized first-contact run failed before durable host-key capture, its claim remains consumed, strict replay is ineligible, and no retry is permitted |
 | P4.R7 | Classify the consumed recovery state without network contact or mutation | failed-closed P4.R6 run and unchanged post-run baseline | one exact protected workflow/helper using the existing backend recovery inspector and deployment-host recovery files | internal operator runbook only; no public API, CLI, LLM, Runtime, image, or ordinary-user behavior change | hard-bind failed run `34285138720`; require exact claimed backend state, attempted journal, absent journal residue, stable missing final pin, and descriptor-stable candidate classification; report only whether no durable host key was captured, a canonical Ed25519 key was captured, or state is ambiguous/exhausted | workflow/helper contract, backend binding matrix, filesystem/type/mode/owner/link/swap matrix, Linux no-listener and rejected-auth fixtures, zero-mutation snapshots, Python 3.8/Bash/ShellCheck/actionlint/full frontend gates, two independent reviews, exact-head CI/deploy, one protected read-only run | no | completed; PR #126 exact-head CI and deployed main passed, live run `34293354294` classified `pre_durable_host_key_capture` with strict replay ineligible, and post-run inspect `34293421043` proved zero task/provider/Runtime/payment drift |
-| P4.R8 | Replace the proven-pre-capture exhausted claim with one globally one-off same-VPS trust event | completed P4.R7, verified owner authorization, A14, and either exact P4.R9 reboot completion or completed P4.R11 shutdown/boot recovery | dedicated append-only backend claim/completion events and migration; separate descriptor-bound deployment-host state; protected workflow/helper/tests/runbook; exact existing task/server/device/key only | internal canary recovery and operator runbook only; no public API, CLI, LLM, Runtime, image, or ordinary-user recovery behavior | hard-bind the full P4.R6/P4.R7 evidence chain and one independently reviewed listener-recovery proof; preserve old backend/filesystem state; two bounded SSH banners before state; globally one-off claim committed before exactly one Ed25519-only owner-key `accept-new true`; durable candidate/pin publication, immediate strict replay, safe completion; preclaim readiness failure consumes nothing, any post-claim empty/ambiguous state is terminal, canonical state is strict-only | global uniqueness/concurrency/migration/provider tests; focused FIFO, lock, durability, banner, crash, strict-replay, and old-state invariants; existing P4.R6 real-OpenSSH evidence; Python 3.8/Bash/ShellCheck/actionlint/full gates; two independent reviews; exact-head CI/deploy; one protected live end-to-end run | no | blocked pending a newly authorized and separately reviewed P4.R11 recovery; P4.R9 remains terminally unavailable, P4.R12 cannot prove the claimed stop, and the old reboot journal must stay `1/0/0` |
+| P4.R8 | Replace the proven-pre-capture exhausted claim with one globally one-off same-VPS trust event | completed P4.R7, verified owner authorization, A14, and one exact completed listener recovery from P4.R9, P4.R11, or P4.R13 | dedicated append-only backend claim/completion events and migration; separate descriptor-bound deployment-host state; protected workflow/helper/tests/runbook; exact existing task/server/device/key only | internal canary recovery and operator runbook only; no public API, CLI, LLM, Runtime, image, or ordinary-user recovery behavior | hard-bind the full P4.R6/P4.R7 evidence chain and one independently reviewed listener-recovery proof; preserve old backend/filesystem state; two bounded SSH banners before state; globally one-off claim committed before exactly one Ed25519-only owner-key `accept-new true`; durable candidate/pin publication, immediate strict replay, safe completion; preclaim readiness failure consumes nothing, any post-claim empty/ambiguous state is terminal, canonical state is strict-only | global uniqueness/concurrency/migration/provider tests; focused FIFO, lock, durability, banner, crash, strict-replay, and old-state invariants; existing P4.R6 real-OpenSSH evidence; Python 3.8/Bash/ShellCheck/actionlint/full gates; two independent reviews; exact-head CI/deploy; one protected live end-to-end run | no | blocked pending completed P4.R13 and a fresh exact-baseline inspection; P4.R9 and P4.R11 remain terminally unavailable, and every old journal must remain unchanged |
 | P4.R9 | Reconcile the one ambiguous acceptance-host reboot response without another provider mutation | authorized guarded reboot run `34313748796`, unchanged post-run baseline, live journal `1/0/0` | incident-bound backend provider lookup/operator event recovery plus protected workflow/tests/runbook; exact existing task/server/device and reboot time window only | internal canary recovery and operator runbook only; no public API, CLI, LLM, Runtime, image, ordinary-user behavior, or reusable provider-task recovery | query only the provider's read-only numeric/latest-task and exact-UUID surfaces; require two stable newest-task reads plus exact UUID corroboration for the owned device, `reboot_vm` metadata, frozen creation interval, and terminal success; bind `force=true` causally to the durable one-shot claim and exact deployed caller; append the existing provider-accepted and completion evidence idempotently; issue zero provider POSTs and preserve every lifecycle field; missing, unstable, mismatched, failed, nonterminal, or malformed evidence stops | provider mutation spy; malformed/unstable/mismatch/time/action/device/client/terminal-state matrices; concurrency/idempotency; exact journal transition tests; full frontend/backend gates; two independent reviews; exact-head CI/deploy; one protected live reconcile and fresh inspect | no | terminally unavailable under the frozen oracle: P4.R10 found no matching provider reboot task, and journal state remains claim-only; do not retry |
 | P4.R10 | Classify the rejected live provider task without exposing provider data or changing state | exhausted P4.R9 live attempt, journal `1/0/0`, two independent recovery reviews | one incident-bound backend diagnostic plus protected workflow/tests/runbook; exact existing task/server/device only | internal canary diagnosis only; no public API, UI, CLI, LLM, Runtime, image, ordinary-user behavior, or reusable diagnostic | replay up to the same three ordered provider GETs (numeric device, exact UUID when the first UUID is canonical, numeric device) after proving the exact claim-only journal and unchanged recovery baseline; emit only per-stage allowlisted predicate categories plus task/projection stability classes for response shape, UUID, device, positive client, metadata, creation window, update ordering, and result class; never emit raw UUID/client/metadata/timestamps/provider error; issue zero provider mutations and zero database/event/lifecycle/trust writes | provider mutation/write spies; full malformed/category/redaction/binding/stage/stability matrix; workflow main/exact-input contract; focused/full regressions; two independent reviews; merge current main before PR; exact-head CI/deploy; one protected live diagnosis | no | completed: deployed main run `34332349353` found one stable older metadata-mismatched task across all three reads, with no provider or local mutation |
 | P4.R11 | Establish a fresh auditable OFF-to-ON listener recovery after Hivelocity lost the original reboot task | completed P4.R10, exact reboot journal `1/0/0`, explicit owner shutdown/boot approval | incident-bound provider VPS stop/start adapters; separate append-only shutdown and boot journals plus migration; protected workflow/tests/runbook; exact existing task/server/device only | internal canary recovery only; no public API, UI, CLI, LLM, Runtime, image, ordinary-user behavior, or reusable power-cycle feature | preserve the old reboot journal and P4.R8 state; claim before one forced stop POST, validate/persist/poll only its exact `stop_vm` task to terminal success and compute OFF; then claim before one start POST, validate/persist/poll only its newer exact `start_vm` task to terminal success, compute ON, and two zero-write SSH banners; claim-only replay is GET-only and never repeats a POST; any ambiguity stops | provider mutation-count and ordering spies; exact task/metadata/client/time/result matrices; journal uniqueness/concurrency/crash replay; OFF-before-boot and ON/banner completion; old-state immutability; focused/full regressions; two independent reviews; merge main before implementation and before PR; exact-head CI/deploy; one protected live power cycle and fresh inspect | no | blocked at shutdown `1/0/0` and boot `0/0/0`: live P4.R12 run `34372246548` found only a stable successful `stop_vm` task created before the durable claim window while compute is `ON`; it cannot prove the claimed stop or authorize boot, and another stop requires a new explicit owner decision plus separate design/review |
 | P4.R12 | Classify the claim-only P4.R11 shutdown failure without another lifecycle mutation | deployed P4.R11, old reboot `1/0/0`, shutdown `1/0/0`, boot `0/0/0`, P4.R8 unclaimed, two independent recovery reviews | one incident-bound backend diagnostic and protected workflow action; exact existing task/server/device and failed live run IDs only | internal acceptance diagnosis only; no public API, UI, CLI, LLM, Runtime, image, ordinary-user behavior, or reusable provider diagnostic | re-prove the exact immutable baseline and stored shutdown claim/account digest; perform one exact compute GET plus numeric task, conditional canonical UUID, and numeric task GETs; emit only allowlisted identity/power, UUID/device/client, exact stop metadata, claim-window, update, result, and stability classes; emit no raw provider value or error; write no event/database/lifecycle state and expose no POST | provider mutation and database snapshot spies; malformed/category/redaction/binding/stage/stability/power matrix; focused/full regressions; two independent reviews; merge current main before implementation and again before PR; exact-head CI/deploy; one protected live diagnosis | no | completed: PR `#136` merged/deployed at `24b83016`; live read-only run `34372246548` proved compute `ON` and one fully stable successful exact `stop_vm` task created before the claim window; three independent reviewers confirmed this negative result closes diagnosis but cannot recover P4.R11 |
-| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3, P4.R4, P4.R8, and P4.R11 | existing exact cancelled task/server/device, six-hour continuation lease, three medium sandbox intents | operator evidence plus exact recovery event and strict pin metadata | same single server, key-only strict SSH with the recovered pin, cancelled state plus bounded active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | recovery/strict-replay/inspect/lease runs, bounded state inspection, baseline prepare run | no | blocked on a newly authorized and separately reviewed P4.R11 recovery, fresh inspection, and P4.R8; P4.R6 remains exhausted and P4.R9 is never retried |
+| P4.R13 | Execute the newly authorized one-shot replacement power cycle without rewriting P4.R11 evidence | completed P4.R12, exact old journals, P4.R8 unclaimed, compute `ON`, explicit owner approval for one additional stop and conditional start | six new globally unique append-only recovery events plus migration; incident-bound backend state machine; protected workflow/tests/internal runbook; exact same task/server/device only | internal canary recovery only; no public API, UI, CLI, LLM, Runtime, image, ordinary-user behavior, generic retry, or reusable lifecycle feature | preserve reboot `1/0/0`, P4.R11 shutdown `1/0/0`, boot `0/0/0`, and P4.R8 unclaimed; capture a stable P4.R12-equivalent pre-window task watermark; commit one recovery-shutdown claim before at most one forced stop POST; accept only a distinct/newer exact in-window `stop_vm` task; require stable terminal success and exact compute OFF before committing a recovery-boot claim; issue at most one start POST; accept only a distinct/newer in-window `start_vm` task with the same client; require stable terminal success, exact compute ON, and two zero-write SSH banners; claim-only replay is GET-only and never repeats either POST | global uniqueness/migration up-down; exact binding/baseline/watermark/task/time/client/result/power matrices; lost-response and malformed-direct-response reconciliation; concurrent claim/race/crash replay; old-journal/P4.R8 immutability; focused/full regressions; two independent design and implementation reviews; merge current main before implementation and again before PR; exact-head CI/deploy; fresh inspect, one protected live recovery, and post-cycle inspect | no | frozen after current-main merge; Kepler and Leibniz independently approved the exact design; implementation and every pre-live gate remain |
+| P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3, P4.R4, P4.R8, and P4.R13 | existing exact cancelled task/server/device, six-hour continuation lease, three medium sandbox intents | operator evidence plus exact recovery event and strict pin metadata | same single server, key-only strict SSH with the recovered pin, cancelled state plus bounded active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | recovery/strict-replay/inspect/lease runs, bounded state inspection, baseline prepare run | no | blocked on completed P4.R13, fresh inspection, and P4.R8; P4.R6 remains exhausted and P4.R9/P4.R11 are never retried |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked on P4.S1 trusted access and baseline preparation |
 | P4.S3 | Final cancellation, provider reconciliation, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no future-billing ambiguity; provider compute may remain through the already-created term; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | failed-attempt cancellation and guarded cleanup are complete and replay-verified; final whole-phase cleanup/review remains pending P4.S2 |
 
@@ -1030,17 +1031,18 @@ test -z "$(git tag --list "$TAG")"
 1. Dispatch protected `inspect` for the exact existing task and require the same
    cancelled task/server/device/IP, provider compute powered `ON`, null selector,
    pending-install revision `1/0`, no payment attempt or failure, P4.R8
-   unclaimed, and the old reboot journal exactly `1/0/0`.
+   unclaimed, old reboot `1/0/0`, P4.R11 shutdown `1/0/0`, P4.R11 boot
+   `0/0/0`, and P4.R13 recovery shutdown/boot both unclaimed.
 2. Preserve the exhausted P4.R6 claim, completed P4.R7 proof, and claim-only
-   reboot journal. Merge, review, test, and deploy P4.R11. Invoke its protected
-   power cycle once: one claimed VPS `stop` request to exact terminal task
-   success and compute `OFF`, followed by one separately claimed VPS `start`
-   request to a newer exact terminal task success, compute `ON`, and two
-   zero-write SSH banners. A claimed phase may perform only GET reconciliation
-   and can never repeat its POST.
+   reboot and P4.R11 shutdown journals. Merge, review, test, and deploy P4.R13.
+   Invoke its protected recovery once: one claimed VPS `stop` request to exact
+   terminal task success and compute `OFF`, followed by one separately claimed
+   VPS `start` request to a newer exact terminal task success, compute `ON`, and
+   two zero-write SSH banners. A claimed phase may perform only GET
+   reconciliation and can never repeat its POST.
 3. Dispatch a fresh protected `inspect` and require the same lifecycle baseline,
-   old reboot journal `1/0/0`, completed P4.R11 shutdown and boot evidence, and
-   P4.R8 still unclaimed.
+   old reboot `1/0/0`, P4.R11 shutdown `1/0/0`, P4.R11 boot `0/0/0`, completed
+   P4.R13 recovery shutdown and boot `1/1/1`, and P4.R8 still unclaimed.
 4. Invoke P4.R8 once. Require the full exact evidence chain,
    immutable old state, two bounded non-trusting SSH banners before state, the
    globally one-off committed claim, one owner-key Ed25519 `accept-new true`,
@@ -1054,7 +1056,7 @@ test -z "$(git tag --list "$TAG")"
    order/payment/renewal/provider/Runtime/sandbox mutation.
 6. Complete P4.R1 so the test task, not the global production metadata, selects
    the signed stage artifact and sensitivity has an explicit stable baseline.
-7. Other than the exact P4.R11 stop/start pair, do not create, pay, renew,
+7. Other than the exact P4.R13 stop/start pair, do not create, pay, renew,
    reactivate provider billing, generate a key, reload or power the server, or
    run any generic trust reset. Reuse only the already protected owner identity
    and the exact P4.R8 pin after its explicitly accepted first-contact residual.
@@ -1077,7 +1079,8 @@ test -z "$(git tag --list "$TAG")"
 2. P4.R1 and its independent recovery gate are complete; the owner approved and
    the workflow created exactly one bounded billable resource.
 3. P4.R6 is exhausted, P4.R7 is complete, and P4.R9 is terminally unavailable.
-   Complete P4.R11 and its fresh inspection, then complete P4.R8 and re-enter
+   Preserve the blocked P4.R11 journals, complete P4.R13 and its fresh
+   inspection, then complete P4.R8 and re-enter
    P4.R4 and resume P4.S1 on that same resource. Do not start a canary until the
    replacement pin strictly matches its immutable completion event, a newly
    confirmed fixed continuation deadline is active, and the initial-resource
@@ -2732,6 +2735,106 @@ test -z "$(git tag --list "$TAG")"
   unstable task, or any state lacking that exact proof, leaves P4.R11 blocked;
   another stop request or relaxed boot oracle requires a new explicit owner
   decision.
+
+#### P4.R13 newly authorized one-shot replacement power-cycle design
+
+- Scope and authority: after the negative P4.R12 result, the owner explicitly
+  authorized one additional stop request on the same VPS and a start only after
+  verified `OFF`. This authorizes at most one `POST /vps/69097/stop` with
+  `force=true` and, only after the stop completes under this oracle, at most one
+  `POST /vps/69097/start`. It does not authorize reboot, generic device power,
+  reload, a replacement VPS, payment, renewal, Runtime, sandbox, trust, or
+  public-product mutation.
+- Preserve forensic history. The old reboot journal remains exactly `1/0/0`,
+  P4.R11 shutdown remains `1/0/0`, P4.R11 boot remains `0/0/0`, and P4.R8
+  remains unclaimed. Do not append the new task to P4.R11's expired request
+  window and do not reinterpret the P4.R12 classification. Add six distinct,
+  globally unique P4.R13 event types: recovery shutdown and recovery boot,
+  each with claimed, provider-accepted, and completed states. A reversible
+  migration and matching model indexes enforce one global chain; every explicit
+  PostgreSQL index name must remain within the 63-byte identifier limit.
+- Hard-bind the protected main-only action and backend command to the exact
+  task, server, hostname, device `69097`, service, public IP, frozen P4.R12
+  evidence merge `24b83016addb4a12e7ff192abf11ed1045499e60`, failed P4.R11 run
+  `34361100741`, inspect `34361745939`, GET-only replay `34361869096`, and
+  P4.R12 run `34372246548`. The P4.R13 implementation SHA is unknown until its
+  exact-head release gate and must be verified there before live dispatch. Each
+  event privately binds the unchanged provider account digest and the canonical
+  detail digest plus database identity of the original P4.R11 shutdown claim.
+  No raw provider body or error is printed.
+- Before the recovery-shutdown claim, re-prove the complete locked incident
+  baseline and exact old journal counts, then use the same provider account for
+  one exact compute GET and stable numeric-task, canonical exact-task, and
+  repeated numeric-task GETs. Compute must be exactly bound, tagged, and `ON`;
+  the task projection must be the stable terminal-success exact `stop_vm`
+  pre-window shape established by P4.R12. Store its canonical identity,
+  projection digest, client, and creation/update values privately as the
+  pre-request watermark. Re-lock and revalidate the complete local baseline
+  before committing the new shutdown claim and its bounded 90-second request
+  window.
+- Only the transaction owner that inserted the recovery-shutdown claim may
+  issue the one forced stop POST after the claim commits. A direct response is
+  accepted only when it is a canonical exact-device task whose positive client
+  exactly matches the stored watermark/provider-account client, with an exact
+  `stop_vm` task created inside the new window and distinct from and newer
+  than the watermark. If the response is lost or malformed, the same invocation
+  or any replay may use only stable numeric/exact/numeric GETs applying the same
+  client equality to find that same qualifying new task; it never repeats the
+  POST. Terminal stability checks retain that client binding. A crash after
+  claim but before POST consumes the authorization.
+- Persist provider acceptance only after locked revalidation of the immutable
+  incident, original claim identity/detail digest, watermark, account digest,
+  and current recovery state. Poll only the accepted UUID. Completion requires
+  terminal `Success`, ordered finite timestamps, a stable terminal
+  numeric/exact/numeric projection, and an independent exact compute GET showing
+  `OFF`, followed by the same locked revalidation before appending completion.
+  Power state without exact task proof never authorizes boot.
+- Recovery boot is a separate P4.R13 journal. It may claim only after recovery
+  shutdown is exactly `1/1/1`, the old journals are still unchanged, P4.R8 is
+  unclaimed, and a fresh exact compute GET reports `OFF`. After committing the
+  claim, which durably binds the recovery-shutdown completion event identity and
+  canonical detail digest, perform a second exact `OFF` GET before the sole
+  start POST. Accept only a canonical exact-device, exact-`start_vm` task inside
+  its own window that is distinct from and newer than the recovery shutdown task
+  and has the same positive provider client. Lost or malformed response recovery
+  is GET-only and never repeats start.
+- Recovery-boot completion requires its exact UUID to reach terminal `Success`,
+  a stable terminal numeric/exact/numeric projection, exact compute `ON`, and
+  two consecutive zero-write OpenSSH banners, followed by locked revalidation.
+  A completed replay performs zero provider or local mutation. Claimed-only or
+  accepted replay is GET-only; any expired, missing, failed, malformed,
+  mismatched, unstable, or state-drifted evidence stops permanently.
+- Update count-only protected inspection and P4.R8's internal listener-recovery
+  prerequisite to recognize only the exact completed P4.R13 alternative while
+  proving the old journals remain at `1/0/0`, `1/0/0`, and `0/0/0`. P4.R8 keeps
+  its existing two-banner preclaim and one-shot trust contract and runs only as
+  a later separate dispatch. Extend the existing aggregate inspection query with
+  recovery-shutdown and recovery-boot counts only; expose no event detail. Once
+  either P4.R13 claim exists, the old P4.R11 action and P4.R12 diagnostic must
+  refuse before provider access or output so stale paths cannot confuse or alter
+  the replacement evidence.
+- Before freezing this phase, the frontend branch fast-forwarded without
+  conflict to current `main` at
+  `24b83016addb4a12e7ff192abf11ed1045499e60`; the Runtime plan branch was
+  already current. Kepler and Leibniz independently approved the exact final
+  six-event design after the command-manifest, client-binding, evidence-SHA,
+  index-length, completion-digest, aggregate-inspection, and stale-path fixes.
+- Required local gates: migration upgrade/downgrade and global uniqueness;
+  binding, confirmation, baseline, original-claim digest, watermark, account,
+  task UUID/device/metadata/client/time/result, power, listener, and redaction
+  matrices; direct, lost, and malformed response recovery; crash-before-POST;
+  concurrent claim and completion races; strict stop-before-start ordering;
+  old-journal and P4.R8 immutability; claim-only/accepted/completed replays;
+  focused and full backend/frontend/admin regressions; and two independent
+  implementation reviews.
+- Required release/live gates: current `main` was merged before this design;
+  merge it again immediately before PR without overwriting conflicts; require
+  exact-head CI and production deployment; run one fresh protected inspect;
+  dispatch P4.R13 once; if it is claim-only, replay may be dispatched only to
+  exercise its proven GET-only path; then inspect for old journals unchanged,
+  recovery shutdown `1/1/1`, recovery boot `1/1/1`, provider `ON`, and P4.R8
+  unclaimed before P4.R8. No live provider mutation occurs before all preceding
+  gates and two independent approvals pass.
 
 ### Documentation phase P2D header
 
