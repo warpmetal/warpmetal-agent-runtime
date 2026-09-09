@@ -353,7 +353,7 @@
 | P2R | Runtime policy lifecycle is explicit, default-off, architecture-gated, and reversibly recoverable | R2-R4, R10-R11, A2-A3, A7-A8 | P2 recovery review | default preserve is mutation-free; explicit amd64 enable is idempotent; disable unloads/removes Runtime policy and restores any displaced prior file/state; interruption evidence is durable; tests/docs green | completed |
 | P2D | General capability documentation is discoverable and example-driven | R11-R12, A7-A9 | P2R interface | Runtime and sandbox docs, CLI help/skill, public pages, and both LLM contract sources agree on purpose, examples, versions, actions, host scope, and non-goals; repository gates pass | completed |
 | P3 | Signed v0.1.25 prerelease, CLI 0.8.7, and five-stage frontend canary contract ready | R1-R5, R10-R12 | P1-P2R, P2D | exact heads pass CI/review; signed Runtime and npm CLI releases are independently verified; frontend workflow is available on its default branch | completed |
-| P3O | Signed Runtime v0.1.26 and automatic-ordering activation | R3-R5, R10, R15-R16, A15-A17 | P3; source/release work may proceed independently of P4 | current Runtime main and selected-CLI reporting are merged and reviewed; the exact signed v0.1.26 prerelease passes release verification and four fresh order-time OS canaries; the same assets are promoted/configured; production catalog aggregate support is true and public smoke passes | in_progress; source integration authorized, billed live matrix pending exact aggregate-cost approval |
+| P3O | Signed Runtime v0.1.26 and automatic-ordering activation | R3-R5, R10, R15-R16, A15-A17 | P3; source/release work may proceed independently of P4 | current Runtime main and selected-CLI reporting are merged and reviewed; the exact signed v0.1.26 prerelease passes release verification and four fresh order-time OS canaries; the same assets are promoted/configured; production catalog aggregate support is true and public smoke passes | in_progress; P3O.S1-S2 complete, frontend-last protected canary path next, billed live matrix pending exact aggregate-cost approval |
 | P4 | Rollback/forward/disable amd64 acceptance canary passes | R1-R6, R10-R11, R13-R14, A1-A4, A10, A13 | P3 | first-use trust or its one authorized incident recovery is safely pinned, pre-policy sensitivity, positive capability, preservation, retained-policy binary rollback, forward, and exact disable/restore gates pass | in_progress |
 | P5 | Stable nested-private-procfs production activation and Nico sandbox refresh on v0.1.26 | R1-R7, R10 | P3O, P4 | exact v0.1.26 assets remain stable; Nico upgrade plus both explicit refreshes verified | pending |
 | P6 | Nico code/deploy and real autonomous task pass | R7-R10 | P5 | full gates, deploy, coder/publisher/QA canary, staged flags | pending |
@@ -742,8 +742,8 @@ test -z "$(git tag --list "$TAG")"
 
 | Subpart | Deliverable and owner boundary | Dependencies | Interfaces / likely files | Documentation / API impact | Acceptance and oracle | Focused + regression checks | Parallel-safe | Status |
 |---|---|---|---|---|---|---|---|---|
-| P3O.S1 | Merge current Runtime main and correct trusted CLI-report execution | frozen entry hashes | `internal/containers`, `internal/toolreport`, reconcile/state/model and tests; Runtime README/SECURITY | Runtime internal contract; no HTTP schema | exact `podman exec warpmetal-<id> /usr/local/bin/warpmetal-agent-tool-report`, without `-i`; fixed sanitized child environment; no attached/transmitted stdin, login shell/profile/PATH/caller argument, or caller/desired-state environment injection; bounded stdout, discarded stderr, normalized errors; generic `Engine.Exec` and private-procfs behavior unchanged | direct-argv negative tests, migration/legacy state, focused race, full race/vet, installer/AppArmor/coexistence, four hosted distros | no | pending; merge main before implementation and again before PR; any conflict or semantic uncertainty stops for owner review |
-| P3O.S2 | Review, merge, publish, and independently verify signed v0.1.26 prerelease | P3O.S1 | Runtime PR/default branch, annotated tag, release workflow and committed `cosign.pub` | release notes and exact six-asset contract | tag points to exact reviewed main merge and has both v0.1.25 main and reporting commit as ancestors; amd64/arm64 archives, checksums, detached signatures, static architectures, exact 13-member contents, and embedded supervisor `0.1.26` verify; release stays prerelease | exact-head/merge CI, download/re-hash/Cosign, archive membership, registration/report smoke | no | pending |
+| P3O.S1 | Merge current Runtime main and correct trusted CLI-report execution | frozen entry hashes | `internal/containers`, `internal/toolreport`, reconcile/state/model and tests; Runtime README/SECURITY | Runtime internal contract; no HTTP schema | exact `podman exec warpmetal-<id> /usr/local/bin/warpmetal-agent-tool-report`, without `-i`; fixed sanitized child environment; no attached/transmitted stdin, login shell/profile/PATH/caller argument, or caller/desired-state environment injection; bounded stdout, discarded stderr, normalized errors; generic `Engine.Exec` and private-procfs behavior unchanged | direct-argv negative tests, migration/legacy state, focused race, full race/vet, installer/AppArmor/coexistence, four hosted distros | no | completed: main merged before implementation and PR; security/correctness blockers fixed; two final reviews approved; PR #22 head/merge CI green and merged as `bdcd05b` |
+| P3O.S2 | Review, merge, publish, and independently verify signed v0.1.26 prerelease | P3O.S1 | Runtime PR/default branch, annotated tag, release workflow and committed `cosign.pub` | release notes and exact six-asset contract | tag points to exact reviewed main merge and has both v0.1.25 main and reporting commit as ancestors; amd64/arm64 archives, checksums, detached signatures, static architectures, exact 13 regular files plus the root directory, and embedded supervisor `0.1.26` verify; release stays prerelease | exact-head/merge CI, download/re-hash/Cosign, archive membership, embedded version; live registration/report is P3O.S4 | no | completed: annotated tag/release exact, run `34412218346` green, six assets independently verified, prerelease retained |
 | P3O.S3 | Add protected pre-activation candidate create path, frontend work last | verified P3O.S2 assets | backend Runtime/operator, protected acceptance workflow, tests/runbook | internal operator only; no public eligibility change | protected workflow downloads the exact official v0.1.26 archive and verifies its digest and Cosign signature with the committed release key before protected create; backend exact-binds and durably persists that verified tuple with one minimal all-three-CLI sandbox before worker claim or provider activity; confirmation/idempotency bind hostname, OS, version, artifact and request digests | state/order/concurrency/mismatch/redaction tests, workflow contract, full backend/site/Admin gates, main merge before implementation and PR | no | pending; must not begin before P3O.S2 verification |
 | P3O.S4 | Run exact supported-OS order-time Runtime matrix | P3O.S3, explicit aggregate-cost authority | one fresh disposable smallest viable VPS per advertised OS; unique host key and task | private acceptance evidence only | exact OS/cloud-init; task/provider ready; registration before 45-minute deadline; supervisor 0.1.26 and artifact digest exact; desired/observed generation equal; signed image exact; sandbox running; three CLI observations present; owner SSH; cancellation and no-renewal reconcile, while provider service may remain through its prepaid term unless deletion is supported and separately authorized | protected workflow, safe logs, per-OS independent review; sequential stop-on-first-failure | no | blocked only on S1-S3 and future exact aggregate-cost approval; never use the P4 VPS |
 | P3O.S5 | Activate exact production tuple and public catalog | P3O.S4 | deployment workflow/secrets, blue-green script, catalog/OpenAPI/docs/LLM minimum | selected-CLI minimum becomes 0.1.26; no nested-private-procfs version rewrite | workflow cryptographically verifies tuple before upload; candidate and two post-switch catalog reads show product support true and all four OS flags true; failure leaves old slot public and restores prior tuple before retry | deploy workflow tests, backend/site/Admin/full gates, production deploy and catalog probes | no | pending; requires explicit production-config authority |
@@ -829,6 +829,74 @@ Runtime installation uses the default `preserve` policy mode and does not
 activate nested private procfs. P4 remains the mandatory gate for enabling that
 optional host capability and for Nico's refresh; none of its incident evidence
 or authority is consumed by P3O.
+
+#### P3O.S1-S2 integration and release checkpoint
+
+- The manager first fetched and merged Runtime `origin/main` at signed v0.1.25
+  commit `da08e6ec41eeac8a3d762aa44a17bada37390798` into clean reporting branch
+  `codex/all-tools-runtime-report` at
+  `e0d342c36f07ea0e15a4de9ab65bf0bcaad51b54`. Merge commit `08c152d` had no
+  textual conflict; an independent semantic review approved the combined
+  README, SECURITY, Podman, private-procfs, and reporting base.
+- Independent security review blocked the original feature because generic
+  `Engine.Exec` used `/bin/sh -lc`, allowing the sandbox owner's writable login
+  profile to forge the fixed reporter output. Commit `861544f` adds a dedicated
+  `Engine.ToolReport`: private Podman service, nil stdin, discarded stderr, and
+  exact direct argv `exec`, validated container name, fixed absolute reporter.
+  Generic interactive Exec remains behaviorally exact.
+- The same review found that CLI selection changes were compared with observed
+  rather than persisted desired generation. The final implementation rejects a
+  changed selection unless it advances beyond persisted `local.Generation`;
+  an interrupted generation-2/observed-generation-1 regression proves rejection
+  before ToolReport, Exec, restart, or state mutation.
+- CI and release verification now run
+  `packaging/install/tool_report_execution_test.sh` against exact signed image
+  digest
+  `sha256:c3fefa156c491c31db48c3799e21a15438f2c5c452555e49b7c37815b5aee5ba`.
+  The real image remains root-owned/mode-0555 at the reporter path and reports
+  Codex `0.153.4`, Claude `2.1.263`, and Cursor `2026.09.02-c22c1a3`. Its prior
+  keyless signature, SPDX SBOM, and SLSA provenance were independently
+  reverified. The hostile-profile oracle uses a writable home, fake PATH tools,
+  `ENV`/`BASH_ENV`, and an inert desired payload under no network; only the exact
+  three-tool JSON appears and no hostile marker executes.
+- Manager and independent gates passed: focused and full `go test -race`, full
+  `go vet`, repository formatting/diff checks, real-image oracle, shell syntax,
+  AppArmor/profile/installer preservation tests, and two final exact-diff
+  reviews. Immediately before PR, current main was fetched and already current;
+  no conflict or newer behavior was overwritten. PR #22 exact-head run
+  `34411712311` passed all six jobs. It merged as exact Runtime main commit
+  `bdcd05ba61063257ab429072f9aface917b078da`; exact-main run `34411897605`
+  passed the same six jobs.
+- A fresh pre-tag reviewer proved v0.1.26 absent, verified main and all required
+  ancestors, and returned `APPROVE_TAG_V0_1_26`. Annotated tag `v0.1.26` peels
+  exactly to `bdcd05b`. Release run `34412218346` passed source verification,
+  both signed static builds, and publication. The release is a non-draft
+  prerelease with exactly six assets; no asset was rebuilt or replaced.
+- Independent post-release verification returned
+  `APPROVE_V0_1_26_RELEASE`. Each archive contains the exact 13 regular files
+  plus its root directory, no links or unsafe paths, the expected executable
+  modes, correct static amd64/arm64 ELF architecture, and embedded version
+  `0.1.26`. Checksums and detached key-based Cosign signatures verify against
+  committed `cosign.pub`; tlog absence is expected because the established
+  workflow signs blobs with `--tlog-upload=false`.
+- Verified asset SHA-256 values:
+  - amd64 archive
+    `f4b1fd76f67cc01385a1309eaf38e2aaca5b5eb90254df1b0549a02a45040791`,
+    checksum asset
+    `951c26ad4186c7911c8ff802958288b1607557344e918fa3953bb85bb1598ebd`,
+    signature asset
+    `af6ff2b239a8f2e681d443c858ac3d0e7b1559a4491194450306989d0e7a7d18`;
+  - arm64 archive
+    `881b5fb81fca1e371fc6794b7074d3c010d8baca95b3b499a577d9877cd54ec5`,
+    checksum asset
+    `b0b94243d0a0d2e0ca0a16e83466b0c17753be5941d38b1c774fa72d947411dd`,
+    signature asset
+    `8dabfbeb26c677c3f21f875a5f8e23ea2c0eaa875d59dc8919e5f547a549b12d`.
+- P3O.S1-S2 are complete. The release stays a prerelease and production
+  ordering remains disabled. P3O.S3 is next and may add only the protected
+  pre-activation create path after merging frontend main; it cannot change
+  public eligibility, production configuration, provider billing, or the P4
+  incident state.
 
 ### Live acceptance phase P4 header
 
