@@ -2436,6 +2436,24 @@ test -z "$(git tag --list "$TAG")"
   workflow/security contract tests, full project regressions, exact-head CI,
   production deploy, one protected live reconciliation, and fresh protected
   inspection.
+- P4.R9 implementation evidence: frontend/backend commit `cc874f8` adds the
+  incident-only main-bound reconciliation action, strict numeric-device then
+  exact-UUID then numeric-device provider reads, journaled GET-only crash
+  recovery, final exact compute/listener verification, redacted output, and no
+  public or ordinary-user surface. The branch was merged with current
+  `origin/main` again after the implementation commit; it was already current
+  at `84cd779`, so there was no conflict or main-side overwrite.
+- P4.R9 verification evidence: Ruff, Python compilation, YAML parsing, and
+  `git diff --check` passed. Focused non-database tests passed `182`; the fresh
+  PostgreSQL 17 incident suite passed `45` with zero skips; the full backend
+  suite passed `2215` with one unrelated environment-dependent skip; the full
+  public-site build/test gate passed `196` with `41` documented platform skips;
+  and the admin gate passed `54` plus its production build. A final reviewer
+  found and the manager reproduced a real Bash `errexit` masking defect in the
+  first workflow draft; the exact binding was combined into one fail-closed
+  conditional and executable mismatch tests were added. Two independent
+  non-implementing reviewers then returned `APPROVE_FINAL_EXACT_DIFF` on the
+  corrected diff and evidence.
 
 ### Documentation phase P2D header
 
