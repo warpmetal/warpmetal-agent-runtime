@@ -815,6 +815,7 @@ test -z "$(git tag --list "$TAG")"
 | P4.R7 | Classify the consumed recovery state without network contact or mutation | failed-closed P4.R6 run and unchanged post-run baseline | one exact protected workflow/helper using the existing backend recovery inspector and deployment-host recovery files | internal operator runbook only; no public API, CLI, LLM, Runtime, image, or ordinary-user behavior change | hard-bind failed run `34285138720`; require exact claimed backend state, attempted journal, absent journal residue, stable missing final pin, and descriptor-stable candidate classification; report only whether no durable host key was captured, a canonical Ed25519 key was captured, or state is ambiguous/exhausted | workflow/helper contract, backend binding matrix, filesystem/type/mode/owner/link/swap matrix, Linux no-listener and rejected-auth fixtures, zero-mutation snapshots, Python 3.8/Bash/ShellCheck/actionlint/full frontend gates, two independent reviews, exact-head CI/deploy, one protected read-only run | no | completed; PR #126 exact-head CI and deployed main passed, live run `34293354294` classified `pre_durable_host_key_capture` with strict replay ineligible, and post-run inspect `34293421043` proved zero task/provider/Runtime/payment drift |
 | P4.R8 | Replace the proven-pre-capture exhausted claim with one globally one-off same-VPS trust event | completed P4.R7, verified owner authorization, A14 | dedicated append-only backend claim/completion events and migration; separate descriptor-bound deployment-host state; protected workflow/helper/tests/runbook; exact existing task/server/device/key only | internal canary recovery and operator runbook only; no public API, CLI, LLM, Runtime, image, or ordinary-user recovery behavior | hard-bind the full P4.R6/P4.R7 evidence chain; preserve old backend/filesystem state; two bounded SSH banners before state; globally one-off claim committed before exactly one Ed25519-only owner-key `accept-new true`; durable candidate/pin publication, immediate strict replay, safe completion; preclaim readiness failure consumes nothing, any post-claim empty/ambiguous state is terminal, canonical state is strict-only | global uniqueness/concurrency/migration/provider tests; focused FIFO, lock, durability, banner, crash, strict-replay, and old-state invariants; existing P4.R6 real-OpenSSH evidence; Python 3.8/Bash/ShellCheck/actionlint/full gates; two independent reviews; exact-head CI/deploy; one protected live end-to-end run | no | blocked pending P4.R9: the SSH listener is now ready after the one authorized provider reboot request, but its provider task response was lost before durable acceptance and must be reconciled without another POST before P4.R8 may be dispatched once |
 | P4.R9 | Reconcile the one ambiguous acceptance-host reboot response without another provider mutation | authorized guarded reboot run `34313748796`, unchanged post-run baseline, live journal `1/0/0` | incident-bound backend provider lookup/operator event recovery plus protected workflow/tests/runbook; exact existing task/server/device and reboot time window only | internal canary recovery and operator runbook only; no public API, CLI, LLM, Runtime, image, ordinary-user behavior, or reusable provider-task recovery | query only the provider's read-only numeric/latest-task and exact-UUID surfaces; require two stable newest-task reads plus exact UUID corroboration for the owned device, `reboot_vm` metadata, frozen creation interval, and terminal success; bind `force=true` causally to the durable one-shot claim and exact deployed caller; append the existing provider-accepted and completion evidence idempotently; issue zero provider POSTs and preserve every lifecycle field; missing, unstable, mismatched, failed, nonterminal, or malformed evidence stops | provider mutation spy; malformed/unstable/mismatch/time/action/device/client/terminal-state matrices; concurrency/idempotency; exact journal transition tests; full frontend/backend gates; two independent reviews; exact-head CI/deploy; one protected live reconcile and fresh inspect | no | live attempt exhausted and blocked: run `34325544490` rejected the provider task before acceptance, and inspect `34325601665` proved the journal remains `1/0/0`; no retry or P4.R8 dispatch without a newly reviewed evidence oracle and owner authority |
+| P4.R10 | Classify the rejected live provider task without exposing provider data or changing state | exhausted P4.R9 live attempt, journal `1/0/0`, two independent recovery reviews | one incident-bound backend diagnostic plus protected workflow/tests/runbook; exact existing task/server/device only | internal canary diagnosis only; no public API, UI, CLI, LLM, Runtime, image, ordinary-user behavior, or reusable diagnostic | replay up to the same three ordered provider GETs (numeric device, exact UUID when the first UUID is canonical, numeric device) after proving the exact claim-only journal and unchanged recovery baseline; emit only per-stage allowlisted predicate categories plus task/projection stability classes for response shape, UUID, device, positive client, metadata, creation window, update ordering, and result class; never emit raw UUID/client/metadata/timestamps/provider error; issue zero provider mutations and zero database/event/lifecycle/trust writes | provider mutation/write spies; full malformed/category/redaction/binding/stage/stability matrix; workflow main/exact-input contract; focused/full regressions; two independent reviews; merge current main before PR; exact-head CI/deploy; one protected live diagnosis | no | design in progress; any oracle change after diagnosis requires a separate reviewed plan and explicit owner decision |
 | P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3, P4.R4, P4.R8, and P4.R9 | existing exact cancelled task/server/device, six-hour continuation lease, three medium sandbox intents | operator evidence plus exact recovery event and strict pin metadata | same single server, key-only strict SSH with the recovered pin, cancelled state plus bounded active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | recovery/strict-replay/inspect/lease runs, bounded state inspection, baseline prepare run | no | blocked on successfully completed P4.R9 reconciliation and P4.R8; P4.R6 remains exhausted and is never retried |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked on P4.S1 trusted access and baseline preparation |
 | P4.S3 | Final cancellation, provider reconciliation, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no future-billing ambiguity; provider compute may remain through the already-created term; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | failed-attempt cancellation and guarded cleanup are complete and replay-verified; final whole-phase cleanup/review remains pending P4.S2 |
@@ -2477,6 +2478,43 @@ test -z "$(git tag --list "$TAG")"
   the same evidence and is not authorized. Any continuation requires a newly
   reviewed, read-only characterization that reveals only safe predicate classes,
   followed by an explicit owner decision if the oracle itself must change.
+
+#### P4.R10 rejected provider-task characterization checkpoint
+
+- Scope is limited to identifying which frozen P4.R9 read stage or predicate
+  rejected the live provider evidence. The diagnostic
+  must first re-prove the exact task/server/hostname/device binding, unchanged
+  P4.R6/P4.R8 recovery baseline, unclaimed retrust state, and reboot journal
+  `claim=1`, `providerAccepted=0`, `completion=0`. A mismatch stops before provider
+  access.
+- The only provider operations replay the frozen read order: numeric device,
+  exact UUID when the first UUID is canonical, then numeric device again. The
+  diagnostic performs at most three GETs and no other provider call. Output is
+  an allowlisted JSON classification for each stage: read
+  `success|failed|not_attempted`; response `object|invalid`;
+  task UUID `canonical|invalid`; device `exact|mismatch|invalid`; client
+  `positive_integer|invalid`; metadata `exact|mismatch|invalid`; creation
+  `within_window|before_window|after_window|invalid`; update
+  `ordered|before_creation|invalid`; and result
+  `success|pending|failure|other|invalid`. It also emits only
+  `same|different|not_comparable` task-identity and full-projection stability
+  classes. A noncanonical first UUID skips only the exact stage and still permits
+  the second numeric read; a provider-read exception marks that stage `failed`
+  and stops later reads. Provider values and failure text are never printed,
+  persisted, or added to an event.
+- The command and protected workflow are hard-bound to this incident and current
+  `main`; they expose no public or ordinary-user surface. Tests must prove three
+  ordered GETs for a canonical first UUID, two numeric GETs with the exact stage
+  `not_attempted` for a noncanonical first UUID, bounded provider-read failure,
+  zero POST/power/reboot calls, zero database writes/events, exact redaction, and
+  fail-closed binding/state behavior. Two non-implementing reviewers approve the
+  design and exact diff before the usual focused/full gates, second merge of
+  current `main`, PR/CI/production deploy, and one live diagnostic dispatch.
+- Diagnosis cannot itself authorize a P4.R9 replay, a relaxed provider result,
+  P4.R8, or any VPS/trust/Runtime/lifecycle action. If it identifies a failed
+  terminal task, deciding whether independent compute/listener evidence can
+  establish the already-issued reboot requires a new oracle and explicit owner
+  approval.
 
 ### Documentation phase P2D header
 
