@@ -72,7 +72,9 @@
 - Dependencies:
   - official AppArmor restricted-Bubblewrap policy semantics;
   - signed sandbox image publication;
-  - signed Runtime v0.1.25 prerelease and production metadata;
+  - signed Runtime v0.1.25 prerelease for the frozen private-procfs canary and
+    a separately verified signed Runtime v0.1.26 release for automatic Runtime
+    ordering and selected-CLI readiness reporting;
   - a disposable acceptance sandbox on the existing amd64 acceptance VPS;
   - Nico source publisher, model proxy, webhook, worker, and QA control-plane
     features already deployed default-off.
@@ -108,6 +110,8 @@
 | R12 | Product-wide documentation and discovery | Runtime, sandbox-image, CLI help/README/skill, public `/agent-runtime` and `/docs` pages, and `llms.txt` explain who needs the capability, why nested Bubblewrap is used, the planning/coding/QA examples, the exact version/action contract, host scope, and when to preserve or disable it | documentation contract, CLI test, frontend route/backend tests, inspection |
 | R13 | Safe first-use SSH trust without provider-console access | On the first owner-authenticated connection for an exact server trust epoch, CLI 0.8.8 or the protected canary may trust the first observed Ed25519 host key once, atomically pin it, and reconnect strictly before any bootstrap or payload transfer; every replay is strict and any mismatch, malformed pin, unexpected IP, failed reload, or ambiguous state fails without replacing the pin | unit, contract, local SSH integration, protected live end-to-end |
 | R14 | Missing-pin incident recovery cannot become a reusable trust reset | The one existing acceptance canary may consume one exact-task recovery reservation after a protected diagnostic proves its pin missing; only when a later protected diagnostic proves that reservation failed before durable host-key capture may one separately authorized, globally one-off replacement reservation be created. Both reservations are durable before their allowed host-key observation/first-contact SSH and neither may repeat it after claim; P4.R8's bounded preclaim banner-readiness connections send no application bytes and cannot perform key exchange or capture a host key. Successful publication is followed by strict replay, and both paths are unavailable to ordinary users or any other task/device | unit, contract, concurrency, failure-recovery, protected live end-to-end |
+| R15 | Automatic Runtime ordering requires the first complete signed supervisor contract | Runtime v0.1.26 directly invokes the fixed image-owned CLI reporter without a shell, reports the selected Codex/Claude/Cursor observations for the matching desired generation, preserves the existing private-procfs and generic exec behavior, and is the minimum version advertised for automatic bootstrap and CLI reporting | unit, migration, race, release-asset, four-distro integration, live end-to-end |
+| R16 | Public ordering must fail closed until the exact candidate is proven on every advertised OS | Production `agentRuntime.supported` remains false until the exact signed v0.1.26 tuple has passed fresh order-time cloud-init canaries on AlmaLinux 9, Debian 12, Rocky Linux 9, and Ubuntu 24.04; activation verifies the tuple cryptographically and catalog eligibility before and after traffic switch | contract, workflow, provider canary, deployment, public smoke |
 
 ## Architecture
 
@@ -275,7 +279,7 @@
 | Userns host policy | disable Ubuntu restriction; broad unconfined container; exact-path restricted setup policy | exact product path plus upstream restricted-Bubblewrap setup/child split; host-wide relaxation forbidden | packaging and live policy tests required |
 | Binary source | mutable workspace install; generic distro path; exact signed-image Codex helper | exact root-owned helper in the existing signed all-tools image | no new image build; Nico still needs an explicit refresh from its older image |
 | Upgrade proof | refresh existing sandboxes during install; preserve them and use disposable canary | preserve existing sandboxes; prove capability on a fresh candidate | refresh is a later explicit lifecycle phase |
-| Release | mutable artifacts; signed prerelease then promotion | signed immutable prerelease, rollback/forward canary, then promote same assets | version candidate is v0.1.25 |
+| Release | mutable artifacts; signed prerelease then promotion | retain signed immutable v0.1.25 for the frozen private-procfs canary; integrate selected-CLI reporting and publish signed immutable v0.1.26, verify it on every advertised automatic-ordering OS, then promote the same assets | v0.1.26 is required for ordering; do not retag v0.1.25 or rebuild assets during promotion |
 | Policy activation | install on every restricted-AppArmor host; per-sandbox toggle; explicit host toggle | default `preserve`, explicit signed `enable`/`disable`; AppArmor pathname attachment cannot truthfully provide per-sandbox isolation without a separate outer profile/API design | hosts without nested Bubblewrap receive no policy mutation; enabled dedicated hosts grant all same-owner matching-path sandboxes |
 | Consumer scope | Nico-only feature; coding-only feature; general nested-Bubblewrap capability | general capability with Nico as the first acceptance consumer; need is determined by the inner isolation boundary rather than the agent brand, task category, GitHub use, or subagent use | product docs must use capability-based language and concrete planning/coding/QA examples |
 | Initial VPS host trust | mandatory provider-console enrollment; blind network scan; authenticated trust on first use with optional console pre-seed | trust the first host key observed during one harmless owner-key-authenticated SSH connection for an exact server trust epoch, then atomically pin and require strict matching; retain protected console enrollment as an optional stronger pre-seed and forbid `ssh-keyscan` | ordinary users do not need Hivelocity access; first-connection MITM remains an explicit accepted residual; mismatch bypass and generic pin reset remain forbidden |
@@ -299,6 +303,9 @@
 | A12 | The cancelled acceptance task cannot be reused while its paid provider device remains live | high | false as stated; direct reuse is still blocked | `cancelled` is an intentionally manageable Runtime/SSH state only while the control-plane term is active, but this task's six-hour `test_expires_at` and capped `term_ends_at` both expired at `2026-09-08T07:33:04.758006Z`; reuse requires a protected one-time continuation lease for this exact task/device without changing cancellation or billing state |
 | A13 | The original successful protected TOFU retained an immutable public host-key fingerprint or canonical pin digest that can authenticate a replacement pin | high | false | GitHub run `34198472527` proves the exact trust step succeeded on deployed commit `7ae91ba5`, but its retained job log, check output, and artifact inventory contain no helper fingerprint/digest output; Runtime never registered and the protected diagnostic found the only pin missing, so continuity cannot be reconstructed |
 | A14 | A bounded non-trusting TCP SSH-banner check can prevent another known-listener-absent authority consumption | medium | verified as a design constraint; live result unresolved | two consecutive bounded `SSH-2.0-` identifications may establish readiness without key exchange, authentication, host-key capture, or claim creation, but cannot eliminate the race between readiness and the later SSH attempt; failure must stop without an automatic retry |
+| A15 | Current Runtime main may be retagged as v0.1.26 to enable ordering | high | false | v0.1.25 main lacks selected-CLI reporting; v0.1.26 must merge `codex/all-tools-runtime-report` with current main and correct the reporter execution boundary |
+| A16 | The existing task-scoped artifact selector can prove order-time v0.1.26 cloud-init without enabling public ordering | high | false | it is limited to historical v0.1.24/v0.1.25 and is persisted after provider creation; add a protected create path that binds the signed v0.1.26 tuple in the initial task transaction |
+| A17 | One Ubuntu canary is sufficient while four OS rows are advertised as Runtime-capable | high | false | use one fresh disposable order-time canary for each advertised OS, sequentially and stop on first failure; billed provider creation requires a separate exact aggregate-cost authorization |
 
 ## Test strategy
 
@@ -346,8 +353,9 @@
 | P2R | Runtime policy lifecycle is explicit, default-off, architecture-gated, and reversibly recoverable | R2-R4, R10-R11, A2-A3, A7-A8 | P2 recovery review | default preserve is mutation-free; explicit amd64 enable is idempotent; disable unloads/removes Runtime policy and restores any displaced prior file/state; interruption evidence is durable; tests/docs green | completed |
 | P2D | General capability documentation is discoverable and example-driven | R11-R12, A7-A9 | P2R interface | Runtime and sandbox docs, CLI help/skill, public pages, and both LLM contract sources agree on purpose, examples, versions, actions, host scope, and non-goals; repository gates pass | completed |
 | P3 | Signed v0.1.25 prerelease, CLI 0.8.7, and five-stage frontend canary contract ready | R1-R5, R10-R12 | P1-P2R, P2D | exact heads pass CI/review; signed Runtime and npm CLI releases are independently verified; frontend workflow is available on its default branch | completed |
+| P3O | Signed Runtime v0.1.26 and automatic-ordering activation | R3-R5, R10, R15-R16, A15-A17 | P3; source/release work may proceed independently of P4 | current Runtime main and selected-CLI reporting are merged and reviewed; the exact signed v0.1.26 prerelease passes release verification and four fresh order-time OS canaries; the same assets are promoted/configured; production catalog aggregate support is true and public smoke passes | in_progress; source integration authorized, billed live matrix pending exact aggregate-cost approval |
 | P4 | Rollback/forward/disable amd64 acceptance canary passes | R1-R6, R10-R11, R13-R14, A1-A4, A10, A13 | P3 | first-use trust or its one authorized incident recovery is safely pinned, pre-policy sensitivity, positive capability, preservation, retained-policy binary rollback, forward, and exact disable/restore gates pass | in_progress |
-| P5 | Stable production Runtime/image and Nico sandbox refresh | R1-R7, R10 | P4 | stable assets; Nico upgrade plus both explicit refreshes verified | pending |
+| P5 | Stable nested-private-procfs production activation and Nico sandbox refresh on v0.1.26 | R1-R7, R10 | P3O, P4 | exact v0.1.26 assets remain stable; Nico upgrade plus both explicit refreshes verified | pending |
 | P6 | Nico code/deploy and real autonomous task pass | R7-R10 | P5 | full gates, deploy, coder/publisher/QA canary, staged flags | pending |
 
 ## Active phase subplan
@@ -659,6 +667,169 @@ test -z "$(git tag --list "$TAG")"
   current, no live VPS/key/Runtime/sandbox mutation occurred, and no secrets
   were exposed. Phase status: completed at release revision 9.
 
+### Automatic-ordering release phase P3O header
+
+- Phase ID and outcome: P3O, integrate selected-CLI reporting with current
+  Runtime main, publish and verify the exact signed v0.1.26 release, prove its
+  initial cloud-init path on every OS currently advertised as Runtime-capable,
+  and activate the unchanged release tuple for public ordering.
+- Covered requirement and assumption IDs: R3-R5, R10, R15-R16; A15-A17.
+- Entry criteria: Runtime `origin/main` is signed v0.1.25 commit
+  `da08e6ec41eeac8a3d762aa44a17bada37390798`; selected-CLI reporting is on
+  clean branch `codex/all-tools-runtime-report` at
+  `e0d342c36f07ea0e15a4de9ab65bf0bcaad51b54`; v0.1.26 does not exist; the
+  existing signed sandbox-image digest remains immutable; source integration
+  and release work are owner-authorized. Billed provider orders, production
+  secret/config mutation, and a paid public order retain their separate gates.
+- Exit criteria: v0.1.26 is tagged only from the reviewed Runtime main merge,
+  its six release assets verify independently, each advertised OS passes a
+  fresh order-time candidate canary using that exact tuple, production deploy
+  verifies and configures the same tuple, `/catalog` reports aggregate support,
+  and unpaid plus separately authorized paid public-order smoke passes.
+- Dependencies and risks: P3 is complete. Runtime source/release work is
+  independent of the incident-bound P4 host. Frontend/backend/operator/public
+  work is deliberately last. The P4 v0.1.24/v0.1.25 evidence, trust state,
+  lifecycle journals, and existing VPS are never reused or reinterpreted.
+- Baseline test state: both current Runtime main and the reporting branch pass
+  `go test -race ./...` in disposable Go 1.25 containers; the host lacks Go,
+  so formatting, vet, privileged installer/AppArmor gates, hosted coexistence,
+  and exact-merge CI remain mandatory and are not yet claimed.
+- Required documentation and API-contract changes: Runtime README/SECURITY and
+  release notes; internal protected ordering runbook/workflow; CLI-reporting
+  minimum supervisor version `0.1.26` in catalog/OpenAPI/public docs/LLM text.
+  Nested-private-procfs documentation remains `v0.1.25+` and the P4 historical
+  selector remains v0.1.24/v0.1.25.
+- Coordinating owner: parent manager. One Runtime implementer owns the direct
+  reporter correction; fresh non-implementing reviewers own diff and release
+  verification; a separate frontend implementer starts only after the signed
+  Runtime release is verified.
+
+### Automatic-ordering release phase P3O assumption check
+
+| Assumption ID | Check or probe | Evidence | Result | Plan change |
+|---|---|---|---|---|
+| A15 | Compare v0.1.25 main with the reporting feature and checkout gate | main lacks `internal/toolreport`; product aggregate support requires supervisor `>=0.1.26` | false | merge current main into the reporting branch, correct it, then tag only the reviewed merge on main |
+| P3O.A1 | Determine whether the reporting helper is reached through a trusted fixed execution path | current probe calls generic `Engine.Exec`, whose Podman implementation uses `/bin/sh -lc`; the sandbox user owns its login profile | unsafe as implemented | add a dedicated direct reporter method with exact image-owned argv, fixed sanitized child environment, and no shell, profile, PATH lookup, tty, attached/transmitted stdin, caller arguments, or caller/desired-state-supplied environment |
+| A16 | Trace the existing test selector relative to provider creation | the selector is historical-version allowlisted and written after a test VPS exists | false | add a protected create action that stores the exact verified candidate tuple in the initial task transaction before worker claim/provider cloud-init |
+| A17 | Compare advertised OS eligibility with order-time evidence | AlmaLinux 9, Debian 12, Rocky Linux 9, and Ubuntu 24.04 all advertise Runtime support | false | require one fresh sequential canary per OS or narrow the advertised OS set before activation |
+| P3O.A2 | Determine whether publishing alone enables checkout | production catalog derives aggregate support from the configured signed Runtime tuple | false | keep checkout disabled through release and canaries; activate only through reviewed production configuration/deploy |
+
+### Automatic-ordering release phase P3O entry-gate decision
+
+- Implementation authorized: yes for plan maintenance, Runtime source
+  integration, review, PR, and signed v0.1.26 prerelease publication. The
+  owner's instruction that v0.1.26 is needed for ordering is the decision
+  evidence. This does not silently authorize provider charges, production
+  secret changes, or payment.
+- Unresolved high-impact gates: exact aggregate monthly cost for up to four
+  fresh VPSs; exact production configuration mutation; paid public order. Run
+  read-only quote/preflight first and request those bounded authorities at the
+  point they become necessary.
+- Error/logging requirements reviewed: yes. Reporter output is bounded and
+  strictly parsed; child stderr and raw execution/provider errors are not
+  exposed; workflows emit no signature, public-key material, credentials, or
+  raw provider body.
+- Authentication/authorization requirements reviewed: yes. The candidate
+  create action is protected, main-only, exact-release-bound, confirmation- and
+  idempotency-bound, and unavailable to public callers. Ordinary checkout stays
+  fail-closed until production activation.
+- Documentation/API requirements reviewed: yes. Public catalog/OpenAPI/LLM
+  surfaces must advertise `0.1.26` for selected-CLI reporting only. No public
+  field is added; existing readiness fields change value only after activation.
+- Decision timestamp or plan revision: 2026-09-09, ordering revision 1.
+
+### Automatic-ordering release phase P3O subparts
+
+| Subpart | Deliverable and owner boundary | Dependencies | Interfaces / likely files | Documentation / API impact | Acceptance and oracle | Focused + regression checks | Parallel-safe | Status |
+|---|---|---|---|---|---|---|---|---|
+| P3O.S1 | Merge current Runtime main and correct trusted CLI-report execution | frozen entry hashes | `internal/containers`, `internal/toolreport`, reconcile/state/model and tests; Runtime README/SECURITY | Runtime internal contract; no HTTP schema | exact `podman exec warpmetal-<id> /usr/local/bin/warpmetal-agent-tool-report`, without `-i`; fixed sanitized child environment; no attached/transmitted stdin, login shell/profile/PATH/caller argument, or caller/desired-state environment injection; bounded stdout, discarded stderr, normalized errors; generic `Engine.Exec` and private-procfs behavior unchanged | direct-argv negative tests, migration/legacy state, focused race, full race/vet, installer/AppArmor/coexistence, four hosted distros | no | pending; merge main before implementation and again before PR; any conflict or semantic uncertainty stops for owner review |
+| P3O.S2 | Review, merge, publish, and independently verify signed v0.1.26 prerelease | P3O.S1 | Runtime PR/default branch, annotated tag, release workflow and committed `cosign.pub` | release notes and exact six-asset contract | tag points to exact reviewed main merge and has both v0.1.25 main and reporting commit as ancestors; amd64/arm64 archives, checksums, detached signatures, static architectures, exact 13-member contents, and embedded supervisor `0.1.26` verify; release stays prerelease | exact-head/merge CI, download/re-hash/Cosign, archive membership, registration/report smoke | no | pending |
+| P3O.S3 | Add protected pre-activation candidate create path, frontend work last | verified P3O.S2 assets | backend Runtime/operator, protected acceptance workflow, tests/runbook | internal operator only; no public eligibility change | protected workflow downloads the exact official v0.1.26 archive and verifies its digest and Cosign signature with the committed release key before protected create; backend exact-binds and durably persists that verified tuple with one minimal all-three-CLI sandbox before worker claim or provider activity; confirmation/idempotency bind hostname, OS, version, artifact and request digests | state/order/concurrency/mismatch/redaction tests, workflow contract, full backend/site/Admin gates, main merge before implementation and PR | no | pending; must not begin before P3O.S2 verification |
+| P3O.S4 | Run exact supported-OS order-time Runtime matrix | P3O.S3, explicit aggregate-cost authority | one fresh disposable smallest viable VPS per advertised OS; unique host key and task | private acceptance evidence only | exact OS/cloud-init; task/provider ready; registration before 45-minute deadline; supervisor 0.1.26 and artifact digest exact; desired/observed generation equal; signed image exact; sandbox running; three CLI observations present; owner SSH; cancellation and no-renewal reconcile, while provider service may remain through its prepaid term unless deletion is supported and separately authorized | protected workflow, safe logs, per-OS independent review; sequential stop-on-first-failure | no | blocked only on S1-S3 and future exact aggregate-cost approval; never use the P4 VPS |
+| P3O.S5 | Activate exact production tuple and public catalog | P3O.S4 | deployment workflow/secrets, blue-green script, catalog/OpenAPI/docs/LLM minimum | selected-CLI minimum becomes 0.1.26; no nested-private-procfs version rewrite | workflow cryptographically verifies tuple before upload; candidate and two post-switch catalog reads show product support true and all four OS flags true; failure leaves old slot public and restores prior tuple before retry | deploy workflow tests, backend/site/Admin/full gates, production deploy and catalog probes | no | pending; requires explicit production-config authority |
+| P3O.S6 | Public ordering smoke | P3O.S5 | public order preparation and one smallest paid Ubuntu order | validates existing public contract | unpaid preparation returns 201 with frozen Runtime intent and performs no checkout/payment/provider action; separately authorized paid order reaches Runtime 0.1.26 and all-three-CLI readiness | API/checkout smoke, payment/provider reconciliation, independent final review | no | pending; paid portion requires separate amount/payment authority |
+
+### Automatic-ordering release phase P3O test matrix
+
+| Requirement / risk | Behavior or invariant | Test level | Oracle defined before code | Command or procedure |
+|---|---|---|---|---|
+| R15/P3O.A1 | untrusted sandbox profile or desired state cannot forge CLI-report readiness | unit + container integration | yes | assert exact direct argv without `-i`, no attached/transmitted stdin, and fixed sanitized child environment; forbid shell/profile/PATH/tty/caller-argument or caller/desired-state environment injection; mutate `.profile` and desired-state fixtures and prove neither can affect the report command |
+| R15 | selected CLI observations bind to desired generation and survive legacy DB upgrade | unit + migration + race | yes | strict JSON/version/status catalog, legacy empty defaults, interrupted migration/reconcile, desired-command injection negatives |
+| R3-R5 | v0.1.25 private-procfs and ordinary interactive exec remain unchanged | regression + hosted | yes | exact generic Exec args, installer/policy/oracle suites, four-distro coexistence and workload-drift jobs |
+| R15 | release is immutable and correctly signed for both architectures | supply chain | yes | tag/main ancestry, six assets, checksum and Cosign verification, architecture, 13-member archive, embedded version |
+| R16/A16 | candidate artifact controls initial order-time cloud-init before public activation | contract + concurrency + live | yes | initial-transaction descriptor binding, worker-claim race tests, exact four-OS protected canary |
+| R16/A17 | public eligibility matches proven OS set and exact production tuple | deploy + public end-to-end | yes | candidate/pre-switch and two post-switch catalog assertions, unpaid prepare, separately authorized paid Ubuntu smoke |
+| R10 | no secrets/signatures/provider bodies leak | test + log inspection | yes | sentinel redaction, allowlisted output, release/deploy/live log review |
+
+### Automatic-ordering release phase P3O frozen command manifest
+
+```sh
+# Runtime exact branch and merge gates, in a Linux Go 1.25 environment.
+git diff --check
+test -z "$(gofmt -l .)"
+sh -n packaging/install/install.sh
+sh -n packaging/install/warpmetal-apparmor-policy.sh
+sh -n packaging/apparmor/nested-private-procfs-oracle.sh
+sh -n packaging/install/preserve_execution_test.sh
+sh -n packaging/install/coexistence_container_test.sh
+sh packaging/apparmor/profile_test.sh
+sudo env "PATH=$PATH" sh packaging/install/apparmor_policy_test.sh
+sudo env "PATH=$PATH" sh packaging/install/install_test.sh
+go test -race ./internal/toolreport ./internal/containers ./internal/reconcile ./internal/state ./internal/api
+go test -race ./...
+go vet ./...
+
+# Hosted exact-head and merge gates.
+# Require all current Runtime CI, all four privileged distro coexistence jobs,
+# workload-drift jobs, and independent exact-diff approval.
+
+# Release verification.
+# Require the annotated v0.1.26 tag to peel to the exact reviewed main merge;
+# verify both required ancestors, six assets, checksums, detached Cosign
+# signatures with committed cosign.pub, static architectures, exact 13-member
+# archive contract, and embedded/reporting supervisor version 0.1.26.
+
+# Frontend/backend gates after Runtime release verification only.
+# Run focused Runtime/operator/database/workflow tests, Ruff, compileall,
+# actionlint, migration-to-head, full backend, full site/build/lint, Admin build
+# and tests, OpenAPI/LLM mirror checks, exact-head CI, and blue-green deployment.
+```
+
+The Runtime release workflow currently promises checksum files and detached
+Cosign signatures, not Runtime SBOM or provenance assets. Do not claim or test
+for artifacts outside that contract. The separately pinned sandbox image keeps
+its existing SBOM/provenance/signature contract and immutable digest.
+
+### Automatic-ordering release phase P3O sequence and integration
+
+1. On the clean reporting branch, fetch and assert the frozen heads, then merge
+   current Runtime `origin/main` before any implementation. Never rebase. If
+   main changed or a conflict/semantic uncertainty appears, stop and review it;
+   never overwrite newer main behavior.
+2. Implement only the direct fixed reporter boundary and combined semantic
+   corrections. Run the frozen local/hosted gates and two independent reviews.
+3. Merge current main again immediately before the Runtime PR. After exact-head
+   and exact-merge CI, merge the PR; tag only that Runtime main merge v0.1.26,
+   publish it as a prerelease, and independently verify all assets.
+4. Only after release verification, merge current frontend main before the
+   bounded protected candidate-create implementation. Keep public frontend,
+   CLI, OpenAPI, LLM, and deploy changes last; merge main again before its PR.
+5. Run a read-only provider quote. After exact aggregate-cost approval, execute
+   the four OS canaries sequentially and stop on first failure. Do not reuse or
+   mutate the incident-bound P4 VPS.
+6. After the matrix and explicit production-config authority, promote the same
+   release assets, configure the exact production tuple, deploy with fail-closed
+   catalog assertions, and verify aggregate support. Do not lower the v0.1.26
+   gate to make checkout appear enabled.
+7. Run unpaid order preparation, then request separate exact payment/VPS-budget
+   authority for the final public paid smoke. Record independent final review.
+
+P3O can proceed while P4 listener recovery remains pending because automatic
+Runtime installation uses the default `preserve` policy mode and does not
+activate nested private procfs. P4 remains the mandatory gate for enabling that
+optional host capability and for Nico's refresh; none of its incident evidence
+or authority is consumed by P3O.
+
 ### Live acceptance phase P4 header
 
 - Phase ID and outcome: P4, prove on one disposable amd64 Ubuntu 24.04 VPS that
@@ -820,6 +991,7 @@ test -z "$(git tag --list "$TAG")"
 | P4.R12 | Classify the claim-only P4.R11 shutdown failure without another lifecycle mutation | deployed P4.R11, old reboot `1/0/0`, shutdown `1/0/0`, boot `0/0/0`, P4.R8 unclaimed, two independent recovery reviews | one incident-bound backend diagnostic and protected workflow action; exact existing task/server/device and failed live run IDs only | internal acceptance diagnosis only; no public API, UI, CLI, LLM, Runtime, image, ordinary-user behavior, or reusable provider diagnostic | re-prove the exact immutable baseline and stored shutdown claim/account digest; perform one exact compute GET plus numeric task, conditional canonical UUID, and numeric task GETs; emit only allowlisted identity/power, UUID/device/client, exact stop metadata, claim-window, update, result, and stability classes; emit no raw provider value or error; write no event/database/lifecycle state and expose no POST | provider mutation and database snapshot spies; malformed/category/redaction/binding/stage/stability/power matrix; focused/full regressions; two independent reviews; merge current main before implementation and again before PR; exact-head CI/deploy; one protected live diagnosis | no | completed: PR `#136` merged/deployed at `24b83016`; live read-only run `34372246548` proved compute `ON` and one fully stable successful exact `stop_vm` task created before the claim window; three independent reviewers confirmed this negative result closes diagnosis but cannot recover P4.R11 |
 | P4.R13 | Execute the newly authorized one-shot replacement power cycle without rewriting P4.R11 evidence | completed P4.R12, exact old journals, P4.R8 unclaimed, compute `ON`, explicit owner approval for one additional stop and conditional start | six new globally unique append-only recovery events plus migration; incident-bound backend state machine; protected workflow/tests/internal runbook; exact same task/server/device only | internal canary recovery only; no public API, UI, CLI, LLM, Runtime, image, ordinary-user behavior, generic retry, or reusable lifecycle feature | preserve reboot `1/0/0`, P4.R11 shutdown `1/0/0`, boot `0/0/0`, and P4.R8 unclaimed; capture a stable P4.R12-equivalent pre-window task watermark; commit one recovery-shutdown claim before at most one forced stop POST; accept only a distinct/newer exact in-window `stop_vm` task; require stable terminal success and exact compute OFF before committing a recovery-boot claim; issue at most one start POST; accept only a distinct/newer in-window `start_vm` task with the same client; require stable terminal success, exact compute ON, and two zero-write SSH banners; claim-only replay is GET-only and never repeats either POST | global uniqueness/migration up-down; exact binding/baseline/watermark/task/time/client/result/power matrices; lost-response and malformed-direct-response reconciliation; concurrent claim/race/crash replay; old-journal/P4.R8 immutability; focused/full regressions; two independent design and implementation reviews; merge current main before implementation and again before PR; exact-head CI/deploy; fresh inspect, one protected live recovery, and post-cycle inspect | no | implementation/release complete; the sole stop run and sole permitted GET-only replay both ended claim-only with invalid provider-task evidence, so shutdown is `1/0/0`, boot is `0/0/0`, no start ran, and P4.R13 is terminally closed pending read-only P4.R14 diagnosis |
 | P4.R14 | Diagnose the terminal P4.R13 recovery-shutdown task evidence without further lifecycle mutation | exact deployed P4.R13 SHA and runs, recovery shutdown `1/0/0`, recovery boot `0/0/0`, immutable old journals, P4.R8 unclaimed | incident-only backend read command, protected workflow route, tests, and internal plan/runbook evidence | internal canary diagnosis only; no public API, UI, CLI, LLM, Runtime, image, ordinary-user behavior, journal mutation, or lifecycle authority | retire the P4.R13 workflow/CLI route; bind exact incident and stored P4.R13 claim/watermark/account/original-claim state; issue compute plus numeric/exact/numeric provider GETs only; emit safe classifications; revalidate the entire baseline before stdout; never issue stop, start, reboot, reload, SSH, polling, an event append, or any provider write request, and never authorize recovery | exact binding/state/digest/drift matrices; provider GET order/failure/stability/redaction; database zero-mutation and provider write-request spies; retired-P4.R13 reachability; focused/full regressions; two independent reviews; current-main merge before implementation and again before PR; exact-head CI/deploy; one protected live diagnostic | no | completed: PR `#138` merged at `122f7d5`, exact deployment run `34396989738` passed, and sole live run `34399716626` found compute `ON` plus the same stable pre-claim watermark task on all three reads; no attributable P4.R13 stop exists and no lifecycle follow-up is authorized |
+| P4.R15A | Prove only listener readiness before asking for another P4.R8 trust attempt | completed P4.R14, exact unchanged incident baseline, P4.R8 unclaimed | one incident-only read-only backend verifier, deployment-host helper, protected workflow/tests/runbook; exact existing task/server/device and frozen run IDs only | internal canary diagnosis only; no public API, UI, CLI, LLM, Runtime, image, trust, lifecycle, or ordinary-user behavior | strict existing trust reaches the deployment host; the helper sends zero bytes to the acceptance VPS, performs at most three literal-IPv4 TCP/22 connections in 15 seconds, requires two consecutive bounded printable `SSH-2.0-` banners, holds the existing deployment lock read-only/no-follow, proves the final pin and exact P4.R8 path remain absent before and after, and revalidates the exact backend/provider-ON baseline before emitting only ready/not_ready | lock/type/mode/owner/link/race matrix; banner bounds and zero-send oracle; exact pre/post verifier and provider-GET count; zero local mutation and zero client-issued provider write/lifecycle requests, while GET behavior remains provider-opaque; workflow binding/redaction; focused/full regressions; two independent reviews; main merge before implementation and PR; exact-head CI/deploy; one protected diagnostic | no | design frozen and independently approved; implementation pending; it never unlocks P4.R8, which still requires fresh explicit owner authority after a ready result and before P4.R8 integration or dispatch |
 | P4.S1 | One acceptance VPS plus trusted owner access and initial Runtime resources | P4.R3, P4.R4, P4.R8, P4.R14, and a completed separately reviewed listener-recovery phase | existing exact cancelled task/server/device, six-hour continuation lease, three medium sandbox intents | operator evidence plus exact recovery event and strict pin metadata | same single server, key-only strict SSH with the recovered pin, cancelled state plus bounded active term, correct OS/amd64, then task-scoped baseline preparation proves v0.1.24 and three expected sandboxes | recovery/strict-replay/inspect/lease runs, bounded state inspection, baseline prepare run | no | P4.R14 is complete; blocked on a separately frozen and completed listener recovery, fresh inspection, P4.R8, and a new fixed lease deadline; P4.R6/P4.R9/P4.R11/P4.R13 remain unavailable |
 | P4.S2 | Ordered five-stage signed private-procfs canary | P4.S1 | `action=canary-private-procfs`, exact task/hostname/stage and artifact hashes | plan evidence only | all stage-specific positive, negative, preservation, rollback, forward, disable, and cleanup oracles pass in order | workflow signature/metadata gate, stage logs, host snapshots, replay-safe cleanup | no | blocked on P4.S1 trusted access and baseline preparation |
 | P4.S3 | Final cancellation, provider reconciliation, and independent review | P4.S2 | `action=cancel` then read-only inspection/provider reconciliation | plan and promotion packet | cancellation terminal and no future-billing ambiguity; provider compute may remain through the already-created term; no temporary grants/sandboxes/runner files/policy residue; fresh verifier approves | exact workflow evidence, safe log review, independent whole-phase audit | no | failed-attempt cancellation and guarded cleanup are complete and replay-verified; final whole-phase cleanup/review remains pending P4.S2 |
@@ -3075,6 +3247,81 @@ test -z "$(git tag --list "$TAG")"
   PASS for P4.R14 completion; Leibniz independently confirmed the next gate is
   blocked pending a separately frozen/reviewed listener-recovery phase and new
   explicit live-attempt authority.
+
+#### P4.R15A frozen listener-readiness diagnostic design
+
+- Scope and exact binding: add only the protected main-only action
+  `diagnose-acceptance-host-listener-readiness`, bound to deployed frontend SHA
+  `122f7d5669e824428cd176d72b968f19825f4ec8`, failed P4.R8 run
+  `34306043072`, post-run inspect `34306150411`, deployment run
+  `34396989738`, P4.R14 run `34399716626`, task
+  `task_bRE4vSeF8tE0a_bOLwq2FdTz`, server
+  `srv_ZvQaOP05rGycwcX4vcKBTQnN`, hostname
+  `private-procfs-canary-20260908`, provider device `69097`, service `315175`,
+  and literal IPv4 `23.227.167.104`. The action requires an empty
+  `host_public_key_base64` input and exact full-SHA/main-ref validation.
+- Network authority: the workflow may make one control-plane SSH connection to
+  the already-trusted deployment host using strict existing host trust; it may
+  not use accept-new or discover/change that trust. The deployment-host helper
+  may not invoke SSH, SCP, SFTP, `ssh-keyscan`, or any host-key exchange,
+  authentication, host-key capture, or trust operation against the acceptance
+  VPS. It performs only literal-IPv4 TCP listener reads, transmits zero bytes,
+  creates at most three connections in one 15-second global window, reads at
+  most 1 KiB/four lines from each, and succeeds only after two consecutive
+  printable lines beginning exactly `SSH-2.0-`.
+- Filesystem authority: open the existing deployment, acceptance, trusted-pin,
+  and P4.R8 parent paths by descriptor with no-follow type/owner/mode/link
+  checks. Open the pre-existing `.deployment.lock` read-only with `O_NOFOLLOW`,
+  validate it, and take the established nonblocking exclusive advisory lock;
+  never create/truncate it with shell redirection. Before the first backend
+  verifier and after the second, prove descriptor-stably absent exactly the
+  final trusted pin
+  `acceptance/trusted-known-hosts/private-procfs-canary-20260908` and the P4.R8
+  path `acceptance/host-pin-retrust/task_bRE4vSeF8tE0a_bOLwq2FdTz`; the latter
+  parent may be securely absent or securely opened. The helper creates no
+  candidate, journal, pin, key, known-hosts, temporary, or work file.
+- Backend authority: the helper calls one exact internal verifier before and
+  after the network probe. Each call validates and snapshots under the existing
+  task-to-Runtime-to-sandboxes lock order; requires the frozen cancelled task,
+  provider account/binding, `hosted_checkout_replacement_used=false`,
+  `automatic_install_deadline=null`, Runtime pending-install desired/applied
+  `1/0`, exact three medium sandbox intents, P4.R8 unclaimed, old reboot
+  `1/0/0`, P4.R11 shutdown `1/0/0`, boot `0/0/0`, P4.R13 recovery shutdown
+  `1/0/0`, recovery boot `0/0/0`, and the exact P4.R13/P4.R14 claim/watermark
+  evidence; performs exactly one compute GET through the bound account; requires
+  exact device/service/IP and compute `ON`; then locks and revalidates the same
+  snapshot/account. Across the diagnostic there are exactly two verifier calls
+  and at most two compute GETs. No event, SQL write, claim, completion, SSH,
+  payment, Runtime/sandbox, or lifecycle function is allowed. Tests can prove
+  zero client-issued provider write/lifecycle requests; provider GET internals
+  remain opaque and must not be described as physically side-effect-free.
+- Output and failure: only after successful post-verification and final stable
+  absence checks may stdout contain one fixed object with
+  `listenerReadiness` equal to `ready` or `not_ready`. Any binding, baseline,
+  filesystem, lock, backend, compute, network, redaction, or concurrency error
+  exits with no stdout. Never emit a provider body/error, raw field, path,
+  key/fingerprint, signature, account identifier, event identifier, task UUID,
+  client, timestamp, request window, or internal exception.
+- Tests: exact workflow choice and binding, main/full-SHA, empty host-key input,
+  strict deployment-host SSH, acceptance-host SSH-family command bombs, lock
+  contention and descriptor swap/type/owner/mode/link matrices, absent-to-present
+  races, pre/post verifier failures, exact two-call/two-GET ceiling, full
+  database snapshot and SQL-write spies, provider write/lifecycle method bombs,
+  bounded banner variants, zero transmitted bytes, no filesystem creation, and
+  safe stdout/stderr redaction. Run focused PostgreSQL/workflow/helper tests,
+  Ruff, compileall, Bash syntax, ShellCheck, actionlint, full backend/site/Admin
+  gates, migration-head checks, and two independent exact-diff reviews.
+- Decision semantics: `not_ready` stops and supports only a separately designed
+  provider/support recovery proposal. `ready` proves only listener readiness,
+  not identity, and never unlocks P4.R8. After a ready result, implementation or
+  dispatch of any later P4.R8 trust attempt requires a fresh explicit owner
+  approval. P4.R15A consumes no P4.R8 claim and never changes any old incident
+  journal. A zero-write diagnostic is intentionally replayable in code, but the
+  plan authorizes one protected live dispatch only.
+- Review evidence: Leibniz returned `APPROVE_FROZEN_P4_R15A`; Kepler approved
+  the exact SSH/input/SHA/lock corrections; Copernicus returned
+  `APPROVE_FEASIBILITY` for the bounded helper/backend/workflow surface. No
+  implementation or live mutation has occurred.
 
 ### Documentation phase P2D header
 
