@@ -2313,6 +2313,26 @@ test -z "$(git tag --list "$TAG")"
   external SSH-listener readiness, not consumed or terminal internally. The
   single authorized dispatch is finished: do not rerun unless the listener is
   restored and the owner gives new explicit attempt authority.
+- Owner recovery authority: the owner's explicit `Ok do it` on 2026-09-08
+  authorizes exactly one guarded reboot of the same existing provider device
+  `69097` / server `srv_ZvQaOP05rGycwcX4vcKBTQnN`, followed by exactly one new
+  P4.R8 dispatch only after the reboot reaches a terminal success state and a
+  fresh protected inspection reconfirms the frozen task/server/device/IP and
+  lifecycle baseline. Because the existing `canary-reboot` path requires the
+  missing strict host pin and a working SSH session, add a narrowly bound
+  deployment-host operator action that validates the frozen cancelled-task
+  baseline, the unconsumed P4.R8 state, the provider's exact device/service/IP,
+  and an exact confirmation before requesting the provider reboot. Poll and
+  require the same device to return powered `ON`; an ambiguous or failed
+  provider result stops recovery.
+- Recovery attempt bounds and non-goals: do not reload, reinstall, replace,
+  order, pay, renew, extend a lease, run P4.R6, alter Runtime or sandbox intent,
+  or reset trust. The reboot is expected to preserve disk and host-key state,
+  but P4.R8 must still establish the missing pin through its already reviewed
+  exact first-contact contract. The single newly authorized P4.R8 run remains
+  preclaim-safe if the SSH listener is not ready; a second listener failure or
+  any post-claim failure stops with no retry loop and requires a new owner
+  decision.
 
 ### Documentation phase P2D header
 
