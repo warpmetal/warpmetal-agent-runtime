@@ -2867,11 +2867,14 @@ test -z "$(git tag --list "$TAG")"
   journal immutability, count-only output, and redaction. No live provider call,
   SSH, workflow dispatch, commit, or deployment occurred during implementation
   or review.
-- Release remains gated on committing this reviewed diff, fetching and merging
-  current frontend `main` again without conflict immediately before PR,
-  proportional post-merge verification, exact-head CI, exact production
-  deployment, and a fresh protected read-only inspection. The single authorized
-  stop has not been consumed.
+- The reviewed frontend implementation was committed as `7fb7dbe`. Immediately
+  before PR creation, current `main` was fetched and merged again in both the
+  frontend and Runtime plan repositories; both were already current, so there
+  was no conflict and no `main` change to overwrite. Because the merge was a
+  no-op, the approved and fully tested tree is unchanged.
+- Release remains gated on pushing the exact branches, PR exact-head CI, exact
+  production deployment, and a fresh protected read-only inspection. The single
+  authorized stop has not been consumed.
 
 ### Documentation phase P2D header
 
