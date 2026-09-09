@@ -2995,6 +2995,42 @@ test -z "$(git tag --list "$TAG")"
   vocabulary, redaction contract, local zero-mutation proof, and non-authority
   rule. Implementation, review, release, and live dispatch remain gated.
 
+#### P4.R14 implementation and final-review checkpoint
+
+- The bounded implementation is committed as `0d817f4`. It retires the P4.R13
+  action from the protected workflow choice, validation/checkout/job routing,
+  operator CLI parser, and operator dispatch, so the old command cannot reach
+  provider access or stdout. It adds only the exact P4.R14 operator function,
+  protected main-only workflow action, internal backend runbook text, and their
+  focused database/workflow/CLI tests; no public UI, public API, Runtime,
+  sandbox, image, public documentation, CLI product, or LLM surface changed.
+- The diagnostic validates the frozen P4.R13 claim-only baseline before reads,
+  performs only compute plus numeric/conditional-exact/numeric GETs, classifies
+  the fixed enum grammar, and locks/revalidates the full snapshot before its
+  single JSON stdout object. The exact zero-write test bombs the generic
+  provider request path, every public provider mutation method, operator
+  lifecycle/payment/claim/completion entry points, event writes, and SSH; SQL
+  write listeners and complete database snapshots independently prove no local
+  insert/update/delete.
+- Independent verification passed: focused P4.R14 PostgreSQL tests passed `63`;
+  the final incident PostgreSQL file passed `193`; workflow/operator unit tests
+  passed `210`; the complete backend suite passed `2441` with one expected skip
+  on a fresh PostgreSQL database; the full site build/test suite passed `198`
+  with `41` expected skips out of `239`; Admin build and `54` tests passed. Ruff,
+  compileall, actionlint, `git diff --check`, and migration-to-head all passed.
+  A final test-only mutation-spy expansion and runbook clarification were
+  rechecked by the affected PostgreSQL test and all static gates; production
+  code remained byte-identical after the full regression runs.
+- Kepler first blocked on incomplete generic/provider/operator mutation bombs
+  and an ambiguous lease-replay sentence. Copernicus made only those bounded
+  test/runbook corrections. Kepler and Leibniz then independently returned
+  `APPROVE_FINAL_EXACT_DIFF` for the exact committed tree. Neither verifier made
+  edits or live/provider/SSH/workflow/Git actions.
+- Release remains gated on the second current-`main` merge in both repositories,
+  exact branch push, PR exact-head CI, exact production deployment, and one
+  protected P4.R14 live diagnostic. No lifecycle request, SSH, workflow
+  dispatch, or provider read occurred during implementation or review.
+
 ### Documentation phase P2D header
 
 - Phase ID and outcome: P2D, make the nested-private-procfs capability
