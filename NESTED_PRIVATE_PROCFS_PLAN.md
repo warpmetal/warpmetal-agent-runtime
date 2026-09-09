@@ -2323,11 +2323,13 @@ test -z "$(git tag --list "$TAG")"
   deployment-host operator action that validates the frozen cancelled-task
   baseline, the unconsumed P4.R8 state, the provider's exact device/service/IP,
   and an exact confirmation before requesting the provider reboot. Its terminal
-  provider evidence is narrowly defined as a successful provider response plus
-  the same exact device returning powered `ON`; this does not overclaim an
+  provider evidence is narrowly defined as the partner VPS reboot response's
+  canonical task UUID, durably recorded after the single forced-reboot POST,
+  reaching terminal `Success` through GET-only polling, followed by the exact
+  device returning powered `ON` and two SSH banners; this does not overclaim an
   observed boot-ID change. An ambiguous or failed provider result stops
-  recovery, and P4.R8's two-banner preclaim gate remains the SSH-readiness
-  oracle.
+  recovery. P4.R8 cannot claim without the byte-exact reboot completion and
+  repeats its own two-banner preclaim gate as the final SSH-readiness oracle.
 - Recovery attempt bounds and non-goals: do not reload, reinstall, replace,
   order, pay, renew, extend a lease, run P4.R6, alter Runtime or sandbox intent,
   or reset trust. The reboot is expected to preserve disk and host-key state,
