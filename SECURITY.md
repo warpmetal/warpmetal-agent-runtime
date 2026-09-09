@@ -102,3 +102,13 @@ deletes or remounts the external workspace. A deterministic backup container is
 kept until the target reaches the requested running or stopped state. Failure
 restores the old container when possible, and an incomplete rollback is
 reported as a distinct fail-closed condition for operator review.
+
+CLI onboarding selection does not expand the supervisor command surface. The
+runtime invokes only the fixed image-owned
+`/usr/local/bin/warpmetal-agent-tool-report` directly, without an interactive
+stream, shell, profile, PATH lookup, terminal, caller arguments, or
+desired-state environment. It bounds and strictly validates the reporter JSON
+and reports only allowlisted selected tool IDs. It never accepts an executable,
+version command, package source, login input, or credential from desired state.
+Invalid reporter output is replaced with generic per-tool failures and cannot
+change an otherwise-running sandbox lifecycle state.

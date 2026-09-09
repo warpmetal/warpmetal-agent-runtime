@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/access"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/toolreport"
 )
 
 type Workspaces interface {
@@ -135,6 +137,11 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 			ImageDigest:        value.ImageDigest,
 			StartedAt:          value.StartedAt,
 			ExpiresAt:          value.ExpiresAt,
+			CLITools:           make([]model.CLIToolReport, 0),
+		}
+		if value.CLIToolsGeneration == value.ObservedGeneration &&
+			toolreport.MatchesDesired(value.CLITools, value.ObservedCLITools) {
+			item.CLITools = append(item.CLITools, value.ObservedCLITools...)
 		}
 		if value.ErrorCode != "" {
 			item.LastError = &model.ItemError{Code: value.ErrorCode, Message: value.ErrorMessage}
@@ -160,7 +167,8 @@ func (r *Reconciler) reconcileSandbox(
 	if err != nil {
 		return err
 	}
-	if local == nil {
+	isNew := local == nil
+	if isNew {
 		local = &state.LocalSandbox{
 			ID:                 desired.ID,
 			Name:               desired.Name,
@@ -168,6 +176,15 @@ func (r *Reconciler) reconcileSandbox(
 			ObservedGeneration: 0,
 		}
 	}
+	toolsChanged := !slices.Equal(local.CLITools, desired.CLITools)
+	if !isNew && toolsChanged && desired.Generation <= local.Generation {
+		return errors.New("sandbox CLI tool change requires a generation advance")
+	}
+	if toolsChanged || desired.Generation > local.ObservedGeneration {
+		local.ObservedCLITools = []model.CLIToolReport{}
+		local.CLIToolsGeneration = 0
+	}
+	local.CLITools = append([]string(nil), desired.CLITools...)
 	local.Name = desired.Name
 	local.DesiredState = desired.DesiredState
 	local.Generation = desired.Generation
@@ -255,6 +272,10 @@ func (r *Reconciler) reconcileSandbox(
 		}
 		local.ObservedState = "stopped"
 		local.ObservedGeneration = local.Generation
+		if len(local.CLITools) == 0 {
+			local.ObservedCLITools = []model.CLIToolReport{}
+			local.CLIToolsGeneration = local.ObservedGeneration
+		}
 		return r.Store.PutSandbox(ctx, *local)
 	case "running":
 		if local.ObservedState == "deleted" && local.Lifetime == "temporary" {
@@ -323,7 +344,10 @@ func (r *Reconciler) reconcileSandbox(
 		local.ObservedGeneration = local.Generation
 		local.ErrorCode = ""
 		local.ErrorMessage = ""
-		return r.Store.PutSandbox(ctx, *local)
+		if err := r.Store.PutSandbox(ctx, *local); err != nil {
+			return err
+		}
+		return r.reconcileCLITools(ctx, local)
 	default:
 		return errors.New("unsupported desired state")
 	}
@@ -358,8 +382,20 @@ func (r *Reconciler) removeSandbox(ctx context.Context, local *state.LocalSandbo
 	}
 	local.ObservedState = "deleted"
 	local.ObservedGeneration = local.Generation
+	local.ObservedCLITools = []model.CLIToolReport{}
+	local.CLIToolsGeneration = local.ObservedGeneration
 	local.ErrorCode = ""
 	local.ErrorMessage = ""
+	return r.Store.PutSandbox(ctx, *local)
+}
+
+func (r *Reconciler) reconcileCLITools(ctx context.Context, local *state.LocalSandbox) error {
+	if local.CLIToolsGeneration == local.ObservedGeneration &&
+		toolreport.MatchesDesired(local.CLITools, local.ObservedCLITools) {
+		return nil
+	}
+	local.ObservedCLITools = toolreport.Probe(ctx, r.Engine, local.ID, local.CLITools)
+	local.CLIToolsGeneration = local.ObservedGeneration
 	return r.Store.PutSandbox(ctx, *local)
 }
 

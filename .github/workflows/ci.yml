@@ -26,6 +26,10 @@ jobs:
           sh -n packaging/apparmor/nested-private-procfs-oracle.sh
           sh -n packaging/install/preserve_execution_test.sh
           sh -n packaging/install/coexistence_container_test.sh
+          sh -n packaging/install/tool_report_execution_test.sh
+          printf '%s\n' runtime_tool_report_execution_test_start
+          docker pull 'ghcr.io/warpmetal/warpmetal-agent-sandbox@sha256:c3fefa156c491c31db48c3799e21a15438f2c5c452555e49b7c37815b5aee5ba'
+          sh packaging/install/tool_report_execution_test.sh
           printf '%s\n' runtime_preserve_execution_test_start
           docker run --rm --privileged \
             -v "$GITHUB_WORKSPACE:/source:ro" \
