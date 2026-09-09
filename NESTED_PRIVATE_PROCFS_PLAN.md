@@ -744,7 +744,7 @@ test -z "$(git tag --list "$TAG")"
 |---|---|---|---|---|---|---|---|---|
 | P3O.S1 | Merge current Runtime main and correct trusted CLI-report execution | frozen entry hashes | `internal/containers`, `internal/toolreport`, reconcile/state/model and tests; Runtime README/SECURITY | Runtime internal contract; no HTTP schema | exact `podman exec warpmetal-<id> /usr/local/bin/warpmetal-agent-tool-report`, without `-i`; fixed sanitized child environment; no attached/transmitted stdin, login shell/profile/PATH/caller argument, or caller/desired-state environment injection; bounded stdout, discarded stderr, normalized errors; generic `Engine.Exec` and private-procfs behavior unchanged | direct-argv negative tests, migration/legacy state, focused race, full race/vet, installer/AppArmor/coexistence, four hosted distros | no | completed: main merged before implementation and PR; security/correctness blockers fixed; two final reviews approved; PR #22 head/merge CI green and merged as `bdcd05b` |
 | P3O.S2 | Review, merge, publish, and independently verify signed v0.1.26 prerelease | P3O.S1 | Runtime PR/default branch, annotated tag, release workflow and committed `cosign.pub` | release notes and exact six-asset contract | tag points to exact reviewed main merge and has both v0.1.25 main and reporting commit as ancestors; amd64/arm64 archives, checksums, detached signatures, static architectures, exact 13 regular files plus the root directory, and embedded supervisor `0.1.26` verify; release stays prerelease | exact-head/merge CI, download/re-hash/Cosign, archive membership, embedded version; live registration/report is P3O.S4 | no | completed: annotated tag/release exact, run `34412218346` green, six assets independently verified, prerelease retained |
-| P3O.S3 | Add protected pre-activation candidate create path, frontend work last | verified P3O.S2 assets | backend Runtime/operator, protected acceptance workflow, tests/runbook | internal operator only; no public eligibility change | protected workflow downloads the exact official v0.1.26 archive and verifies its digest and Cosign signature with the committed release key before protected create; backend exact-binds and durably persists that verified tuple with one minimal all-three-CLI sandbox before worker claim or provider activity; confirmation/idempotency bind hostname, OS, version, artifact and request digests | state/order/concurrency/mismatch/redaction tests, workflow contract, full backend/site/Admin gates, main merge before implementation and PR | no | pending; must not begin before P3O.S2 verification |
+| P3O.S3 | Add protected pre-activation candidate create path, frontend work last | verified P3O.S2 assets | backend Runtime/operator, protected acceptance workflow, tests/runbook | internal operator only; no public eligibility change | protected workflow downloads the exact official v0.1.26 archive and verifies its digest and Cosign signature with the committed release key before protected create; backend exact-binds and durably persists that verified tuple with one minimal all-three-CLI sandbox before worker claim or provider mutation; confirmation/idempotency bind hostname, OS, version, artifact and request digests | state/order/concurrency/mismatch/redaction tests, workflow contract, full backend/site/Admin gates, main merge before implementation and PR | no | in_progress; P3O.S2 verified and current frontend main `122f7d5` merged before implementation; exact execution packet frozen below |
 | P3O.S4 | Run exact supported-OS order-time Runtime matrix | P3O.S3, explicit aggregate-cost authority | one fresh disposable smallest viable VPS per advertised OS; unique host key and task | private acceptance evidence only | exact OS/cloud-init; task/provider ready; registration before 45-minute deadline; supervisor 0.1.26 and artifact digest exact; desired/observed generation equal; signed image exact; sandbox running; three CLI observations present; owner SSH; cancellation and no-renewal reconcile, while provider service may remain through its prepaid term unless deletion is supported and separately authorized | protected workflow, safe logs, per-OS independent review; sequential stop-on-first-failure | no | blocked only on S1-S3 and future exact aggregate-cost approval; never use the P4 VPS |
 | P3O.S5 | Activate exact production tuple and public catalog | P3O.S4 | deployment workflow/secrets, blue-green script, catalog/OpenAPI/docs/LLM minimum | selected-CLI minimum becomes 0.1.26; no nested-private-procfs version rewrite | workflow cryptographically verifies tuple before upload; candidate and two post-switch catalog reads show product support true and all four OS flags true; failure leaves old slot public and restores prior tuple before retry | deploy workflow tests, backend/site/Admin/full gates, production deploy and catalog probes | no | pending; requires explicit production-config authority |
 | P3O.S6 | Public ordering smoke | P3O.S5 | public order preparation and one smallest paid Ubuntu order | validates existing public contract | unpaid preparation returns 201 with frozen Runtime intent and performs no checkout/payment/provider action; separately authorized paid order reaches Runtime 0.1.26 and all-three-CLI readiness | API/checkout smoke, payment/provider reconciliation, independent final review | no | pending; paid portion requires separate amount/payment authority |
@@ -897,6 +897,122 @@ or authority is consumed by P3O.
   pre-activation create path after merging frontend main; it cannot change
   public eligibility, production configuration, provider billing, or the P4
   incident state.
+
+#### P3O.S3 frozen protected ordering-canary design
+
+- Baseline and ownership: frontend branch
+  `codex/nested-private-procfs-canary` and `origin/main` both resolved to
+  `122f7d5669e824428cd176d72b968f19825f4ec8` before implementation, with no
+  conflict or user change overwritten. The parent manager remains integration
+  owner. One frontend/backend implementer owns only Runtime/operator,
+  acceptance-workflow, focused test, and internal runbook files. Fresh
+  non-implementing reviewers own the security/concurrency and exact-diff gates.
+  Public site, catalog, OpenAPI, CLI, LLM text, production Runtime secrets,
+  deploy activation, and the P4 incident remain non-goals.
+- Exact internal names: workflow actions and operator commands are
+  `prepare-runtime-ordering-canary` and
+  `create-runtime-ordering-canary`; implementation functions use the matching
+  `prepare_runtime_ordering_canary` and `create_runtime_ordering_canary`
+  names. Runtime uses
+  `validate_runtime_ordering_canary_artifact_descriptor`. These are protected
+  internal operator surfaces, not public HTTP or CLI contracts.
+- Exact order shape: plan `standard`; one exact certified OS supplied from the
+  existing four-OS allowlist; a unique DNS-label hostname; one to 24 hours;
+  the read-only live monthly quote bounded by the explicitly approved maximum;
+  and exactly one `runtime-ordering-canary` sandbox with `size=small`,
+  `lifetime=persistent`, and
+  `cliTools=[codex,claude,cursor]`. Callers cannot supply or vary the Runtime
+  sandbox batch. Read-only provider catalog/quote GETs may precede task
+  authorization; provider SSH-key, compute, lifecycle, payment, and other
+  mutations may not.
+- Exact Runtime tuple: version `0.1.26`; official amd64 URL; archive SHA-256
+  `f4b1fd76f67cc01385a1309eaf38e2aaca5b5eb90254df1b0549a02a45040791`;
+  detached-signature asset SHA-256
+  `af6ff2b239a8f2e681d443c858ac3d0e7b1559a4491194450306989d0e7a7d18`;
+  normalized configured PEM SHA-256
+  `405804fc07d382e314363569616cd4cff756546db54c5f556b73bda538be9d79`.
+  The committed PEM file including its terminal newline has SHA-256
+  `42fa456b1eaba7c87d87b7039b92366b4736fda53e3ac19fdfb8d707d0916390`.
+  `TEST_RUNTIME_ARTIFACT_VERSIONS` remains exactly `{0.1.24,0.1.25}`;
+  stored `0.1.26` candidate descriptors route through the new exact validator.
+- Release identity gate: release ID `385886185`, tag `v0.1.26`, non-draft
+  prerelease, target `main`; annotated tag object
+  `322f279cea08fe49dd9a53e54ae9f984dda7020d` peels to exact Runtime main
+  commit `bdcd05ba61063257ab429072f9aface917b078da`. The workflow requires the
+  exact six asset names, API digests, and sizes recorded by the release, plus
+  archive/checksum/signature downloads over HTTPS, exact checksum-file content,
+  decoded protected-key hashes, and quiet detached Cosign verification before
+  prepare or create can reach the deployment host. The existing
+  `RUNTIME_RELEASE_PUBLIC_KEY_BASE64` secret is reused; raw signature, PEM,
+  owner token, provider response bodies, and raw command failures never enter
+  logs or outputs.
+- Request and confirmation: the request allows only `planId`, `hostname`,
+  `osName`, `sshPublicKey`, optional `locationName`, `expiresInHours`, `reason`,
+  `maxMonthlyPriceUsd`, and the exact `runtimeArtifact` descriptor. Canonical
+  JSON includes the SSH public key and full descriptor. The workflow computes
+  the canonical request SHA-256 and exact OS-name SHA-256. The owner-supplied
+  create confirmation is
+  `CREATE-RUNTIME-ORDERING-CANARY:<hostname>:<os-name-sha256>:0.1.26:<archive-sha256>:<canonical-request-sha256>`.
+  The prepare action creates or reuses only the hostname-bound deployment-host
+  SSH identity and returns safe hashes plus that confirmation; it creates no
+  task, payment, provider key, or compute. The create action never synthesizes
+  or weakens the confirmation.
+- Secure transport: prepare and create stay main-only in the protected
+  `production` environment under non-cancelling `warpmetal-production`
+  concurrency and exact-SHA checkout. Create writes the canonical envelope as
+  a mode-`0600` regular non-symlink file beneath a unique owner-mode-`0700`
+  deployment-host run directory, rechecks owner/type/mode/size/digest, and
+  pipes it on stdin to the backend. Signature/key material never appears in
+  argv or environment. An exact `always()` cleanup removes only that transient
+  run directory after result capture; the durable hostname key and private
+  redacted task-result record remain acceptance evidence.
+- Atomicity and idempotency: both ordinary and ordering-canary create use the
+  existing `operator-test-server` advisory-lock/idempotency namespace keyed by
+  hostname so the two paths cannot race. The full canonical request digest is
+  the replay discriminator. Under that lock, candidate create also rejects a
+  pre-existing task hostname after replay expiry. One database transaction
+  creates the `test_authorized/not_started` `PurchaseTask` with all five exact
+  selector fields, enabled `pending_server` `ServerRuntime`, one exact sandbox,
+  safe events, and encrypted owner-token replay record. A worker can observe
+  none of them before commit and all of them after commit. Candidate selectors
+  cannot be replaced or manually cleared through the historical P4 operator
+  commands; cancellation and expiry retain their existing transactional
+  cleanup behavior.
+- Frozen negative oracles: any field, URL, version, archive/signature/key
+  digest, canonical signature, request digest, confirmation, hostname/OS,
+  release identity, asset membership, checksum, key, or Cosign mismatch fails
+  before create. Injected transaction rollback leaves zero task, Runtime,
+  sandbox, event, and idempotency rows. Identical concurrent creates yield one
+  task and encrypted owner-token replay; drift conflicts. An injected worker
+  claim during the uncommitted transaction sees nothing; after commit its
+  bootstrap binds `0.1.26` and the exact archive digest before any provider
+  mutation. Bomb provider mutators prove the operator action never invokes
+  them. Public catalog support remains false and public/API/config source files
+  remain byte-unchanged.
+- Baseline evidence: focused Agent Runtime unit tests passed 142 tests; focused
+  Ruff passed; the
+  existing workflow parsed as YAML. `test_commerce_db.py` collected but skipped
+  all 150 tests because no local `DATABASE_URL` was configured, so PostgreSQL
+  migration/concurrency tests remain an unwaived implementation and CI gate.
+- Frozen implementation gate: focused Runtime/operator/unit tests; PostgreSQL
+  initial/replay/rollback/concurrency/worker-race tests; workflow behavioral
+  tests for verification order, main-only controls, secure transport, failure
+  short-circuit, and redaction; Ruff, compileall, actionlint and ShellCheck;
+  migration-to-head; complete backend coverage gate; root lint/test; site build;
+  Admin build/test; `git diff --check`; public/config scope-diff inspection;
+  two independent final reviews; merge current frontend main again immediately
+  before PR, stopping on conflict; exact-head and exact-merge CI.
+- Review evidence: Kepler returned `APPROVE_FROZEN_S3_WORKFLOW` after verifying
+  the release and protected workflow boundary. Leibniz returned
+  `APPROVE_FROZEN_S3_BACKEND` after tracing task claim, Runtime bootstrap,
+  schema reuse, and the atomic transaction. The manager resolved their
+  idempotency-scope suggestions in favor of the shared existing scope because
+  it uniquely prevents ordinary create and candidate create from authorizing
+  the same hostname concurrently.
+- Implementation authorized: yes for this bounded code, test, internal runbook,
+  branch/PR, and CI work. No provider charge, protected workflow dispatch,
+  production configuration mutation, deploy, public activation, or P4 VPS
+  lifecycle action is authorized by this decision.
 
 ### Live acceptance phase P4 header
 
