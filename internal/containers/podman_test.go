@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"slices"
 	"strings"
@@ -438,5 +439,80 @@ func TestPodmanInvocationUsesPrivateServiceForExec(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("remote exec invocation mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+}
+
+func TestPodmanToolReportAndOrdinaryExecUseExactSeparateStreamContracts(t *testing.T) {
+	type streamCall struct {
+		remote bool
+		stdin  io.Reader
+		stdout io.Writer
+		stderr io.Writer
+		args   []string
+	}
+	var calls []streamCall
+	podman := Podman{runStreamCommand: func(
+		_ context.Context,
+		remote bool,
+		stdin io.Reader,
+		stdout io.Writer,
+		stderr io.Writer,
+		args ...string,
+	) error {
+		calls = append(calls, streamCall{
+			remote: remote,
+			stdin:  stdin,
+			stdout: stdout,
+			stderr: stderr,
+			args:   append([]string(nil), args...),
+		})
+		return nil
+	}}
+
+	reportStdout := &strings.Builder{}
+	if err := podman.ToolReport(context.Background(), "sbx_example123", reportStdout); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || !calls[0].remote || calls[0].stdin != nil ||
+		calls[0].stdout != reportStdout || calls[0].stderr != io.Discard {
+		t.Fatalf("tool report stream contract changed: %#v", calls)
+	}
+	wantReportArgs := []string{
+		"exec", "warpmetal-sbx_example123", "/usr/local/bin/warpmetal-agent-tool-report",
+	}
+	if !reflect.DeepEqual(calls[0].args, wantReportArgs) {
+		t.Fatalf("tool report arguments mismatch:\n got: %#v\nwant: %#v", calls[0].args, wantReportArgs)
+	}
+	for _, forbidden := range []string{
+		"-i", "-t", "/bin/sh", "-l", "-lc", "--env", "--env-file",
+	} {
+		if slices.Contains(calls[0].args, forbidden) {
+			t.Fatalf("tool report arguments contain forbidden mechanism %q: %#v", forbidden, calls[0].args)
+		}
+	}
+
+	ordinaryStdin := strings.NewReader("ordinary input")
+	ordinaryStdout := &strings.Builder{}
+	ordinaryStderr := &strings.Builder{}
+	if err := podman.Exec(
+		context.Background(),
+		"sbx_example123",
+		"printf ordinary",
+		true,
+		ordinaryStdin,
+		ordinaryStdout,
+		ordinaryStderr,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 || !calls[1].remote || calls[1].stdin != ordinaryStdin ||
+		calls[1].stdout != ordinaryStdout || calls[1].stderr != ordinaryStderr {
+		t.Fatalf("ordinary exec stream contract changed: %#v", calls)
+	}
+	wantOrdinaryArgs := []string{
+		"exec", "-i", "-t", "warpmetal-sbx_example123", "/bin/sh", "-lc", "printf ordinary",
+	}
+	if !reflect.DeepEqual(calls[1].args, wantOrdinaryArgs) {
+		t.Fatalf("ordinary exec arguments changed:\n got: %#v\nwant: %#v", calls[1].args, wantOrdinaryArgs)
 	}
 }

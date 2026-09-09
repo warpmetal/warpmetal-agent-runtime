@@ -18,6 +18,7 @@ var (
 	idPattern    = regexp.MustCompile(`^(?:sbx|grant)_[A-Za-z0-9_-]{8,60}$`)
 	imagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$`)
 	validDesired = map[string]bool{"running": true, "stopped": true, "deleted": true}
+	validCLITool = map[string]bool{"codex": true, "claude": true, "cursor": true}
 )
 
 type Resources struct {
@@ -54,6 +55,7 @@ type Sandbox struct {
 	ExpiresAt        *time.Time `json:"expiresAt"`
 	DesiredState     string     `json:"desiredState"`
 	Generation       int64      `json:"generation"`
+	CLITools         []string   `json:"cliTools,omitempty"`
 }
 
 type AccessGrant struct {
@@ -79,13 +81,21 @@ type ItemError struct {
 }
 
 type SandboxReport struct {
-	ID                 string     `json:"id"`
-	ObservedState      string     `json:"observedState"`
-	ObservedGeneration int64      `json:"observedGeneration"`
-	ImageDigest        string     `json:"imageDigest,omitempty"`
-	StartedAt          *time.Time `json:"startedAt,omitempty"`
-	ExpiresAt          *time.Time `json:"expiresAt,omitempty"`
-	LastError          *ItemError `json:"lastError,omitempty"`
+	ID                 string          `json:"id"`
+	ObservedState      string          `json:"observedState"`
+	ObservedGeneration int64           `json:"observedGeneration"`
+	ImageDigest        string          `json:"imageDigest,omitempty"`
+	StartedAt          *time.Time      `json:"startedAt,omitempty"`
+	ExpiresAt          *time.Time      `json:"expiresAt,omitempty"`
+	LastError          *ItemError      `json:"lastError,omitempty"`
+	CLITools           []CLIToolReport `json:"cliTools,omitempty"`
+}
+
+type CLIToolReport struct {
+	ID        string     `json:"id"`
+	Status    string     `json:"status"`
+	Version   string     `json:"version,omitempty"`
+	LastError *ItemError `json:"lastError,omitempty"`
 }
 
 type GrantReport struct {
@@ -140,6 +150,16 @@ func ValidateManifest(manifest Manifest, expectedServer string, lastRevision int
 		sandboxStates[sandbox.ID] = sandbox.DesiredState
 		if !validDesired[sandbox.DesiredState] || sandbox.Generation < 1 {
 			return fmt.Errorf("invalid desired state for %s", sandbox.ID)
+		}
+		seenTools := map[string]bool{}
+		for _, toolID := range sandbox.CLITools {
+			if !validCLITool[toolID] {
+				return fmt.Errorf("invalid CLI tool for %s", sandbox.ID)
+			}
+			if seenTools[toolID] {
+				return fmt.Errorf("duplicate CLI tool for %s", sandbox.ID)
+			}
+			seenTools[toolID] = true
 		}
 		if sandbox.ImageDigest != "" && !imagePattern.MatchString(sandbox.ImageDigest) {
 			return fmt.Errorf("invalid image digest for %s", sandbox.ID)
