@@ -10,21 +10,17 @@ import (
 )
 
 type fakeExecutor struct {
-	command string
-	output  string
-	err     error
+	sandboxIDs []string
+	output     string
+	err        error
 }
 
-func (f *fakeExecutor) Exec(
+func (f *fakeExecutor) ToolReport(
 	_ context.Context,
-	_ string,
-	command string,
-	_ bool,
-	_ io.Reader,
+	sandboxID string,
 	stdout io.Writer,
-	_ io.Writer,
 ) error {
-	f.command = command
+	f.sandboxIDs = append(f.sandboxIDs, sandboxID)
 	_, _ = io.WriteString(stdout, f.output)
 	return f.err
 }
@@ -38,8 +34,8 @@ const validReport = `[
 func TestProbeUsesConstantCommandAndReportsOnlyDesiredTools(t *testing.T) {
 	executor := &fakeExecutor{output: validReport}
 	got := Probe(context.Background(), executor, "sbx_test12345", []string{"cursor", "codex"})
-	if executor.command != reportCommand {
-		t.Fatalf("probe command = %q, want %q", executor.command, reportCommand)
+	if !reflect.DeepEqual(executor.sandboxIDs, []string{"sbx_test12345"}) {
+		t.Fatalf("probe sandbox IDs = %#v", executor.sandboxIDs)
 	}
 	if len(got) != 2 || got[0].ID != "cursor" || got[1].ID != "codex" ||
 		got[0].Status != "available" || got[0].Version != "2026.09.02-c22c1a3" {
@@ -50,8 +46,8 @@ func TestProbeUsesConstantCommandAndReportsOnlyDesiredTools(t *testing.T) {
 func TestProbeDoesNotExecuteWhenNothingIsSelected(t *testing.T) {
 	executor := &fakeExecutor{output: validReport}
 	got := Probe(context.Background(), executor, "sbx_test12345", nil)
-	if executor.command != "" || len(got) != 0 {
-		t.Fatalf("empty selection executed a probe or returned observations: %q %#v", executor.command, got)
+	if len(executor.sandboxIDs) != 0 || len(got) != 0 {
+		t.Fatalf("empty selection executed a probe or returned observations: %#v %#v", executor.sandboxIDs, got)
 	}
 }
 

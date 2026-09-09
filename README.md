@@ -49,10 +49,12 @@ not installation or authorization. Every supported sandbox image contains all
 three tools, and a connected sandbox owner may use an unselected tool.
 
 After a selected sandbox reaches its desired running generation, the supervisor
-executes only the image-owned constant
-`/usr/local/bin/warpmetal-agent-tool-report`. The supervisor accepts a bounded,
-strict report for the complete three-tool catalog, persists only the selected
-entries, and returns them under that sandbox report's `observedGeneration`.
+directly executes only the image-owned constant
+`/usr/local/bin/warpmetal-agent-tool-report`, without an interactive stream,
+shell, login profile, PATH lookup, terminal, desired-state command arguments,
+or desired-state environment. The supervisor accepts a bounded, strict report
+for the complete three-tool catalog, persists only the selected entries, and
+returns them under that sandbox report's `observedGeneration`.
 Malformed, unknown, duplicate, incomplete, or failed observations become safe
 per-tool failures without changing the sandbox's running state. Old desired
 manifests and existing local databases default to an empty selection.

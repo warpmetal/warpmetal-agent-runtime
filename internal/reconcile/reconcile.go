@@ -177,7 +177,7 @@ func (r *Reconciler) reconcileSandbox(
 		}
 	}
 	toolsChanged := !slices.Equal(local.CLITools, desired.CLITools)
-	if !isNew && toolsChanged && desired.Generation <= local.ObservedGeneration {
+	if !isNew && toolsChanged && desired.Generation <= local.Generation {
 		return errors.New("sandbox CLI tool change requires a generation advance")
 	}
 	if toolsChanged || desired.Generation > local.ObservedGeneration {

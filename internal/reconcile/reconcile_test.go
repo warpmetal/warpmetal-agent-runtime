@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -24,9 +25,11 @@ type fakeEngine struct {
 	images         []string
 	replaceRunning bool
 	replaceErr     error
+	restartErr     error
 	execOutput     string
 	execErr        error
 	execCommands   []string
+	toolReportIDs  []string
 }
 
 func (f *fakeEngine) Replace(
@@ -54,7 +57,7 @@ func (f *fakeEngine) Ensure(
 }
 func (f *fakeEngine) Start(context.Context, string) error   { return nil }
 func (f *fakeEngine) Stop(context.Context, string) error    { return nil }
-func (f *fakeEngine) Restart(context.Context, string) error { f.restarted++; return nil }
+func (f *fakeEngine) Restart(context.Context, string) error { f.restarted++; return f.restartErr }
 func (f *fakeEngine) Remove(context.Context, string) error  { f.removed++; return nil }
 func (f *fakeEngine) Exec(
 	_ context.Context,
@@ -66,6 +69,16 @@ func (f *fakeEngine) Exec(
 	_ io.Writer,
 ) error {
 	f.execCommands = append(f.execCommands, command)
+	_, _ = io.WriteString(stdout, f.execOutput)
+	return f.execErr
+}
+
+func (f *fakeEngine) ToolReport(
+	_ context.Context,
+	sandboxID string,
+	stdout io.Writer,
+) error {
+	f.toolReportIDs = append(f.toolReportIDs, sandboxID)
 	_, _ = io.WriteString(stdout, f.execOutput)
 	return f.execErr
 }
@@ -424,15 +437,15 @@ func TestSelectedCLIToolsAreGenerationBoundAndReportedExactly(t *testing.T) {
 		report.Sandboxes[0].CLITools[1].ID != "codex" {
 		t.Fatalf("selected CLI tools were not reported exactly: %#v", report)
 	}
-	if len(engine.execCommands) != 1 ||
-		engine.execCommands[0] != "/usr/local/bin/warpmetal-agent-tool-report" {
-		t.Fatalf("runtime executed an unexpected command: %#v", engine.execCommands)
+	if len(engine.toolReportIDs) != 1 || engine.toolReportIDs[0] != "sbx_test12345" ||
+		len(engine.execCommands) != 0 {
+		t.Fatalf("runtime crossed the fixed tool-report boundary: %#v %#v", engine.toolReportIDs, engine.execCommands)
 	}
 	if err := reconciler.Reconcile(context.Background(), manifest); err != nil {
 		t.Fatal(err)
 	}
-	if len(engine.execCommands) != 1 {
-		t.Fatalf("unchanged generation was probed again: %#v", engine.execCommands)
+	if len(engine.toolReportIDs) != 1 {
+		t.Fatalf("unchanged generation was probed again: %#v", engine.toolReportIDs)
 	}
 }
 
@@ -465,8 +478,53 @@ func TestCLIToolSelectionChangeRequiresGenerationAdvance(t *testing.T) {
 	if report.Sandboxes[0].ObservedGeneration != 2 ||
 		len(report.Sandboxes[0].CLITools) != 2 ||
 		report.Sandboxes[0].CLITools[0].ID != "claude" ||
-		len(engine.execCommands) != 2 {
+		len(engine.toolReportIDs) != 2 || len(engine.execCommands) != 0 {
 		t.Fatalf("advanced selection did not replace observations: %#v %#v", report, engine)
+	}
+}
+
+func TestInterruptedGenerationRejectsSameGenerationCLIToolChange(t *testing.T) {
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	engine := &fakeEngine{execOutput: successfulToolReport}
+	reconciler := testReconciler(t, store, engine)
+	manifest := testManifest([]string{"codex"})
+	if err := reconciler.Reconcile(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest.DesiredRevision = 2
+	manifest.Sandboxes[0].Generation = 2
+	engine.restartErr = errors.New("injected restart interruption")
+	if err := reconciler.Reconcile(context.Background(), manifest); err == nil {
+		t.Fatal("expected interrupted generation-2 reconcile")
+	}
+	interrupted, err := store.Sandbox(context.Background(), "sbx_test12345")
+	if err != nil || interrupted == nil || interrupted.Generation != 2 ||
+		interrupted.ObservedGeneration != 1 ||
+		!reflect.DeepEqual(interrupted.CLITools, []string{"codex"}) {
+		t.Fatalf("interrupted generation was not persisted: %#v %v", interrupted, err)
+	}
+
+	reportsBefore := len(engine.toolReportIDs)
+	execsBefore := len(engine.execCommands)
+	restartsBefore := engine.restarted
+	manifest.Sandboxes[0].CLITools = []string{"claude"}
+	if err := reconciler.Reconcile(context.Background(), manifest); err == nil ||
+		!strings.Contains(err.Error(), "generation advance") {
+		t.Fatalf("same-generation selection change was not rejected: %v", err)
+	}
+	after, err := store.Sandbox(context.Background(), "sbx_test12345")
+	if err != nil || after == nil || after.Generation != 2 || after.ObservedGeneration != 1 ||
+		!reflect.DeepEqual(after.CLITools, []string{"codex"}) {
+		t.Fatalf("rejected selection mutated persisted state: %#v %v", after, err)
+	}
+	if len(engine.toolReportIDs) != reportsBefore || len(engine.execCommands) != execsBefore ||
+		engine.restarted != restartsBefore {
+		t.Fatalf("rejected selection reached engine activity: %#v", engine)
 	}
 }
 

@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	reportCommand   = "/usr/local/bin/warpmetal-agent-tool-report"
 	maxReportBytes  = 16 * 1024
 	maxVersionBytes = 128
 	probeTimeout    = 15 * time.Second
@@ -32,7 +31,7 @@ var (
 )
 
 type Executor interface {
-	Exec(context.Context, string, string, bool, io.Reader, io.Writer, io.Writer) error
+	ToolReport(context.Context, string, io.Writer) error
 }
 
 // Probe invokes the image's single baked-in tool reporter and returns only the
@@ -46,15 +45,7 @@ func Probe(ctx context.Context, executor Executor, sandboxID string, desired []s
 	defer cancel()
 	var output limitedBuffer
 	output.limit = maxReportBytes
-	if err := executor.Exec(
-		probeCtx,
-		sandboxID,
-		reportCommand,
-		false,
-		nil,
-		&output,
-		io.Discard,
-	); err != nil {
+	if err := executor.ToolReport(probeCtx, sandboxID, &output); err != nil {
 		return failed(desired, "tool_report_failed", "tool availability could not be verified")
 	}
 	if output.overflow {
