@@ -1608,6 +1608,18 @@ or authority is consumed by P3O.
   diff checks passed with clean unchanged source. The required second main merge
   remains pending. No live, provider, payment, Runtime, sandbox, or catalog
   action was performed by this checkpoint.
+- P3O.S4 consolidated diagnosis integration checkpoint: PR `#147` was opened
+  from exact frontend head `d7f53aa` after fetching main and confirming deployed
+  main `5cee6a7` was already its merge base; the required final merge was
+  conflict-free and changed no files. Exact-head workflow `34512679931` passed
+  the complete test job and skipped publish/deploy as required for a PR. GitHub
+  reported the PR clean, and it merged as exact main commit `8f433317` at
+  `2026-09-10T18:17:11Z`. Exact-main workflow `34513385567` then passed its full
+  test job, all signed image publication steps, production blue-green service
+  deployment, Admin promotion, and bounded post-deploy checks. No second deploy
+  or live acceptance action ran. The frozen one-TOFU/one-diagnosis live gate on
+  the existing test VPS is now eligible; every repair, lifecycle, ordering,
+  payment, renewal, replacement, and public-catalog mutation remains forbidden.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
