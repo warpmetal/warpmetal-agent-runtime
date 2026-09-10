@@ -1416,6 +1416,23 @@ or authority is consumed by P3O.
   fixture, dependency, or environment failure. The manager inspected and
   accepts the frozen oracle; production edits are now authorized only for the
   recorded allowlist/bootstrap-summary implementation.
+- P3O.S4 inspection-log recovery implementation checkpoint: status
+  `implemented`; the complete integrated gate remains pending. The operator now
+  discards the provider order body after a successful exact-ID lookup and emits
+  only its stored numeric ID. Compute output is reconstructed from values that
+  uniquely match the task's stored device, service, expected provider FQDN,
+  public IP, and OS, plus one fixed power-state enum and the exact expected tag
+  set; unknown, nested, inconsistent-alias, malformed, and mismatched fields are
+  omitted. A database aggregate reports only bootstrap lifecycle counts and
+  latest timestamps and never selects or prints token material. The internal
+  operator runbook documents that contract and requires consumers to fail
+  closed on an absent required field. Focused regression rerun passed 1/1;
+  independent test executors passed the complete commerce PostgreSQL suite
+  155/155, Agent Runtime units 147/147, and all six existing provider-state
+  consumer files with 46 pass, 40 expected platform skips, and zero failures.
+  Ruff and Python compilation passed. No live/provider action occurred and no
+  dependency was added. Full backend/frontend/static gates and the single final
+  manager review remain required before integration.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
