@@ -1376,6 +1376,34 @@ or authority is consumed by P3O.
   consumed or must be rotated/revoked through a reviewed supported path. Treat
   run-log deletion or credential rotation as separately authorized destructive
   or security-sensitive actions; do not perform them implicitly.
+- P3O.S4 inspection-log recovery packet: implementation is authorized only for
+  the bounded R10 correction required to make `inspect-task` safe. The manager
+  owns `backend/warpmetal/operator.py`, the focused database regression in
+  `backend/tests/test_commerce_db.py`, and the internal operator documentation;
+  no public API, catalog, checkout, Runtime release, image, CLI, lifecycle, or
+  provider mutation is in scope. Before production edits, add a PostgreSQL
+  regression whose provider order and compute fixtures contain unique direct
+  and nested secret sentinels (including cloud-init/bootstrap, authorization,
+  password, and private-key-shaped fields) and whose database contains Runtime
+  bootstrap rows. The frozen oracle requires `inspect-task` to emit only an
+  explicit provider allowlist needed by existing protected consumers, to omit
+  every unknown or nested provider field and every bootstrap hash/token, and to
+  report only count/timestamp bootstrap lifecycle metadata sufficient to
+  distinguish unused-active, used, and unused-expired rows. Capture the
+  expected red failure against current main before implementation. Then run the
+  focused database test, all inspect-task consumer regressions, Agent Runtime
+  units, full backend/frontend gates, Ruff, compileall, Actionlint/YAML/shell
+  checks, and diff/scope checks before the single manager test-based review.
+  Merge current frontend main again immediately before the PR and stop on any
+  conflict; never overwrite newer main behavior. Only one exact-main deploy is
+  permitted after the complete local/hosted gate. A post-deploy inspection may
+  read only the new allowlisted output and must prove the exposed bootstrap's
+  authoritative used/unused state and absence of raw provider/bootstrap
+  material before any canary continuation. Run-log deletion, token rotation or
+  revocation, cancellation, replacement, duplicate create, and all other live
+  mutations remain separately gated. Manual-check exception: none; the log
+  contract and live post-deploy output are deterministic machine-readable
+  gates.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
