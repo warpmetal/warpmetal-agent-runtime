@@ -33,11 +33,6 @@ func TestStorePersistsTemporaryClockAndGrant(t *testing.T) {
 		ExpiresAt:          &expires,
 		Resources:          model.Resources{CPUMillicores: 500, MemoryMiB: 1024, WorkspaceDiskGiB: 10, PIDs: 256},
 		ImageDigest:        "sha256:test",
-		CLITools:           []string{"codex", "cursor"},
-		ObservedCLITools: []model.CLIToolReport{{
-			ID: "codex", Status: "available", Version: "0.153.4",
-		}},
-		CLIToolsGeneration: 1,
 	}
 	if err := store.PutSandbox(ctx, sandbox); err != nil {
 		t.Fatal(err)
@@ -58,9 +53,9 @@ func TestStorePersistsTemporaryClockAndGrant(t *testing.T) {
 	if loaded == nil || loaded.ExpiresAt == nil || !loaded.ExpiresAt.Equal(expires) {
 		t.Fatalf("expiration was not durable: %#v", loaded)
 	}
-	if len(loaded.CLITools) != 2 || loaded.CLITools[1] != "cursor" ||
-		len(loaded.ObservedCLITools) != 1 || loaded.CLIToolsGeneration != 1 {
-		t.Fatalf("CLI tool state was not durable: %#v", loaded)
+	if loaded.ObservedState != "running" || loaded.ObservedGeneration != 1 ||
+		loaded.ImageDigest != sandbox.ImageDigest {
+		t.Fatalf("sandbox state was not durable: %#v", loaded)
 	}
 	grant, err := store.Grant(ctx, "grant_test12345")
 	if err != nil || grant == nil || grant.SandboxID != sandbox.ID {
@@ -68,7 +63,7 @@ func TestStorePersistsTemporaryClockAndGrant(t *testing.T) {
 	}
 }
 
-func TestStoreMigratesLegacySandboxRowsWithEmptyCLITools(t *testing.T) {
+func TestStoreOpensLegacySandboxRowsWithoutToolColumns(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "runtime.sqlite3")
 	database, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -118,8 +113,8 @@ INSERT INTO sandboxes(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded == nil || len(loaded.CLITools) != 0 || len(loaded.ObservedCLITools) != 0 ||
-		loaded.CLIToolsGeneration != 0 {
-		t.Fatalf("legacy CLI tool defaults were not applied: %#v", loaded)
+	if loaded == nil || loaded.ObservedState != "running" ||
+		loaded.ImageDigest != "sha256:test" {
+		t.Fatalf("legacy sandbox state was not loaded: %#v", loaded)
 	}
 }

@@ -7,11 +7,11 @@ resource and ext4 workspace limits, expires temporary workspaces locally, and
 renders the forced-command SSH access map.
 
 This repository is the canonical public source for the supervisor, installer,
-systemd unit, and restricted SSH gateway. The WarpMetal control plane and
+systemd units, and restricted SSH gateway. The WarpMetal control plane and
 billing system are separate: this runtime manages only the sandboxes belonging
 to the owner of one server.
 
-Security boundaries:
+## Security boundary
 
 - The node token is root-only, stored outside every sandbox, and authorizes only
   manifest reads and runtime reports.
@@ -19,9 +19,10 @@ Security boundaries:
   host namespaces, published ports, capabilities, or host credentials.
 - Host output rules tied to the dedicated runtime UID reject IPv4 and IPv6
   link-local metadata endpoints before any sandbox starts.
-- Each agent public key is forced through the locked `warpmetal-sandbox` account
-  and an opaque grant ID. The restricted shell cannot start a host shell.
-- Stop, revocation, expiration, and deletion cancel matching gateway sessions.
+- Each public key is forced through the locked `warpmetal-sandbox` account and
+  an opaque grant ID. The restricted shell cannot start a host shell.
+- Stop, revocation, expiration, image replacement, and deletion cancel matching
+  gateway sessions.
 - Temporary expiry uses the local SQLite clock state and continues during a
   control-plane outage.
 - Workspace images live outside the root-only supervisor state directory. The
@@ -31,40 +32,17 @@ Security boundaries:
 - The root supervisor performs ext4 mount operations through PID 1's host mount
   namespace so the separate rootless engine sees only the intended workspace
   mounts; the rest of the supervisor stays inside its hardened mount namespace.
-- On amd64 hosts that actively enforce AppArmor's
-  restricted-unprivileged-userns control, an explicit signed-installer option
-  can load a narrowly attached policy for the exact root-owned Codex Bubblewrap
-  helper in the signed coding image. The setup profile permits Bubblewrap to
-  construct an inner user/PID namespace and new procfs, then stacks every child
-  executable with a capability-denying profile. The capability is off by
-  default, does not apply to `/usr/bin/bwrap`, workspace binaries, or generic
-  `unshare`, and does not change sandbox container-create arguments.
 
-## Baked-in CLI availability reports
-
-An authenticated desired sandbox may include an optional `cliTools` array. It
-is a unique subset of `codex`, `claude`, and `cursor`; omission means no tools
-are selected for onboarding. Selection is generation-bound preference metadata,
-not installation or authorization. Every supported sandbox image contains all
-three tools, and a connected sandbox owner may use an unselected tool.
-
-After a selected sandbox reaches its desired running generation, the supervisor
-directly executes only the image-owned constant
-`/usr/local/bin/warpmetal-agent-tool-report`, without an interactive stream,
-shell, login profile, PATH lookup, terminal, desired-state command arguments,
-or desired-state environment. The supervisor accepts a bounded, strict report
-for the complete three-tool catalog, persists only the selected entries, and
-returns them under that sandbox report's `observedGeneration`.
-Malformed, unknown, duplicate, incomplete, or failed observations become safe
-per-tool failures without changing the sandbox's running state. Old desired
-manifests and existing local databases default to an empty selection.
-
-The supervisor never derives or executes a command from the image manifest,
-desired state, or tool output. Sandbox creation and reporting do not run a
-package manager, download or update a CLI, perform CLI login, or receive user
-credentials. An `available` result proves only that the pinned binary passed the
-baked-in version probe; it does not mean a user is authenticated. Tool output
-and child errors are never forwarded into runtime error details.
+The outer rootless Podman container is the Runtime boundary.
+Sandbox processes run as UID/GID 1000 with a read-only root.
+`/home/agent` is the persistent workspace.
+No host container runtime socket is exposed.
+Runtime does not install, configure, authenticate, inspect, update, or remove
+user tools; each user owns their installation, configuration, authentication,
+updates, and removal. User tools inherit the sandbox's existing capability,
+seccomp, network, cgroup, and host-socket restrictions. Provider credentials
+remain user-owned files or process environment inside the workspace and must
+never be sent through desired state, registration, or runtime reports.
 
 Build and test on Linux with Go 1.25 or newer:
 
@@ -84,10 +62,22 @@ archive has a SHA-256 checksum and a detached Cosign signature. The signing
 public key is committed as [`cosign.pub`](cosign.pub).
 
 The tag workflow initially publishes those exact artifacts as a prerelease.
-Promote the existing release only after the signed asset passes the provider
+Promote an existing release only after its signed asset passes the provider
 canary and rollback gates; never rebuild or replace an asset during promotion.
 Backend activation must use the tested asset URL, checksum, signature, and
 version.
+
+The future release archive contains only:
+
+- `install.sh`
+- `warpmetald`
+- `warpmetal-agentctl`
+- `warpmetal-sandbox-gateway`
+- `warpmetal-sandbox-shell`
+- `warpmetal-podman-service`
+- `warpmetal-podman.service`
+- `warpmetald.service`
+- `warpmetal-sandbox.conf`
 
 The official CLI verifies the configured checksum and signature before it runs
 the root installer. To verify a downloaded release manually:
@@ -100,20 +90,6 @@ cosign verify-blob \
   --insecure-ignore-tlog=true \
   warpmetal-runtime-<version>-linux-<arch>.tar.gz
 ```
-
-The archive also contains the amd64 coding-host AppArmor policy, its
-transactional installer helper, and `nested-private-procfs-oracle.sh`. Runtime
-continues to publish arm64 supervisor archives, but explicit capability enable
-fails closed there because the current signed coding image and exact helper path
-are amd64-only. The oracle is credential-free: inside the matching signed
-sandbox image it verifies the helper ownership,
-creates its own short-lived outer sentinel, mounts a new procfs in a new PID
-namespace, checks that the inner process is PID 1, checks a descendant's
-`/proc/self`, and confirms the outer sentinel is absent. It clears the inherited
-environment before starting the inner process. Passing this userspace oracle is
-not by itself a production promotion: the guarded provider canary must also
-prove generic user namespaces remain restricted and all host workload
-invariants remain unchanged.
 
 Only install a release through an authenticated WarpMetal runtime-install
 session. The installer requires root because it creates the dedicated runtime
@@ -130,123 +106,50 @@ recognized container-runtime processes and any running Docker container IDs,
 init PIDs, and start timestamps. It does not collect container names, images,
 environment variables, mounts, or logs. APT runs a simulated transaction and
 then applies it with `--no-remove`; DNF runs an RPM transaction test without
-`--allowerasing`. Both paths preserve the exact versions of an installed
-known Docker/containerd/Podman and package-manager components and verify that
-stack after the package action. Package apply failures run the same package and
+`--allowerasing`. Both paths preserve the exact versions of installed known
+Docker/containerd/Podman and package-manager components and verify that stack
+after the package action. Package apply failures run the same package and
 workload postconditions before returning. The workload snapshot is checked
 again immediately before registration. Package-plan conflicts, uninspectable
 Docker state, or workload drift fail closed with a stable `runtime_*` error
-before the supervisor is registered. Docker receives container-level checks;
-other recognized engines receive process-level checks and require separate
-certification before WarpMetal claims container-level coexistence.
+before the supervisor is registered.
 
 On an upgrade, an already-active private WarpMetal Podman service is preserved
-instead of restarted. This keeps persistent Agent Runtime sandboxes and their
-delegated cgroups running while the supervisor binaries are replaced. A fresh
-install, or an inactive service, is still started before registration.
+instead of restarted. This keeps persistent sandboxes and their delegated
+cgroups running while the supervisor binaries are replaced. A fresh install,
+or an inactive service, is still started before registration.
 
-Ordinary installs and upgrades use
-`--nested-private-procfs preserve` by default. Preserve mode does not inspect,
-parse, load, unload, create, replace, or remove the Runtime AppArmor policy.
-Dedicated amd64 hosts for verified nested-Bubblewrap workloads may explicitly use
-`--nested-private-procfs enable`; other architectures fail closed. Explicit
-`--nested-private-procfs disable` unloads/removes the Runtime policy and restores
-the exact file and loaded/unloaded state that preceded its first enable. These
-are host-scoped operations, not per-user or per-sandbox grants: after enable,
-every same-owner sandbox on that Runtime host containing the trusted exact
-helper path can invoke it. The authenticated backend remains the trusted
-immutable-image selection boundary; AppArmor pathname attachment does not
-verify an image digest.
-
-### Why and when to enable nested private procfs
-
-This capability is general Agent Runtime infrastructure; Nico is its first
-production consumer, not a requirement or product boundary. Enable it when a
-trusted workload launches the signed, fixed-path Bubblewrap helper inside a
-Runtime sandbox and needs a second process/filesystem boundary. It is unrelated
-to ordinary GitHub operations, which AI CLI is installed, or whether an agent
-delegates to subagents.
-
-The supported public interface requires WarpMetal CLI 0.8.7 or newer and signed
-Agent Runtime 0.1.25 or newer. The owner selects `preserve`, `enable`, or
-`disable` during the guarded Runtime installation; no sandbox manifest or HTTP
-API field is added.
-
-Typical uses include:
-
-- planning: mount the exact checkout read-only while hiding sibling workspaces,
-  runner state, and outer processes;
-- coding: make only one approved checkout, its output directory, and private
-  temporary storage writable while repository-controlled commands execute; and
-- QA: review an exact candidate read-only, then run untrusted tests with a
-  private process view, scrubbed environment, and isolated scratch space.
-
-Bubblewrap supplies mount, PID, IPC, and related namespace boundaries; a
-consumer may add a filesystem control such as Landlock. The outer Runtime
-sandbox remains the host/tenant boundary. A deployment that creates one fresh,
-credential-minimal Runtime sandbox for every attempt may choose not to add the
-inner Bubblewrap layer. A persistent worker that processes multiple attempts or
-retains trusted state should keep the inner boundary so prompt instructions are
-backed by kernel-enforced read/write and process visibility rules.
-
-On an AppArmor-enabled host where
-`kernel.apparmor_restrict_unprivileged_userns=1`, explicit enable requires the
-host's existing `apparmor_parser`. Runtime does not install an AppArmor package,
-change that sysctl, reload/restart the AppArmor service, or restart Podman. It
-parses the signed candidate first, atomically replaces only
-`/etc/apparmor.d/warpmetal-agent-runtime-bwrap`, and loads only that file. A
-root-only durable baseline under `/var/lib/warpmetal/apparmor-policy-state`
-retains the exact pre-enable file and loaded state until disable. Each mutating
-operation first writes and syncs an atomic transaction snapshot there; ordinary
-installer failure restores it through the EXIT trap, and the next explicit
-enable/disable recovers a transaction left by interruption before applying a
-new operation. A completed enable or disable is committed only after Runtime
-registration and service restart succeed.
-
-Disk/kernel mismatches and partial profile loads, including non-enforce modes,
-fail closed. The signed Linux metadata helper copies through
-`O_NOATIME|O_NOFOLLOW`, rejects nonregular or pre-existing targets, clears
-inherited attributes, and reapplies ownership, every xattr, raw mode, and
-nanosecond timestamps in a fail-closed order. It verifies source stability plus
-exact content, UID/GID, raw mode, timestamps, and xattr identity on both backup
-and restoration, including POSIX ACL and SELinux context xattrs. Copy or
-comparison failure preserves durable recovery evidence. If parser reads advance
-a restored file's atime, the installer reapplies the baseline timestamps before
-its final non-atime-mutating comparison. Unsupported, conflicting, parse, load,
-architecture, and recovery conditions use distinct safe `runtime_*` errors.
-The capability remains unproven for a release until the Ubuntu 24.04 live
-acceptance oracle passes.
-
-Workspace mounts receive a private Podman SELinux label on enforcing hosts.
-The ordinary installer does not install or replace a kernel. If a reboot is
-already pending, it exits with status 75 and `runtime_reboot_required` before
-updating package indexes or consuming the bootstrap token. Reboot only as a
-separately authorized maintenance action, then retry the same verified
-installer.
-
-The ordinary installer also never runs `podman system reset`. A preview install
-whose Podman state still points at the former user-manager run root exits with
+The installer never changes host user-namespace policy, runs `podman system
+reset`, or restarts a third-party container runtime. A preview install whose
+Podman state still points at the former user-manager run root exits with
 `runtime_legacy_migration_required`; preserve that host and use a separately
-reviewed migration procedure instead of deleting container metadata implicitly.
+reviewed migration procedure rather than deleting container metadata.
 
-The fixed userspace image is maintained separately in
+Signed v0.1.25 and v0.1.26 archives are immutable historical releases. Their
+existing signed members remain unchanged; the reduced bundle contract applies
+only to future releases.
+
+## Sandbox images and persistence
+
+The base userspace image is maintained separately in
 [`warpmetal/warpmetal-agent-sandbox`](https://github.com/warpmetal/warpmetal-agent-sandbox).
-That repository publishes `ghcr.io/warpmetal/warpmetal-agent-sandbox` for
-`linux/amd64` with SBOM, provenance, and a keyless signature. Runtime release
-archives remain multi-architecture, but this pinned all-tools sandbox image is
-currently amd64-only.
-Production must use the complete registry digest emitted by that workflow, and
-the package must permit unauthenticated pulls from customer servers. A new
-default digest applies only to newly created sandboxes; existing sandboxes
-remain pinned to their creation image.
+Production must use the complete registry digest emitted by that repository's
+signed workflow, and the package must permit unauthenticated pulls from
+customer servers. A new default digest applies only to newly created sandboxes;
+existing sandboxes remain pinned to their creation image.
 
 An existing sandbox changes images only when its authenticated manifest names
 an explicit immutable per-sandbox digest and advances that sandbox's
 generation. The runtime pulls the target before interruption, terminates active
-gateway sessions, and replaces only the container root filesystem. The external
-`/home/agent` workspace, sandbox identity, lifetime, and original start time are
-preserved. Running sandboxes return to running and stopped sandboxes remain
-stopped. The old container is retained under a deterministic backup name until
-the replacement reaches its desired state, allowing a failed or interrupted
-refresh to roll back or resume safely. A refresh therefore causes a brief
-connection interruption but is not a workspace migration or deletion.
+gateway sessions, and replaces only the container root filesystem. The
+external `/home/agent` workspace, sandbox identity, lifetime, and original
+start time are preserved. Running sandboxes return to running and stopped
+sandboxes remain stopped. The old container is retained under a deterministic
+backup name until the replacement reaches its desired state, allowing a failed
+or interrupted refresh to roll back or resume safely.
+
+Runtime continues to open databases created by earlier releases. Retired
+columns are treated as passive compatibility data: lifecycle reads and upserts
+do not reconcile, rewrite, or report their contents. Likewise, unrecognized
+fields in a legacy manifest do not prevent the remaining sandbox lifecycle
+contract from being decoded and reconciled.

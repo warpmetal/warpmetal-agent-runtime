@@ -22,27 +22,16 @@ jobs:
           set -eu
           test -z "$(gofmt -l .)"
           sh -n packaging/install/install.sh
-          sh -n packaging/install/warpmetal-apparmor-policy.sh
-          sh -n packaging/apparmor/nested-private-procfs-oracle.sh
           sh -n packaging/install/preserve_execution_test.sh
           sh -n packaging/install/coexistence_container_test.sh
-          sh -n packaging/install/tool_report_execution_test.sh
-          printf '%s\n' runtime_tool_report_execution_test_start
-          docker pull 'ghcr.io/warpmetal/warpmetal-agent-sandbox@sha256:c3fefa156c491c31db48c3799e21a15438f2c5c452555e49b7c37815b5aee5ba'
-          sh packaging/install/tool_report_execution_test.sh
+          sh -n packaging/install/future_release_contract_test.sh
+          sh packaging/install/future_release_contract_test.sh
           printf '%s\n' runtime_preserve_execution_test_start
           docker run --rm --privileged \
             -v "$GITHUB_WORKSPACE:/source:ro" \
             ubuntu:24.04 \
             sh /source/packaging/install/preserve_execution_test.sh
-          printf '%s\n' runtime_profile_test_start
-          sh packaging/apparmor/profile_test.sh
-          printf '%s\n' runtime_policy_transaction_test_start
-          # The lifecycle intentionally verifies root-owned mode-0700 durable
-          # state, matching the root-only installer execution contract.
-          sudo env "PATH=$PATH" sh packaging/install/apparmor_policy_test.sh
           printf '%s\n' runtime_installer_structure_test_start
-          # install_test.sh also runs the root-owned lifecycle fixture.
           sudo env "PATH=$PATH" sh packaging/install/install_test.sh
           printf '%s\n' runtime_go_race_test_start
           go test -race ./...
@@ -81,11 +70,7 @@ jobs:
           go build -trimpath -ldflags "-s -w" -o "$stage/warpmetal-agentctl" ./cmd/warpmetal-agentctl
           go build -trimpath -ldflags "-s -w" -o "$stage/warpmetal-sandbox-gateway" ./cmd/warpmetal-sandbox-gateway
           go build -trimpath -ldflags "-s -w" -o "$stage/warpmetal-sandbox-shell" ./cmd/warpmetal-sandbox-shell
-          go build -trimpath -ldflags "-s -w" -o "$stage/warpmetal-policy-metadata" ./cmd/warpmetal-policy-metadata
           install -m 0755 packaging/install/install.sh "$stage/install.sh"
-          install -m 0755 packaging/install/warpmetal-apparmor-policy.sh "$stage/warpmetal-apparmor-policy.sh"
-          install -m 0644 packaging/apparmor/warpmetal-agent-runtime-bwrap "$stage/warpmetal-agent-runtime-bwrap"
-          install -m 0755 packaging/apparmor/nested-private-procfs-oracle.sh "$stage/nested-private-procfs-oracle.sh"
           install -m 0755 packaging/systemd/warpmetal-podman-service "$stage/warpmetal-podman-service"
           install -m 0644 packaging/systemd/warpmetal-podman.service "$stage/warpmetal-podman.service"
           install -m 0644 packaging/systemd/warpmetald.service "$stage/warpmetald.service"
