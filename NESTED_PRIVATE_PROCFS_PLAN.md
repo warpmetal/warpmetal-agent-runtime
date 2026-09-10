@@ -353,7 +353,7 @@
 | P2R | Runtime policy lifecycle is explicit, default-off, architecture-gated, and reversibly recoverable | R2-R4, R10-R11, A2-A3, A7-A8 | P2 recovery review | default preserve is mutation-free; explicit amd64 enable is idempotent; disable unloads/removes Runtime policy and restores any displaced prior file/state; interruption evidence is durable; tests/docs green | completed |
 | P2D | General capability documentation is discoverable and example-driven | R11-R12, A7-A9 | P2R interface | Runtime and sandbox docs, CLI help/skill, public pages, and both LLM contract sources agree on purpose, examples, versions, actions, host scope, and non-goals; repository gates pass | completed |
 | P3 | Signed v0.1.25 prerelease, CLI 0.8.7, and five-stage frontend canary contract ready | R1-R5, R10-R12 | P1-P2R, P2D | exact heads pass CI/review; signed Runtime and npm CLI releases are independently verified; frontend workflow is available on its default branch | completed |
-| P3O | Signed Runtime v0.1.26 and automatic-ordering activation | R3-R5, R10, R15-R16, A15-A17 | P3; source/release work may proceed independently of P4 | current Runtime main and selected-CLI reporting are merged and reviewed; the exact signed v0.1.26 prerelease passes release verification and four fresh order-time OS canaries; the same assets are promoted/configured; production catalog aggregate support is true and public smoke passes | in_progress; P3O.S1-S2 complete, frontend-last protected canary path next, billed live matrix pending exact aggregate-cost approval |
+| P3O | Signed Runtime v0.1.26 and automatic-ordering activation | R3-R5, R10, R15-R16, A15-A17 | P3; source/release work may proceed independently of P4 | current Runtime main and selected-CLI reporting are merged and reviewed; the exact signed v0.1.26 prerelease passes release verification and four fresh order-time OS canaries; the same assets are promoted/configured; production catalog aggregate support is true and public smoke passes | in_progress; P3O.S1-S3 complete, protected v0.1.26 ordering path deployed, billed live matrix pending exact aggregate-cost approval |
 | P4 | Rollback/forward/disable amd64 acceptance canary passes | R1-R6, R10-R11, R13-R14, A1-A4, A10, A13 | P3 | first-use trust or its one authorized incident recovery is safely pinned, pre-policy sensitivity, positive capability, preservation, retained-policy binary rollback, forward, and exact disable/restore gates pass | in_progress |
 | P5 | Stable nested-private-procfs production activation and Nico sandbox refresh on v0.1.26 | R1-R7, R10 | P3O, P4 | exact v0.1.26 assets remain stable; Nico upgrade plus both explicit refreshes verified | pending |
 | P6 | Nico code/deploy and real autonomous task pass | R7-R10 | P5 | full gates, deploy, coder/publisher/QA canary, staged flags | pending |
@@ -744,8 +744,8 @@ test -z "$(git tag --list "$TAG")"
 |---|---|---|---|---|---|---|---|---|
 | P3O.S1 | Merge current Runtime main and correct trusted CLI-report execution | frozen entry hashes | `internal/containers`, `internal/toolreport`, reconcile/state/model and tests; Runtime README/SECURITY | Runtime internal contract; no HTTP schema | exact `podman exec warpmetal-<id> /usr/local/bin/warpmetal-agent-tool-report`, without `-i`; fixed sanitized child environment; no attached/transmitted stdin, login shell/profile/PATH/caller argument, or caller/desired-state environment injection; bounded stdout, discarded stderr, normalized errors; generic `Engine.Exec` and private-procfs behavior unchanged | direct-argv negative tests, migration/legacy state, focused race, full race/vet, installer/AppArmor/coexistence, four hosted distros | no | completed: main merged before implementation and PR; security/correctness blockers fixed; two final reviews approved; PR #22 head/merge CI green and merged as `bdcd05b` |
 | P3O.S2 | Review, merge, publish, and independently verify signed v0.1.26 prerelease | P3O.S1 | Runtime PR/default branch, annotated tag, release workflow and committed `cosign.pub` | release notes and exact six-asset contract | tag points to exact reviewed main merge and has both v0.1.25 main and reporting commit as ancestors; amd64/arm64 archives, checksums, detached signatures, static architectures, exact 13 regular files plus the root directory, and embedded supervisor `0.1.26` verify; release stays prerelease | exact-head/merge CI, download/re-hash/Cosign, archive membership, embedded version; live registration/report is P3O.S4 | no | completed: annotated tag/release exact, run `34412218346` green, six assets independently verified, prerelease retained |
-| P3O.S3 | Add protected pre-activation candidate create path, frontend work last | verified P3O.S2 assets | backend Runtime/operator, protected acceptance workflow, tests/runbook | internal operator only; no public eligibility change | protected workflow downloads the exact official v0.1.26 archive and verifies its digest and Cosign signature with the committed release key before protected create; backend exact-binds and durably persists that verified tuple with one minimal all-three-CLI sandbox before worker claim or provider mutation; confirmation/idempotency bind hostname, OS, version, artifact and request digests | state/order/concurrency/mismatch/redaction tests, workflow contract, full backend/site/Admin gates, main merge before implementation and PR | no | in_progress; P3O.S2 verified and current frontend main `122f7d5` merged before implementation; exact execution packet frozen below |
-| P3O.S4 | Run exact supported-OS order-time Runtime matrix | P3O.S3, explicit aggregate-cost authority | one fresh disposable smallest viable VPS per advertised OS; unique host key and task | private acceptance evidence only | exact OS/cloud-init; task/provider ready; registration before 45-minute deadline; supervisor 0.1.26 and artifact digest exact; desired/observed generation equal; signed image exact; sandbox running; three CLI observations present; owner SSH; cancellation and no-renewal reconcile, while provider service may remain through its prepaid term unless deletion is supported and separately authorized | protected workflow, safe logs, per-OS independent review; sequential stop-on-first-failure | no | blocked only on S1-S3 and future exact aggregate-cost approval; never use the P4 VPS |
+| P3O.S3 | Add protected pre-activation candidate create path, frontend work last | verified P3O.S2 assets | backend Runtime/operator, protected acceptance workflow, tests/runbook | internal operator only; no public eligibility change | protected workflow downloads the exact official v0.1.26 archive and verifies its digest and Cosign signature with the committed release key before protected create; backend exact-binds and durably persists that verified tuple with one minimal all-three-CLI sandbox before worker claim or provider mutation; confirmation/idempotency bind hostname, OS, version, artifact and request digests | state/order/concurrency/mismatch/redaction tests, workflow contract, full backend/site/Admin gates, main merge before implementation and PR | no | completed: frontend main `122f7d5` merged before implementation and was still current immediately before PR; branch commit `48fd6c2`, PR #140, merge `f9e8499`; exact-head run `34420708151` and exact-main run `34421199832` green; production deploy succeeded; public eligibility unchanged |
+| P3O.S4 | Run exact supported-OS order-time Runtime matrix | P3O.S3, explicit aggregate-cost authority | one fresh disposable smallest viable VPS per advertised OS; unique host key and task | private acceptance evidence only | exact OS/cloud-init; task/provider ready; registration before 45-minute deadline; supervisor 0.1.26 and artifact digest exact; desired/observed generation equal; signed image exact; sandbox running; three CLI observations present; owner SSH; cancellation and no-renewal reconcile, while provider service may remain through its prepaid term unless deletion is supported and separately authorized | protected workflow, safe logs, per-OS independent review; sequential stop-on-first-failure | no | blocked only on future exact aggregate-cost approval; never use the P4 VPS |
 | P3O.S5 | Activate exact production tuple and public catalog | P3O.S4 | deployment workflow/secrets, blue-green script, catalog/OpenAPI/docs/LLM minimum | selected-CLI minimum becomes 0.1.26; no nested-private-procfs version rewrite | workflow cryptographically verifies tuple before upload; candidate and two post-switch catalog reads show product support true and all four OS flags true; failure leaves old slot public and restores prior tuple before retry | deploy workflow tests, backend/site/Admin/full gates, production deploy and catalog probes | no | pending; requires explicit production-config authority |
 | P3O.S6 | Public ordering smoke | P3O.S5 | public order preparation and one smallest paid Ubuntu order | validates existing public contract | unpaid preparation returns 201 with frozen Runtime intent and performs no checkout/payment/provider action; separately authorized paid order reaches Runtime 0.1.26 and all-three-CLI readiness | API/checkout smoke, payment/provider reconciliation, independent final review | no | pending; paid portion requires separate amount/payment authority |
 
@@ -892,11 +892,11 @@ or authority is consumed by P3O.
     `b0b94243d0a0d2e0ca0a16e83466b0c17753be5941d38b1c774fa72d947411dd`,
     signature asset
     `8dabfbeb26c677c3f21f875a5f8e23ea2c0eaa875d59dc8919e5f547a549b12d`.
-- P3O.S1-S2 are complete. The release stays a prerelease and production
-  ordering remains disabled. P3O.S3 is next and may add only the protected
-  pre-activation create path after merging frontend main; it cannot change
-  public eligibility, production configuration, provider billing, or the P4
-  incident state.
+- P3O.S1-S3 are complete. The release stays a prerelease and production
+  ordering remains disabled. P3O.S4 may run the protected four-OS matrix only
+  after a fresh read-only quote and exact aggregate-cost approval; it cannot
+  change public eligibility, production configuration, or the P4 incident
+  state.
 
 #### P3O.S3 frozen protected ordering-canary design
 
@@ -1013,6 +1013,24 @@ or authority is consumed by P3O.
   branch/PR, and CI work. No provider charge, protected workflow dispatch,
   production configuration mutation, deploy, public activation, or P4 VPS
   lifecycle action is authorized by this decision.
+- Completion evidence: frontend implementation commit
+  `48fd6c2615d8fa8bad3783e897bbd7ee0604515f` merged through PR #140 as
+  `f9e84990928e1034915b11a633a07686f8c1b3fd`. Exact-head run
+  `34420708151` passed; exact-main run `34421199832` passed test, image
+  publication, and production deployment. Local complete backend regression
+  passed 2,501 tests with one skip; coverage passed at 88.19% statements and
+  75.28% branches; root build/tests passed 247 tests with zero failures.
+  Actionlint, Ruff, compileall, YAML parsing, Admin gates, and diff checks
+  passed. Independent final reviews approved the workflow digest/signature
+  contract, backend authorization/idempotency boundary, and full integration.
+- Recovery evidence: the manager corrected newline-bearing workflow JSON
+  hashing, rejected ordinary request shapes before shared idempotency replay,
+  and suppressed both protected backend stderr streams so provider response
+  bodies cannot reach GitHub logs. Executable regressions cover all three
+  findings. Post-deploy production catalog inspection still reports
+  `agentRuntime.supported=false` for every product while the four advertised OS
+  rows remain cloud-init/Runtime capable, and default-branch workflow source
+  exposes both protected v0.1.26 actions.
 
 ### Live acceptance phase P4 header
 
