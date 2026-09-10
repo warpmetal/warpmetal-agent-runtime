@@ -1404,11 +1404,29 @@ or authority is consumed by P3O.
   mutations remain separately gated. Manual-check exception: none; the log
   contract and live post-deploy output are deterministic machine-readable
   gates.
+- P3O.S4 inspection-log recovery red checkpoint: status `tests_red`. On
+  frontend source exactly based on main
+  `a704a87ec8bf081d42e6bc1427aec1e7507bfd30`,
+  `backend/tests/test_commerce_db.py::test_operator_inspection_allowlists_provider_state_and_summarizes_bootstraps`
+  was written before any production edit. An isolated PostgreSQL 17 database
+  was migrated to head, then the focused test failed at the provider-state
+  equality oracle because current `inspect-task` returned the injected raw
+  nested authorization value and raw compute bootstrap, password, and private-
+  key-shaped fields. This is the expected missing R10 behavior, not a syntax,
+  fixture, dependency, or environment failure. The manager inspected and
+  accepts the frozen oracle; production edits are now authorized only for the
+  recorded allowlist/bootstrap-summary implementation.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
   candidate. Retain it until project completion and the separately confirmed
   cleanup phase.
+- Resource ledger addition: local Docker container
+  `warpmetal-inspect-redaction-postgres` was created by this recovery packet
+  from the already present `postgres:17-bookworm` image, publishes only
+  `127.0.0.1:55434`, and has no named or host-mounted volume. It is required for
+  the remaining PostgreSQL gates and is a later cleanup candidate; do not stop
+  or remove it before verified completion and separately confirmed cleanup.
 
 ### Live acceptance phase P4 header
 
