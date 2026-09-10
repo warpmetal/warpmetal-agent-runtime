@@ -1710,6 +1710,20 @@ or authority is consumed by P3O.
   the bounded oracle on failure. Only after this live repair succeeds may a
   separate optional-private-procfs canary be frozen; production merge/deploy
   and public catalog activation remain blocked.
+- P3O.S4 live repair red gate: exact frontend candidate `09c30fc` passed
+  independent focused and regression executors, direct published CLI `0.8.9`
+  command-surface inspection, ShellCheck, Bash syntax, Actionlint, YAML, and
+  clean-diff gates. Branch-only run `34520212119` then reached the bound VPS,
+  matched the authenticated Ed25519 pin, authenticated the owner key, and
+  entered the exact signed v0.1.26 installer. It stopped before package or
+  Runtime mutation with mapped `runtime_reboot_required`; signed `install.sh`
+  proves this means `/var/run/reboot-required` exists and intentionally has no
+  force bypass. Freeze a separate exact-resource, exact-failure-run maintenance
+  action that inventories all remaining installer prerequisites and absence of
+  workloads over strict SSH, performs one provider-backed reboot, proves the
+  boot ID changed and the reboot marker cleared, and changes no order, payment,
+  reload, sandbox, Runtime, or private-procfs state. Only after that action
+  succeeds may the same unmodified ordering-repair action be retried.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
