@@ -1,5 +1,33 @@
 # Nested Private Procfs Capability and Agent Sandbox Activation Plan
 
+## Owner scope decision — 2026-09-10
+
+- This plan's nested Bubblewrap/private-procfs objective is superseded and is
+  no longer an Agent Runtime ordering, catalog, Nico, or release requirement.
+  Preserve the implementation and live evidence below as historical security
+  research; do not continue the AppArmor lab, add a launcher, migrate existing
+  containers, or publish Runtime v0.1.27 for this capability.
+- The supported architecture is one rootless Podman sandbox per WarpMetal
+  sandbox. Codex, Claude Code, Cursor CLI, and any subagents they start share
+  that outer sandbox's workspace, processes, limits, and network boundary. They
+  do not require another Bubblewrap namespace inside it.
+- Codex must be launched with its internal command sandbox disabled for this
+  dedicated outer-sandbox environment (`sandbox_mode = "danger-full-access"`
+  or the equivalent explicit CLI option) without silently disabling Codex's
+  separate approval behavior. Users may choose stricter Codex settings, but
+  WarpMetal does not claim nested Bubblewrap support for them.
+- Runtime v0.1.26 remains the exact ordering candidate because its selected-CLI
+  reporter is required. Normal installation uses the existing default
+  `preserve` behavior and must not install or enable the optional AppArmor
+  policy. The current acceptance VPS must explicitly disable the policy enabled
+  by the abandoned experiment and prove the outer sandbox lifecycle still
+  works before clean-OS testing.
+- Revised release path: verify v0.1.26 plus the signed all-tools image, one
+  running sandbox, owner access, workspace persistence, restart, grant/revoke,
+  CLI reporting, and Codex outer-sandbox configuration; then reuse the same VPS
+  for sequential clean reloads of every advertised OS. Frontend, public docs,
+  CLI/skill/LLM wording, catalog activation, and ordering smoke remain last.
+
 ## Project details
 
 - Objective: let a WarpMetal Agent Runtime sandbox execute an approved nested
@@ -354,9 +382,9 @@
 | P2D | General capability documentation is discoverable and example-driven | R11-R12, A7-A9 | P2R interface | Runtime and sandbox docs, CLI help/skill, public pages, and both LLM contract sources agree on purpose, examples, versions, actions, host scope, and non-goals; repository gates pass | completed |
 | P3 | Signed v0.1.25 prerelease, CLI 0.8.7, and five-stage frontend canary contract ready | R1-R5, R10-R12 | P1-P2R, P2D | exact heads pass CI/review; signed Runtime and npm CLI releases are independently verified; frontend workflow is available on its default branch | completed |
 | P3O | Signed Runtime v0.1.26 and automatic-ordering activation | R3-R5, R10, R15-R16, A15-A17 | P3; source/release work may proceed independently of P4 | current Runtime main and selected-CLI reporting are merged and reviewed; the exact signed v0.1.26 prerelease passes release verification and four fresh order-time OS canaries; the same assets are promoted/configured; production catalog aggregate support is true and public smoke passes | in_progress; P3O.S1-S3 complete, protected v0.1.26 ordering path deployed, billed live matrix pending exact aggregate-cost approval |
-| P4 | Rollback/forward/disable amd64 acceptance canary passes | R1-R6, R10-R11, R13-R14, A1-A4, A10, A13 | P3 | first-use trust or its one authorized incident recovery is safely pinned, pre-policy sensitivity, positive capability, preservation, retained-policy binary rollback, forward, and exact disable/restore gates pass | in_progress |
-| P5 | Stable nested-private-procfs production activation and Nico sandbox refresh on v0.1.26 | R1-R7, R10 | P3O, P4 | exact v0.1.26 assets remain stable; Nico upgrade plus both explicit refreshes verified | pending |
-| P6 | Nico code/deploy and real autonomous task pass | R7-R10 | P5 | full gates, deploy, coder/publisher/QA canary, staged flags | pending |
+| P4 | Historical nested-private-procfs acceptance track | R1-R6, R10-R11, R13-R14, A1-A4, A10, A13 | P3 | superseded by the 2026-09-10 owner decision; retain evidence but perform no further AppArmor/private-procfs work | not_required |
+| P5 | Outer-sandbox CLI and subagent acceptance | R3-R5, R10, R15-R16 | P3O | exact v0.1.26 and signed all-tools image remain stable; optional policy is absent; Codex uses the outer sandbox; workspace/access/restart and CLI reporting pass | in_progress |
+| P6 | Nico code/deploy and real autonomous task pass | R7-R10 | P5 | full gates, deploy, coder/publisher/QA canary, staged flags without a nested Bubblewrap prerequisite | pending |
 
 ## Active phase subplan
 
@@ -745,7 +773,7 @@ test -z "$(git tag --list "$TAG")"
 | P3O.S1 | Merge current Runtime main and correct trusted CLI-report execution | frozen entry hashes | `internal/containers`, `internal/toolreport`, reconcile/state/model and tests; Runtime README/SECURITY | Runtime internal contract; no HTTP schema | exact `podman exec warpmetal-<id> /usr/local/bin/warpmetal-agent-tool-report`, without `-i`; fixed sanitized child environment; no attached/transmitted stdin, login shell/profile/PATH/caller argument, or caller/desired-state environment injection; bounded stdout, discarded stderr, normalized errors; generic `Engine.Exec` and private-procfs behavior unchanged | direct-argv negative tests, migration/legacy state, focused race, full race/vet, installer/AppArmor/coexistence, four hosted distros | no | completed: main merged before implementation and PR; security/correctness blockers fixed; two final reviews approved; PR #22 head/merge CI green and merged as `bdcd05b` |
 | P3O.S2 | Review, merge, publish, and independently verify signed v0.1.26 prerelease | P3O.S1 | Runtime PR/default branch, annotated tag, release workflow and committed `cosign.pub` | release notes and exact six-asset contract | tag points to exact reviewed main merge and has both v0.1.25 main and reporting commit as ancestors; amd64/arm64 archives, checksums, detached signatures, static architectures, exact 13 regular files plus the root directory, and embedded supervisor `0.1.26` verify; release stays prerelease | exact-head/merge CI, download/re-hash/Cosign, archive membership, embedded version; live registration/report is P3O.S4 | no | completed: annotated tag/release exact, run `34412218346` green, six assets independently verified, prerelease retained |
 | P3O.S3 | Add protected pre-activation candidate create path, frontend work last | verified P3O.S2 assets | backend Runtime/operator, protected acceptance workflow, tests/runbook | internal operator only; no public eligibility change | protected workflow downloads the exact official v0.1.26 archive and verifies its digest and Cosign signature with the committed release key before protected create; backend exact-binds and durably persists that verified tuple with one minimal all-three-CLI sandbox before worker claim or provider mutation; confirmation/idempotency bind hostname, OS, version, artifact and request digests | state/order/concurrency/mismatch/redaction tests, workflow contract, full backend/site/Admin gates, main merge before implementation and PR | no | completed: frontend main `122f7d5` merged before implementation and was still current immediately before PR; branch commit `48fd6c2`, PR #140, merge `f9e8499`; exact-head run `34420708151` and exact-main run `34421199832` green; production deploy succeeded; public eligibility unchanged |
-| P3O.S4 | Run exact supported-OS order-time Runtime matrix | P3O.S3, explicit live-resource authority | one disposable smallest viable VPS, sequentially restored to a clean advertised OS for each order-time case; a fresh trust epoch and bootstrap proof are required after each destructive reload | private acceptance evidence only | exact OS/cloud-init; task/provider ready; registration before 45-minute deadline; supervisor 0.1.26 and artifact digest exact; desired/observed generation equal; signed image exact; sandbox running; three CLI observations present; owner SSH; final cancellation and no-renewal reconcile | protected workflow, safe logs, per-OS executable gate; sequential stop-on-first-failure | no | in_progress: the one Ubuntu VPS is live; post-install Runtime/sandbox state is healthy after guarded repair; comprehensive installed-host capability gate is active before any clean-OS reload |
+| P3O.S4 | Run exact supported-OS order-time Runtime matrix | P3O.S3, explicit live-resource authority | one disposable smallest viable VPS, sequentially restored to a clean advertised OS for each order-time case; a fresh trust epoch and bootstrap proof are required after each destructive reload | private acceptance evidence only | exact OS/cloud-init; task/provider ready; registration before 45-minute deadline; supervisor 0.1.26 and artifact digest exact; desired/observed generation equal; signed image exact; sandbox running; three CLI observations present; owner SSH; optional AppArmor policy absent; Codex outer-sandbox mode accepted; final cancellation and no-renewal reconcile | protected workflow, safe logs, per-OS executable gate; sequential stop-on-first-failure | no | in_progress: the one Ubuntu VPS is live; next gate disables the abandoned optional policy and verifies the ordinary outer-sandbox lifecycle before clean-OS reload |
 | P3O.S5 | Activate exact production tuple and public catalog | P3O.S4 | deployment workflow/secrets, blue-green script, catalog/OpenAPI/docs/LLM minimum | selected-CLI minimum becomes 0.1.26; no nested-private-procfs version rewrite | workflow cryptographically verifies tuple before upload; candidate and two post-switch catalog reads show product support true and all four OS flags true; failure leaves old slot public and restores prior tuple before retry | deploy workflow tests, backend/site/Admin/full gates, production deploy and catalog probes | no | pending; requires explicit production-config authority |
 | P3O.S6 | Public ordering smoke | P3O.S5 | public order preparation and one smallest paid Ubuntu order | validates existing public contract | unpaid preparation returns 201 with frozen Runtime intent and performs no checkout/payment/provider action; separately authorized paid order reaches Runtime 0.1.26 and all-three-CLI readiness | API/checkout smoke, payment/provider reconciliation, independent final review | no | pending; paid portion requires separate amount/payment authority |
 
