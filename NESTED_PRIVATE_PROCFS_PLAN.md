@@ -1771,10 +1771,11 @@ or authority is consumed by P3O.
   active term, authenticated Ed25519 pin, owner key, CLI `0.8.9`, signed Runtime
   `0.1.26` tuple, one exact running sandbox, and no unrelated active sandbox.
   Use only official CLI lifecycle operations plus strict read-only host SSH.
-  Run explicit `enable`; verify the exact policy file/profile and positive
-  nested Bubblewrap private-`/proc` oracle; require all selected Codex, Claude,
-  and Cursor observations to be available and versioned; create one run-scoped
-  access key/grant, execute basic planning/coding/QA filesystem commands, and
+  Require all selected Codex, Claude, and Cursor observations to be available
+  and versioned before mutation; create one run-scoped access key/grant; run
+  explicit `enable`; verify the exact signed policy bytes/profile and positive
+  nested Bubblewrap private-`/proc` oracle; execute basic planning/coding/QA
+  filesystem commands, and
   prove the workspace and grant survive one sandbox `restart`. Run explicit
   `preserve` and prove policy/workspace continuity; run explicit `disable` and
   require the nested oracle to fail for the expected policy reason while an
@@ -1800,7 +1801,10 @@ or authority is consumed by P3O.
   at every mutation boundary; unexpected extra resources; malformed or
   credential-shaped output redaction; cleanup ownership; and bombs for order,
   payment, reload, power, sandbox create/delete, raw Podman/Docker, and public
-  configuration paths. Then run focused tests, all existing Runtime ordering
+  configuration paths. The protected deployment host may use the existing
+  digest-pinned Node container to execute official CLI `0.8.9`; the raw
+  Docker/Podman prohibition applies inside the CLI/VPS lifecycle boundary, not
+  to that credential-isolating deployment wrapper. Then run focused tests, all existing Runtime ordering
   and private-procfs suites, ShellCheck, Bash syntax, Actionlint, YAML parsing,
   the complete frontend/backend gates, and independent subagent test execution.
   There is no manual-check exception: the single live branch workflow is the
