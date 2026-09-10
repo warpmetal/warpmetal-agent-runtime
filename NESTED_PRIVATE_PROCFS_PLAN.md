@@ -1241,9 +1241,37 @@ or authority is consumed by P3O.
   reachability, redaction, and exact cleanup. Update the protected-operator
   runbook; no backend, Runtime release, public API/catalog/configuration, public
   documentation, VPS, payment, or x402 change is in scope. Merge frontend main
-  again immediately before PR, obtain independent source/host/test approval,
-  and deploy only after every gate passes. Another live prepare retry remains
-  separately gated.
+  again immediately before PR and deploy only after the complete focused,
+  minimal-Linux, backend, and regression command gates pass. Another live
+  prepare retry remains separately gated.
+- Sixth P3O.S4 recovery implementation checkpoint: frontend commit
+  `9affe92a55c47a9bb76ebcbbee00813d1e5c706e` removes remote `jq`, preserves
+  runner-side request construction, computes the remote canonical digest with
+  the backend's exact Python stdlib byte contract, and adds one redacted host-
+  contract preflight before identity or request-directory creation. The gate
+  checks the complete declared executable set, `/usr/bin/env`, Compose major
+  version 2 or later, regular readable `deployment.env`, and the regular
+  executable resolver's exact active-backend output. The internal runbook now
+  documents this boundary and SSH/SFTP separately. The extracted production
+  harness uses only its explicit remote command directory, contains no `jq`,
+  and separately proves a poisoned `jq` is never invoked. Executable cases
+  remove every declared command individually; reject Compose failure, v1, and
+  malformed versions; reject resolver execution/output/file-shape failures;
+  reject deployment-file shape failures and SCP failure; and prove zero lock
+  or backend reachability plus exact cleanup. Both actions, all four supported
+  OS names, one- and 24-hour bounds, absent/ASCII/Unicode location forms,
+  OpenSSH join/reparse, digest drift, invalid JSON, confirmation handling, and
+  redaction remain covered. Manager reruns passed focused 19/19 locally and
+  19/19 in the signed Linux amd64 all-tools image, full frontend 261 tests
+  (220 pass, 41 expected platform skips, zero failures), backend Agent Runtime
+  147/147, Actionlint, YAML parsing, Node syntax, diff checks, and lint with
+  zero errors/five pre-existing warnings. Per the owner's direction, this
+  recovery gate is based on executable tests rather than another prose-only
+  subagent code-review round. No live action or persistent disposable resource
+  was created. The local official WarpMetal CLI was separately upgraded from
+  0.8.8 to 0.8.9; its next health read reported public
+  `purchasingReady=false` because `x402Readiness=false`, so no public purchase
+  or payment flow may start until that independent readiness condition clears.
 
 ### Live acceptance phase P4 header
 
