@@ -1050,6 +1050,28 @@ or authority is consumed by P3O.
   run `34427217782` independently proved the deployment/backend/provider read
   path healthy, Ubuntu 24.04 still eligible, location `OGB1`, and a live monthly
   provider quote of `$10.0`, within the separately authorized `$15` cap.
+- Second live P3O.S4 recovery: PR `#141` merged the first identity-mode fix as
+  frontend main `dd08151`; exact-head run `34428221628` and exact-main test,
+  publication, and deployment run `34428717953` passed. Protected prepare run
+  `34430416247` nevertheless failed before the same transient marker, again
+  proving zero backend, task, worker, provider, or billable reachability. The
+  first recovery modeled hardened `umask 077` (`0600`) and the conventional
+  `022` result (`0644`) but omitted the common hardened `027` public-key result
+  (`0640`). Do not guess through another live retry. Supersede the narrow mode
+  oracle with exactly `0600`, `0640`, or `0644`, all on an owner-owned regular
+  single-link public file paired with an exact private-`0600` key and matching
+  derivation/comment. Add allowlisted identity-stage failure categories that
+  suppress raw SSH/tool/path/key/UID/mode output, retain success stdout as only
+  the canonical public record, and keep the transient marker after identity
+  success. Validate existing `keys`/`tasks` children are real, non-symlink, and
+  current-user-owned before normalizing only those owned child directories to
+  `0700`; never chown, delete, replace, or repair key bytes. The executable
+  matrix must cover `022`/`027`/`077`, directory creation/normalization and
+  unsafe refusal, all key shape/metadata/derivation/comment failures, output
+  pollution, exact redaction, and no marker/backend reachability on failure.
+  Merge current frontend main before implementation and again immediately
+  before PR, obtain independent security and behavioral approval, deploy exact
+  main, and rerun prepare only once.
 
 ### Live acceptance phase P4 header
 
