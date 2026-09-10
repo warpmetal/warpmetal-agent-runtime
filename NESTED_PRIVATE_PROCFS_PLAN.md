@@ -1505,6 +1505,27 @@ or authority is consumed by P3O.
   the initial bootstrap failure through a separately frozen safe path before
   any reload, token issuance, SSH trust, manual install, replacement order, or
   other live mutation.
+- P3O.S4 first bootstrap-diagnosis packet: status `design_frozen`. The owner's
+  earlier direction to use authenticated first-observed host-key trust because
+  ordinary users have no provider-console access, together with the current
+  instruction to execute this plan, authorizes exactly the already-deployed
+  `trust-host-key-tofu` action for task
+  `task_PT9aEIBCVIldPIQN59116hKl`, hostname
+  `runtime-126-ubuntu-0910-a`, and provider device `69152`, followed by exactly
+  one already-deployed `canary-diagnose` action for that same task/hostname.
+  The trust action must re-prove the ready/live task binding, active test term,
+  expected owner-key fingerprint, provider identity/power, and strict
+  public-key authentication before atomically publishing only one ed25519 pin;
+  it never changes the VPS or provider. The diagnosis may perform only the
+  existing authenticated API GET and strict-SSH read probes, emit the bounded
+  Runtime/sandbox summary and systemd states, and clean only its own transient
+  deployment-host run directory. Both actions must run on exact deployed main
+  with an empty protected-workflow queue and safe log parsing. Stop after this
+  evidence: it does not authorize a bootstrap token, manual Runtime install,
+  OS reload, reboot, replacement, cancellation, payment, public activation, or
+  any other VPS/provider mutation. If these existing probes do not uniquely
+  classify the failure, freeze and test one consolidated read-only cloud-init
+  diagnostic before another production deploy rather than guessing at a fix.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
