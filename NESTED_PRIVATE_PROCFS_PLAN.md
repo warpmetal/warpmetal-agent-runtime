@@ -1109,6 +1109,25 @@ or authority is consumed by P3O.
   bounded-recovery finding. PR, exact-head CI, exact-main deployment, and the
   single prepare-only reuse attempt remain pending. Merge current frontend main
   again immediately before the PR and stop on any conflict.
+- Fourth live P3O.S4 recovery result: PR `#143` merged the independently
+  approved correction as frontend main
+  `8c409668695ae3992a1ae131cd0b4dc4bbdbfffa`. Exact-head run
+  `34476709621` and exact-main test, publication, and deployment run
+  `34477400653` passed. Protected prepare run `34480024931` then passed the
+  complete SSH identity stage and created only its transient request directory,
+  but stopped in the second deployment-host SSH wrapper with
+  `bash: line 7: $6: unbound variable`. OpenSSH did not preserve the empty
+  prepare confirmation as a positional argument, shifting the following
+  request and transport digests left. The failure occurred before request-file
+  shape/hash validation, deployment locking, backend operator invocation,
+  task creation, worker/provider reachability, or billing. Cleanup returned
+  `runtime_ordering_canary_request_cleanup directory=removed`; therefore no
+  task, server, VPS, provider mutation, or charge occurred and no transient
+  request directory remains. The key-derivation correction is verified by
+  progression beyond its former failure point. The plan's single live retry is
+  consumed. P3O.S4 is blocked pending a newly reviewed argument-transport
+  recovery decision and explicit authority for any further protected prepare
+  attempt; do not guess, dispatch, or order around this gate.
 
 ### Live acceptance phase P4 header
 
