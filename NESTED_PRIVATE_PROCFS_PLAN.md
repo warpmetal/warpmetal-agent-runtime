@@ -1526,6 +1526,39 @@ or authority is consumed by P3O.
   any other VPS/provider mutation. If these existing probes do not uniquely
   classify the failure, freeze and test one consolidated read-only cloud-init
   diagnostic before another production deploy rather than guessing at a fix.
+- P3O.S4 first bootstrap-diagnosis result and consolidated recovery: TOFU
+  workflow `34508455672` reported success on exact main, but its retained log
+  contained neither the helper's required bounded success record nor a
+  credential-shaped value. The following exact `canary-diagnose` workflow
+  `34508693753` re-proved the ready task, server, and active term, then failed
+  at `runtime-live-canary-driver.sh:105` because the managed hostname pin was
+  absent; it made no API/VPS diagnostic call and its cleanup passed. This is a
+  real workflow contract defect: the helper has strong isolated tests, but the
+  calling workflow neither requires its result record nor independently proves
+  the durable pin after SSH returns zero. Do not retry either live action.
+  Freeze one combined implementation packet, based on freshly merged frontend
+  main, that first adds a failing workflow regression for an empty/malformed
+  helper result and missing postcondition, then captures the remote result
+  without printing arbitrary output, strictly parses the exact task/hostname/
+  server/device/algorithm/fingerprint/file-digest/state vocabulary, and runs a
+  second deployment-host check for a regular non-symlink owner-mode-0600,
+  single-link, exact-digest hostname pin before emitting a bounded success
+  record. In that same production change, extend only the existing
+  `canary-diagnose` read path with a host-side classifier that emits fixed enums
+  for cloud-init/cloud-final state, Runtime bootstrap script/token-path
+  presence without reading either file, Runtime install footprint and service
+  states, required-command/package presence, and allowlisted failure markers
+  from cloud-init output. It must never open or print provider user-data,
+  bootstrap/token material, arbitrary log lines, environment, command lines,
+  SSH key bytes, or unbounded systemd/journal output; it performs no API write,
+  provider call, package/service/file/lifecycle mutation, reboot, or reload.
+  Add executable fixture tests for every stage and secret-sentinel redaction,
+  workflow source/durable-postcondition tests, Bash syntax, all existing TOFU
+  and Runtime canary tests, then the complete frontend/backend/static gates and
+  test-executor review. Merge current main again immediately before PR, stop on
+  conflict, and permit only one exact-main deployment. After deployment,
+  dispatch one corrected TOFU and one diagnosis for the exact existing task;
+  stop again before any repair mutation. Manual-check exception: none.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
