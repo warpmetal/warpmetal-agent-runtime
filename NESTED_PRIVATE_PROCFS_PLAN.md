@@ -1724,6 +1724,15 @@ or authority is consumed by P3O.
   boot ID changed and the reboot marker cleared, and changes no order, payment,
   reload, sandbox, Runtime, or private-procfs state. Only after that action
   succeeds may the same unmodified ordering-repair action be retried.
+- P3O.S4 reboot preflight correction: branch run `34521233775` made no reboot
+  or other live mutation; it failed inside the read-only SSH preflight. The
+  preflight had incorrectly required `podman`, `crun`, and related packages to
+  be preinstalled even though signed v0.1.26 intentionally installs a safe
+  missing-package set after checking the pending reboot. Replace that false
+  prerequisite with the installer's exact no-remove/no-upgrade apt simulation,
+  and make the preflight aggregate every failed check into one fixed-category
+  line before refusing the reboot. Re-run the same exact idempotent maintenance
+  action only after its focused and regression gates pass.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
