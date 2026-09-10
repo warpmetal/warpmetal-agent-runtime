@@ -1215,6 +1215,35 @@ or authority is consumed by P3O.
   Require independent source, host-contract, and test-oracle approval. This
   prepare authority is consumed; another live dispatch remains separately
   gated after the comprehensive recovery is merged and deployed.
+- Sixth P3O.S4 recovery decision: three independent read-only reviews returned
+  `APPROVE_FIX_DIRECTION`. The exact remote command inventory is SSH/SFTP and
+  Bash; GNU `stat`, `id`, `install`, `cat`, `sha256sum`, `cut`, `rm`, and
+  `rmdir`; `ssh-keygen`; `awk`; `flock`; Docker with Compose v2; `python3`; and
+  the deployed executable `resolve-active-service.sh`, whose own dependencies
+  are `/usr/bin/env`, `grep`, and `sed`. Live run `34490369337` plus its cleanup
+  proved every command through raw-digest verification. Exact-main production
+  deployment independently proves `flock`, Python, Docker/Compose v2, and the
+  resolver/active-backend path. `jq` alone is undeclared and absent. This
+  matches the earlier blue-green host contract in
+  `PUBLIC_BLUE_GREEN_DEPLOYMENT_PLAN.md`, which deliberately replaced host
+  `jq` with Python stdlib after live preflight evidence.
+- The comprehensive source recovery must keep runner-side `jq`, replace only
+  the remote canonical digest operation with Python's exact backend byte
+  contract (`json.dumps` with sorted keys, compact separators, UTF-8, and
+  `ensure_ascii=False`, then SHA-256), and compare without emitting request
+  contents. It must add one early, fixed-category, fail-closed prerequisite and
+  capability gate for every remaining remote executable, Compose v2, and the
+  deployed resolver before creating the transient request directory or
+  reaching the backend. The extracted production harness must run on Linux
+  with an intentionally minimal remote PATH that contains no `jq`; prove both
+  actions, Unicode canonical parity, all accepted OS/lifetime/location shapes,
+  malformed JSON and digest drift, each missing prerequisite, zero backend
+  reachability, redaction, and exact cleanup. Update the protected-operator
+  runbook; no backend, Runtime release, public API/catalog/configuration, public
+  documentation, VPS, payment, or x402 change is in scope. Merge frontend main
+  again immediately before PR, obtain independent source/host/test approval,
+  and deploy only after every gate passes. Another live prepare retry remains
+  separately gated.
 
 ### Live acceptance phase P4 header
 
