@@ -289,8 +289,8 @@
 
 | ID | Assumption or unknown | Impact if false | Status | Evidence or resolution |
 |---|---|---|---|---|
-| A1 | An exact executable attachment profile applies from the existing rootless `crun (unconfined)` context and permits Bubblewrap setup under Ubuntu's restricted-userns policy while stacking a capability-denied child under no-new-privileges | high | unresolved | must pass the disposable Ubuntu 24.04 live oracle before production promotion |
-| A2 | Leaving Podman container-create arguments exactly unchanged preserves supported-distro behavior while the policy is installed only on active restricted-AppArmor hosts | high | unresolved | four-distro privileged coexistence CI and focused exact-argument tests |
+| A1 | An exact executable attachment profile applies from the existing rootless `crun (unconfined)` context and permits Bubblewrap setup under Ubuntu's restricted-userns policy while stacking a capability-denied child under no-new-privileges | high | false on the live Ubuntu 24.04 Runtime host | branch run `34531510050` proves user and PID namespaces pass but private `/proc` and profile attachment fail from a non-unconfined outer domain; identify the exact live domain and prove a narrow replacement design before product code changes |
+| A2 | Leaving Podman container-create arguments exactly unchanged preserves supported-distro behavior while the policy is installed only on active restricted-AppArmor hosts | high | reopened by false A1 | the v0.1.26 create arguments do not select an AppArmor profile and restart preserves the original OCI config; any changed contract must first pass the one-run VPS lab, then exact-argument and four-distro gates |
 | A3 | Runtime can install/load the profile without adding/replacing AppArmor packages or restarting the private Podman service | high | unresolved | installer plan/postcondition tests and live service-identity comparison |
 | A4 | Explicit refresh preserves API IDs, grants, workspace markers, and persistent lifetime | high | verified for existing refresh implementation, must be reverified live | Runtime v0.1.24 refresh tests and prior release evidence |
 | A5 | Nico main's `--proc` runner logic remains the approved functional shape | high | verified | independent contract audit of commit `87c817c` |
@@ -1839,7 +1839,8 @@ or authority is consumed by P3O.
   branch dispatch. A live failure returns to its deterministic stage/test
   packet once; do not merge/deploy or enter a repeated VPS trial loop. If green,
   record the evidence and only then design the separate destructive clean-OS
-  reload/order-time track. Status: `tests_red`.
+  reload/order-time track. Status: `live_blocked`; the policy-only recovery lab
+  below is `design_frozen` and product implementation has not started.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
@@ -1855,6 +1856,56 @@ or authority is consumed by P3O.
   was created by the final backend coverage gate, contains test coverage only,
   and is a later cleanup candidate. Retain it through project completion and
   separately confirmed cleanup.
+
+#### P3O.S4 live AppArmor boundary recovery
+
+- Decisive live result: branch-only runs `34527850241`, `34528628854`,
+  `34529102268`, `34529424378`, `34529856909`, `34530161851`, `34530586266`,
+  `34531188257`, and `34531510050` progressively isolated the signed v0.1.26
+  failure without a production merge or deploy. SSH transport, Runtime
+  convergence, the exact signed image/helper/policy, sentinel setup, CLI 0.8.9,
+  raw user namespaces, and PID namespaces pass. Adding the private procfs mount
+  fails; the exact setup/child policy does not attach. The final fixed-output
+  matrix is `outer=unknown userns=pass pid=pass proc=fail attached=fail`.
+- Root cause and invalidated design: v0.1.26 loads only the exact-path bwrap
+  setup and child profiles while rootless Podman creates the sandbox without an
+  explicit AppArmor profile. The live process is not in the assumed unconfined
+  domain. Under no-new-privileges, a regular transition from an already confined
+  domain cannot be assumed to gain the setup permissions. Restart cannot repair
+  this because it preserves the existing OCI/AppArmor configuration. This is a
+  Runtime release blocker, not a frontend, CLI, SSH, or catalog bug; production
+  Runtime ordering remains disabled.
+- Test-first correction: independent execution of frontend head `613c3fd`
+  found one harness-only false positive: the forbidden raw-Docker token matched
+  the fixed diagnostic category `docker-default`. The corrected assertion must
+  forbid a Docker command token while allowing that non-command category, then
+  the complete focused/static gate must be rerun before any live dispatch.
+- VPS-first recovery order: before changing Runtime product code, use one
+  branch-only protected SSH run against the exact existing VPS to identify the
+  actual outer profile and exercise all plausible confinement arrangements on
+  isolated, run-scoped Podman containers. Include the current/default negative,
+  explicit-unconfined diagnostic control, named-profile acceptance, retained
+  no-new-privileges behavior, copied/alternate-bwrap negative, generic userns
+  negative, exact signed bwrap positive, effective Podman inspect profile, and
+  exact cleanup/restoration of policy/container/workspace state. This is a
+  diagnostic proof only: a broad unconfined container, dropped
+  no-new-privileges, global restricted-userns disable, rootful Runtime, or
+  vendor-profile overwrite cannot become the product fix.
+- Stop rule: if no candidate simultaneously keeps ordinary sandbox processes
+  restricted and lets only the immutable bwrap path reach the setup profile,
+  stop the policy-only design. Freeze a Runtime-mediated launcher or equivalent
+  architecture before implementation. Do not iterate by merging/deploying one
+  guessed product fix at a time.
+- Proven-candidate implementation gate: only after the VPS lab identifies a
+  narrow passing design, add Runtime red tests for its exact create/service
+  contract, v0.1.26 same-image running and stopped migration, interruption and
+  rollback, disable with active containers, three-profile or launcher policy
+  lifecycle, exact effective-profile observation, workspace/lifetime/grant
+  preservation, unrelated workload stability, and rejection of every broad
+  escape. Then implement once, run complete local/hosted gates, merge current
+  `main` again, and prepare a new signed Runtime version. The same VPS must pass
+  the whole installed-host lifecycle before the sequential clean-OS reload
+  matrix begins.
 
 ### Live acceptance phase P4 header
 
