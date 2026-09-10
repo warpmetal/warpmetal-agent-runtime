@@ -745,7 +745,7 @@ test -z "$(git tag --list "$TAG")"
 | P3O.S1 | Merge current Runtime main and correct trusted CLI-report execution | frozen entry hashes | `internal/containers`, `internal/toolreport`, reconcile/state/model and tests; Runtime README/SECURITY | Runtime internal contract; no HTTP schema | exact `podman exec warpmetal-<id> /usr/local/bin/warpmetal-agent-tool-report`, without `-i`; fixed sanitized child environment; no attached/transmitted stdin, login shell/profile/PATH/caller argument, or caller/desired-state environment injection; bounded stdout, discarded stderr, normalized errors; generic `Engine.Exec` and private-procfs behavior unchanged | direct-argv negative tests, migration/legacy state, focused race, full race/vet, installer/AppArmor/coexistence, four hosted distros | no | completed: main merged before implementation and PR; security/correctness blockers fixed; two final reviews approved; PR #22 head/merge CI green and merged as `bdcd05b` |
 | P3O.S2 | Review, merge, publish, and independently verify signed v0.1.26 prerelease | P3O.S1 | Runtime PR/default branch, annotated tag, release workflow and committed `cosign.pub` | release notes and exact six-asset contract | tag points to exact reviewed main merge and has both v0.1.25 main and reporting commit as ancestors; amd64/arm64 archives, checksums, detached signatures, static architectures, exact 13 regular files plus the root directory, and embedded supervisor `0.1.26` verify; release stays prerelease | exact-head/merge CI, download/re-hash/Cosign, archive membership, embedded version; live registration/report is P3O.S4 | no | completed: annotated tag/release exact, run `34412218346` green, six assets independently verified, prerelease retained |
 | P3O.S3 | Add protected pre-activation candidate create path, frontend work last | verified P3O.S2 assets | backend Runtime/operator, protected acceptance workflow, tests/runbook | internal operator only; no public eligibility change | protected workflow downloads the exact official v0.1.26 archive and verifies its digest and Cosign signature with the committed release key before protected create; backend exact-binds and durably persists that verified tuple with one minimal all-three-CLI sandbox before worker claim or provider mutation; confirmation/idempotency bind hostname, OS, version, artifact and request digests | state/order/concurrency/mismatch/redaction tests, workflow contract, full backend/site/Admin gates, main merge before implementation and PR | no | completed: frontend main `122f7d5` merged before implementation and was still current immediately before PR; branch commit `48fd6c2`, PR #140, merge `f9e8499`; exact-head run `34420708151` and exact-main run `34421199832` green; production deploy succeeded; public eligibility unchanged |
-| P3O.S4 | Run exact supported-OS order-time Runtime matrix | P3O.S3, explicit aggregate-cost authority | one fresh disposable smallest viable VPS per advertised OS; unique host key and task | private acceptance evidence only | exact OS/cloud-init; task/provider ready; registration before 45-minute deadline; supervisor 0.1.26 and artifact digest exact; desired/observed generation equal; signed image exact; sandbox running; three CLI observations present; owner SSH; cancellation and no-renewal reconcile, while provider service may remain through its prepaid term unless deletion is supported and separately authorized | protected workflow, safe logs, per-OS independent review; sequential stop-on-first-failure | no | blocked only on future exact aggregate-cost approval; never use the P4 VPS |
+| P3O.S4 | Run exact supported-OS order-time Runtime matrix | P3O.S3, explicit aggregate-cost authority | one fresh disposable smallest viable VPS per advertised OS; unique host key and task | private acceptance evidence only | exact OS/cloud-init; task/provider ready; registration before 45-minute deadline; supervisor 0.1.26 and artifact digest exact; desired/observed generation equal; signed image exact; sandbox running; three CLI observations present; owner SSH; cancellation and no-renewal reconcile, while provider service may remain through its prepaid term unless deletion is supported and separately authorized | protected workflow, safe logs, per-OS independent review; sequential stop-on-first-failure | no | in progress: single-VPS Ubuntu path authorized within the recorded $15 cap; fifth bounded source recovery authorized, while another protected prepare remains separately gated; never use the P4 VPS |
 | P3O.S5 | Activate exact production tuple and public catalog | P3O.S4 | deployment workflow/secrets, blue-green script, catalog/OpenAPI/docs/LLM minimum | selected-CLI minimum becomes 0.1.26; no nested-private-procfs version rewrite | workflow cryptographically verifies tuple before upload; candidate and two post-switch catalog reads show product support true and all four OS flags true; failure leaves old slot public and restores prior tuple before retry | deploy workflow tests, backend/site/Admin/full gates, production deploy and catalog probes | no | pending; requires explicit production-config authority |
 | P3O.S6 | Public ordering smoke | P3O.S5 | public order preparation and one smallest paid Ubuntu order | validates existing public contract | unpaid preparation returns 201 with frozen Runtime intent and performs no checkout/payment/provider action; separately authorized paid order reaches Runtime 0.1.26 and all-three-CLI readiness | API/checkout smoke, payment/provider reconciliation, independent final review | no | pending; paid portion requires separate amount/payment authority |
 
@@ -1128,6 +1128,49 @@ or authority is consumed by P3O.
   consumed. P3O.S4 is blocked pending a newly reviewed argument-transport
   recovery decision and explicit authority for any further protected prepare
   attempt; do not guess, dispatch, or order around this gate.
+- Fifth P3O.S4 recovery decision: three independent read-only audits of exact
+  frontend main `8c409668695ae3992a1ae131cd0b4dc4bbdbfffa` returned
+  `GO_ONLY_TRANSPORT_FIX`. They traced the complete request construction,
+  raw-file and canonical-JSON digest contracts, exact Runtime v0.1.26 tuple,
+  one-small-sandbox capacity, backend prepare/create branches, response
+  validation, and cleanup. No additional deterministic source defect or
+  backend, Runtime-release, image, catalog, API, or public-document change was
+  found. The sole blocker is OpenSSH's shell reparse dropping the empty prepare
+  confirmation argument. Recovery must carry an exact nonempty tagged prepare
+  sentinel, require exactly six remote arguments before dereference, validate
+  the action/hostname/digest/wire-value grammar, translate the sentinel to an
+  empty backend confirmation only for prepare, and preserve the exact nonempty
+  create confirmation byte-for-byte. Cross-mode or malformed values must fail
+  before request inspection, locking, or backend invocation. A new executable
+  harness must model OpenSSH's joined remote-command serialization and prove
+  prepare/create routing, digest preservation, fail-closed malformed inputs,
+  redaction, zero backend reachability on rejection, and exact transient
+  cleanup. The owner's 2026-09-10 instruction `ok fix it` authorizes this
+  bounded workflow/test correction, branch commit, review, and PR preparation.
+  It does not authorize another protected prepare dispatch, provider mutation,
+  billable create, production configuration change, or public activation.
+  Frontend and Runtime-plan branches were merged with their current mains
+  before implementation; both completed without conflict.
+- Fifth P3O.S4 recovery implementation checkpoint: frontend commit
+  `5c077788de8ef484623e857b3eeb31205beb3b69` transports the exact nonempty
+  prepare sentinel, preserves the create confirmation, validates all six
+  shell-safe remote fields before dereference or request access, and makes the
+  existing request metadata/digest refusals explicit. The extracted production
+  stage now runs through a dedicated SSH join-and-remote-shell-reparse harness
+  for both actions. It rejects empty/shifted/extra argv, cross-mode values,
+  invalid action/hostname/hash grammar, raw and canonical hash drift, and
+  invalid JSON before backend reachability; a corrupted-copy case retains the
+  exact `directory=removed` cleanup result. Local focused tests passed 13/13;
+  the same focused suite passed 13/13 in the signed Linux amd64 all-tools image;
+  the complete frontend gate passed 255 tests (214 pass, 41 expected platform
+  skips, zero failures); backend Agent Runtime units passed 147/147; Actionlint,
+  YAML parsing, lint with zero errors and five pre-existing warnings, scope,
+  and diff checks passed. Independent reviewers returned
+  `APPROVE_TRANSPORT_FIX` and `APPROVE_TRANSPORT_INTEGRATION`, finding no
+  backend, Runtime, catalog, API, documentation, configuration, or public-
+  surface drift. The next source gate is the required fresh merge of frontend
+  main immediately before PR. The protected live prepare remains unexecuted
+  and separately gated.
 
 ### Live acceptance phase P4 header
 
