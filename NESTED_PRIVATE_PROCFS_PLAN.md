@@ -1473,6 +1473,16 @@ or authority is consumed by P3O.
   or documentation/API-parity finding. Recovery status is `verified` locally;
   exact-head PR CI, merge/deploy, and one safe post-deploy inspection remain
   pending. No live/provider action was performed by this gate.
+- P3O.S4 inspection-log recovery integration checkpoint: PR `#146` was opened
+  from exact frontend head `86aef50364ab1cc566f7de1bcffe0e7c077e2d52`
+  against unchanged main `a704a87ec8bf081d42e6bc1427aec1e7507bfd30`.
+  Its exact-head workflow run `34503682658` passed, and GitHub reported the PR
+  clean and mergeable. The PR merged without conflict as main commit
+  `5cee6a78a1ca15d4129a261f6d141d4ae4cf437d` at
+  `2026-09-10T16:50:39Z`. Exact-main workflow run `34504575954` then passed
+  its complete test job and all four signed image publication steps; the
+  production blue-green deployment remains in progress. Do not dispatch the
+  post-deploy inspection until this exact-main run completes successfully.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
