@@ -1433,6 +1433,17 @@ or authority is consumed by P3O.
   Ruff and Python compilation passed. No live/provider action occurred and no
   dependency was added. Full backend/frontend/static gates and the single final
   manager review remain required before integration.
+- P3O.S4 inspection-log error-path red checkpoint: a same-boundary audit found
+  that a failed provider GET could propagate `ProviderResponseError.body`
+  through the operator exception and GitHub stderr. Before changing that path,
+  `test_operator_inspection_redacts_provider_failure_bodies` injected a unique
+  provider-body secret and failed because `inspect-task` raised the raw
+  `ProviderResponseError` containing it rather than the frozen safe
+  `SystemExit("Provider task inspection failed")`. The manager accepts this
+  second expected red oracle as part of the same consolidated R10 correction;
+  catch only the provider transport/configuration/response failure taxonomy,
+  preserve unexpected programming exceptions, emit no provider body, and rerun
+  every earlier gate after the correction.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
