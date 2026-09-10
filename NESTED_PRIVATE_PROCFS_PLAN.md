@@ -1356,6 +1356,26 @@ or authority is consumed by P3O.
   create or replacement. Provisioning, Runtime installation, sandbox state,
   provider device identity, and billing projection remain pending read-only
   observation.
+- Seventh P3O.S4 first provisioning inspection: read-only workflow run
+  `34499914997` observed the exact task's provider order `119038` complete,
+  device `69152` powered on at `74.50.113.209`, service `315411`, Ubuntu 24.04
+  in OGB1, and the same `$10` total. The provider projection reports
+  `paymentStatus=Charge Failed` despite the complete order; do not infer either
+  successful collection or retry safety from that contradiction. More
+  importantly, the operator's `inspect-task` output emitted the provider's raw
+  `compute.script` into the GitHub Actions log. That cloud-init document embeds
+  Runtime bootstrap material and therefore violates R10 even though GitHub
+  masked some unrelated substrings. Stop every further Runtime, host-trust,
+  sandbox, catalog-activation, cancellation, replacement, and duplicate-create
+  action. Do not retrieve, decode, reproduce, or reuse the exposed material.
+  Before any live continuation, add a deterministic regression that fails on
+  the current inspection output, comprehensively classify provider/task fields
+  by disclosure risk, replace the raw projection with an explicit safe
+  allowlist, rerun the full automated gates, merge/deploy from current main,
+  and determine from authoritative state whether the one-time bootstrap was
+  consumed or must be rotated/revoked through a reviewed supported path. Treat
+  run-log deletion or credential rotation as separately authorized destructive
+  or security-sensitive actions; do not perform them implicitly.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
