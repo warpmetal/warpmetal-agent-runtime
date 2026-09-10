@@ -1322,6 +1322,22 @@ or authority is consumed by P3O.
   atomically create a real internal `test_authorized` provider task and may
   order one real Standard Ubuntu VPS without a customer x402 payment; it
   remains separately gated by explicit owner authority.
+- Seventh P3O.S4 protected create authority: the owner's 2026-09-10 instruction
+  `authorize the prepared create` explicitly authorizes one and only one
+  `create-runtime-ordering-canary` dispatch for the successful prepared request
+  from run `34499126005`. The dispatch must use the exact returned confirmation,
+  deployed frontend main
+  `a704a87ec8bf081d42e6bc1427aec1e7507bfd30`, plan `standard`, hostname
+  `runtime-126-ubuntu-0910-a`, OS `Ubuntu 24.04 (VPS)`, location `OGB1`, six-
+  hour acceptance lifetime, `$15` maximum monthly price, signed Runtime
+  v0.1.26, and exactly one persistent small `runtime-ordering-canary` sandbox
+  selecting Codex, Claude, and Cursor. This protected internal path creates a
+  real `test_authorized` task and may create a provider SSH key, order, device,
+  server, and billed provider compute, but performs no customer x402 payment.
+  Revalidate CLI, purchasing readiness, catalog price/OS, deployed main, and an
+  empty protected-workflow queue immediately before dispatch. Stop on any
+  mismatch, ambiguity, manual-review state, or failed create; do not dispatch a
+  replacement or duplicate.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
