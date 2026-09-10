@@ -1272,6 +1272,24 @@ or authority is consumed by P3O.
   0.8.8 to 0.8.9; its next health read reported public
   `purchasingReady=false` because `x402Readiness=false`, so no public purchase
   or payment flow may start until that independent readiness condition clears.
+- Sixth P3O.S4 recovery merge and deployment checkpoint: PR `#145` exact-head
+  workflow run `34494506040` passed the complete test job for frontend commit
+  `9affe92a55c47a9bb76ebcbbee00813d1e5c706e`; its publish and deploy jobs were
+  correctly skipped for the pull request. GitHub reported the PR clean and
+  mergeable, and it merged to main as
+  `a704a87ec8bf081d42e6bc1427aec1e7507bfd30`. Exact-main workflow run
+  `34495562909` then passed test, immutable image publication, production
+  blue-green service deployment, admin promotion, and the bounded production
+  x402-header probe. A post-deploy read-only check with official WarpMetal CLI
+  `0.8.9` returned service `ok`, every dependency true, and
+  `purchasingReady=true`. The refreshed catalog intentionally remains fail
+  closed at product-level `agentRuntime.supported=false`, while all four OS
+  entries retain `cloudInit=true` and `agentRuntimeSupported=true`; minimum
+  supervisor version remains `0.1.25`. No prepare, task, provider key, VPS,
+  payment, or charge was created by this recovery deployment. The previous
+  one-shot prepare authority remains consumed; a new explicit prepare-only
+  authorization is required before the protected internal no-customer-payment
+  acceptance flow is retried.
 
 ### Live acceptance phase P4 header
 
