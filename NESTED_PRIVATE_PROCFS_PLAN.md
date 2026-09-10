@@ -1458,6 +1458,21 @@ or authority is consumed by P3O.
   source or oracle is in scope or changed. One clean, non-concurrent full
   backend/coverage retry is permitted; any failure on that run stops this
   recovery rather than starting another retry or unrelated fix.
+- P3O.S4 final inspection-log recovery gate: frontend commit `86aef50`
+  contains only `backend/warpmetal/operator.py`, its PostgreSQL regressions,
+  and the internal operator README. The permitted clean backend retry passed
+  2,503 tests with one expected skip and zero failures; coverage passed at
+  88.20% statements and 75.31% branches. The already-green final frontend,
+  Admin, Runtime, provider-state consumer, lint, Ruff, compileall, Actionlint,
+  workflow-YAML, shell-syntax, build, and diff gates therefore apply to the
+  consolidated final diff. Fetched frontend `origin/main` remained exact
+  `a704a87ec8bf081d42e6bc1427aec1e7507bfd30`, already the source commit's
+  parent, so the required pre-PR main integration introduced no merge commit,
+  conflict, or overwritten behavior. The single final manager review found no
+  actionable requirement, security, compatibility, scope, test-overfitting,
+  or documentation/API-parity finding. Recovery status is `verified` locally;
+  exact-head PR CI, merge/deploy, and one safe post-deploy inspection remain
+  pending. No live/provider action was performed by this gate.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
@@ -1469,6 +1484,10 @@ or authority is consumed by P3O.
   `127.0.0.1:55434`, and has no named or host-mounted volume. It is required for
   the remaining PostgreSQL gates and is a later cleanup candidate; do not stop
   or remove it before verified completion and separately confirmed cleanup.
+- Resource ledger addition: `/tmp/warpmetal-inspect-redaction-coverage.json`
+  was created by the final backend coverage gate, contains test coverage only,
+  and is a later cleanup candidate. Retain it through project completion and
+  separately confirmed cleanup.
 
 ### Live acceptance phase P4 header
 
