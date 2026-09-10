@@ -1817,6 +1817,23 @@ or authority is consumed by P3O.
   action/step or `ordering-exhaustive` driver operation; there are no fixture,
   dependency, network, or live-resource failures. An independent test executor
   reproduced that exact red boundary without source changes or live access.
+- Consolidated installed-host implementation checkpoint: frontend commit
+  `e5a281b` is pushed on `codex/nested-private-procfs-canary` and status is
+  `tests_green`. It adds only the exact branch action, durable/replayable
+  `ordering-exhaustive` driver boundary, executable harness, and two action-list
+  count updates; it makes no public frontend, catalog, backend, order, payment,
+  release, provider, or production-config change. CLI `0.8.9` source inspection
+  corrected the login oracle to its actual top-level `serverId` contract and
+  retained Runtime-install trust validation. The focused suite is 12/12 green;
+  the complete frontend test set is 299 tests with 258 passes, 41 declared
+  platform skips, and zero failures. Independent execution passed Bash syntax,
+  ShellCheck, Actionlint, YAML parsing, focused 12/12, and 151 grouped tests with
+  110 passes, 41 platform skips, and zero failures. Independent build and lint
+  also passed; lint retained five unrelated existing warnings. Backend Ruff
+  passed; the no-database local backend run reported 1,344 passes, 1,158 skips,
+  and two isolated failures in unchanged main-only Fleet service/signup tests.
+  No backend path differs from `origin/main`, so those two baseline failures do
+  not reopen this packet or authorize unrelated fixes.
 - Attempt bound and sequence: one local red checkpoint, one consolidated
   harness implementation, one complete automated green gate, then one live
   branch dispatch. A live failure returns to its deterministic stage/test
