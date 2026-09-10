@@ -1669,6 +1669,25 @@ or authority is consumed by P3O.
   independent automated gates, final main merge, PR, and one production deploy
   occur. Any live-lab failure stops for one consolidated diagnosis before code
   changes; do not merge a candidate that has not passed the real VPS path.
+- P3O.S4 feature-branch live-lab checkpoint: frontend candidate `725ba15`
+  passed the exact existing-VPS TOFU workflow as run `34517460908`; the real
+  deployment-host OpenSSH client produced an accepted authenticated first-use
+  proof, the helper atomically published the exact Ed25519 pin, immediate
+  strict replay returned `matched`, and exact run-scoped cleanup passed. The
+  following read-only `canary-diagnose` run `34517554362` revalidated the same
+  ready task/server/active term and reached the control-plane diagnostic, which
+  still reported Runtime `degraded`, revision `1/0`, install timeout, and one
+  pending sandbox, but the host classifier exited before its bounded record.
+  No order, payment, reload, reboot, install, service, provider, Runtime,
+  sandbox, or catalog mutation occurred. Before another VPS probe, make the
+  host classifier report a fixed stage/status on every nonzero exit, explicitly
+  validate Ubuntu's canonical `/etc/os-release` symlink while refusing any
+  alternate symlink, and retain the fixed-enum success record. Also block all
+  mutating legacy canary modes pending a separate version-contract correction:
+  the general driver still contains historical CLI `0.8.8` and Runtime
+  `0.1.21`/`0.1.23`/`0.1.24` expectations and therefore must not be used as a
+  v0.1.26 ordering oracle. Re-run only branch `canary-diagnose`; use its one
+  bounded failure stage or complete inventory to consolidate the next repair.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
