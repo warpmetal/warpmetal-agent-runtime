@@ -1444,6 +1444,20 @@ or authority is consumed by P3O.
   catch only the provider transport/configuration/response failure taxonomy,
   preserve unexpected programming exceptions, emit no provider body, and rerun
   every earlier gate after the correction.
+- P3O.S4 first consolidated integrated-gate result: the final frontend build
+  and 261-test suite passed with 220 pass, 41 expected platform skips, and zero
+  failures; lint, Admin build and 54/54 tests, full Ruff, compileall, six
+  consumer-script syntax checks, Actionlint, workflow YAML parsing, and diff
+  checks passed. The full backend run reached 2,501 pass and one expected skip
+  but failed one unrelated pre-existing Admin pricing test:
+  `test_delegated_pricing_admin_can_use_every_route_at_eight_hour_boundary`
+  observed 403 instead of 200 after an earlier request in the same test had
+  passed. The exact test passed 1/1 immediately in isolation against the same
+  database and unchanged source, classifying the result as suite-order/time
+  fixture instability rather than an inspection-redaction failure. No pricing
+  source or oracle is in scope or changed. One clean, non-concurrent full
+  backend/coverage retry is permitted; any failure on that run stops this
+  recovery rather than starting another retry or unrelated fix.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
