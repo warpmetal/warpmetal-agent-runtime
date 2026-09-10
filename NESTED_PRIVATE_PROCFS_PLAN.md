@@ -1481,8 +1481,30 @@ or authority is consumed by P3O.
   `5cee6a78a1ca15d4129a261f6d141d4ae4cf437d` at
   `2026-09-10T16:50:39Z`. Exact-main workflow run `34504575954` then passed
   its complete test job and all four signed image publication steps; the
-  production blue-green deployment remains in progress. Do not dispatch the
-  post-deploy inspection until this exact-main run completes successfully.
+  production blue-green deployment, Admin promotion, and post-deploy checks
+  all completed successfully at `2026-09-10T17:17:24Z`.
+- P3O.S4 inspection-log recovery live gate: exactly one read-only protected
+  inspection ran as workflow `34507396556` against deployed main
+  `5cee6a78a1ca15d4129a261f6d141d4ae4cf437d`. GitHub recorded only
+  `Inspect acceptance task` as active; every create, payment, trust, lifecycle,
+  Runtime, sandbox, cleanup, reconciliation, and cancellation step was
+  skipped. A local streaming validator consumed the job log without storing or
+  echoing its raw body, found exactly one inspect JSON document, required the
+  frozen top-level/provider/bootstrap schemas, and found no script, bootstrap
+  token/hash, authorization, password, private-key, cloud-init, user-data, or
+  equivalent value marker. The exact task remains `ready`, provider order
+  `119038` and compute device `69152` remain stable, and the compute is `ON` at
+  the expected Ubuntu 24.04 identity. Authoritative bootstrap counts are
+  `total=1`, `unused-active=0`, `used=0`, and `unused-expired=1`; the sole
+  one-time credential expired at `2026-09-10T16:48:53.974957Z` without use and
+  is inactive, so this gate does not authorize or require emergency rotation.
+  The Runtime summary is `degraded`, desired revision `1`, applied revision
+  `0`, desired sandbox count `1`, and ready sandbox count `0`. The disclosure
+  recovery is complete, but the order-time Runtime acceptance oracle failed:
+  do not activate public ordering or claim v0.1.26/sandbox readiness. Diagnose
+  the initial bootstrap failure through a separately frozen safe path before
+  any reload, token issuance, SSH trust, manual install, replacement order, or
+  other live mutation.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
