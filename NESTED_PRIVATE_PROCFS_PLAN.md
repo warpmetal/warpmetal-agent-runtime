@@ -1652,6 +1652,23 @@ or authority is consumed by P3O.
   accept one complete canonical legacy pair or one canonical modern record and
   reject every ambiguous mixture/duplicate; no live access occurred in this red
   gate.
+- P3O.S4 recovery execution-order revision: the owner rejected another
+  production-deploy-first discovery loop and authorized using the existing
+  disposable VPS as the compatibility lab before merging. CLI 0.8.9 is present
+  locally, but `warpmetal server identity` proves this Mac has no identity
+  mapped to the acceptance server; the verified owner key exists only on the
+  protected deployment host. Therefore the bounded live-lab mechanism is a
+  feature-branch `workflow_dispatch`, not improvised local key access: commit
+  and push the candidate helper/tests to the existing branch, dispatch the
+  protected TOFU action with that branch ref, and require its real deployment-
+  host OpenSSH first-use plus strict replay result. If it passes, dispatch the
+  branch `canary-diagnose` action so the candidate host classifier runs by
+  strict SSH on the same VPS. Neither action deploys the website/backend or
+  orders, pays, reloads, reboots, installs, starts, stops, renews, or changes the
+  public catalog. Only after these exact branch live gates pass may the full
+  independent automated gates, final main merge, PR, and one production deploy
+  occur. Any live-lab failure stops for one consolidated diagnosis before code
+  changes; do not merge a candidate that has not passed the real VPS path.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
