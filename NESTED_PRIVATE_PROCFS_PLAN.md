@@ -1573,6 +1573,41 @@ or authority is consumed by P3O.
   exist. This is the intended missing behavior, not a syntax, dependency, or
   harness failure; production edits are authorized only for these frozen
   oracles.
+- P3O.S4 consolidated diagnosis implementation checkpoint: status
+  `implemented_local`. The protected TOFU action now uploads the reviewed
+  helper into the exact GitHub-run directory, captures and strictly parses a
+  single bounded first result, and invokes the uploaded helper a second time
+  with an exact `state=matched` replay. The workflow requires identical
+  task/hostname/device/server/algorithm/fingerprint/pin digest before its one
+  bounded success record, and its `always()` cleanup accepts only the exact
+  run-scoped helper and exact cleanup result. Behavioral workflow fixtures
+  prove that a zero-exit/no-output helper and a changed replay digest both fail
+  closed; the valid first-use plus replay path succeeds. The host `diagnose`
+  path now emits only fixed cloud-init/cloud-final, file-state, install,
+  dependency, service, and allowlisted failure classifications. Fixture-root
+  tests prove expired registration, never-invoked bootstrap, download DNS
+  classification, and injected secret/hostname redaction without a live host.
+  Focused tests pass 18/18; the eight related TOFU/recovery/Runtime suites pass
+  77 with 41 expected skips and no failures. Bash syntax, workflow YAML,
+  `git diff --check`, and actionlint pass. Actionlint first caught malformed
+  explanatory ShellCheck directive text; the comments were corrected before
+  CI, deployment, or live access. A separate direct ShellCheck gate then caught
+  an ambiguous unquoted `done` assignment in the new classifier; quoting every
+  enum assignment made the full three-script ShellCheck gate clean. A direct
+  comparison with the backend's declared bootstrap capabilities then added a
+  failing contract oracle for the omitted `flock` prerequisite; the diagnostic
+  now covers every declared `/usr/bin` capability and exact Ubuntu package,
+  explicitly does not require `jq`, and the focused suite passes 19/19. These
+  corrections occurred before final frontend commit `d7f53aa`. Independent
+  test executors then passed the eight related behavioral files (61 total, 60
+  pass, one expected platform skip), the complete Vinext build and Node suite
+  (269 total, 228 pass, 41 expected skips), and the DB-backed backend suite
+  (2,503 pass, one skip) with the 88.20% statement/75.31% branch coverage gate.
+  Ruff, compileall, frontend lint (zero errors; five unchanged unrelated
+  warnings), actionlint, all-workflow YAML parsing, ShellCheck, Bash syntax, and
+  diff checks passed with clean unchanged source. The required second main merge
+  remains pending. No live, provider, payment, Runtime, sandbox, or catalog
+  action was performed by this checkpoint.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
