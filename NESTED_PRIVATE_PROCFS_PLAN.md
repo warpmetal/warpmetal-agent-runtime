@@ -1559,6 +1559,20 @@ or authority is consumed by P3O.
   conflict, and permit only one exact-main deployment. After deployment,
   dispatch one corrected TOFU and one diagnosis for the exact existing task;
   stop again before any repair mutation. Manual-check exception: none.
+- P3O.S4 consolidated diagnosis red checkpoint: status `tests_red`. Frontend
+  main `5cee6a78a1ca15d4129a261f6d141d4ae4cf437d` was fetched and merged before
+  implementation by a clean fast-forward with no conflict. The focused Node
+  run passed all ten pre-existing TOFU tests and failed exactly five new
+  oracles: one requires an uploaded helper plus captured first-use result,
+  captured strict replay, digest equality, bounded workflow record, and
+  action-scoped cleanup; one requires the bounded host classifier vocabulary;
+  and three fixture executions require `registration_expired`,
+  `bootstrap_not_invoked`, and `download_dns` classification without emitting
+  an injected token/hostname sentinel. The current host helper instead exits
+  on the fixture-root OS check, as expected because the diagnostic does not yet
+  exist. This is the intended missing behavior, not a syntax, dependency, or
+  harness failure; production edits are authorized only for these frozen
+  oracles.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
