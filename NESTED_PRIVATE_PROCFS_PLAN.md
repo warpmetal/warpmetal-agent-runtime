@@ -1303,6 +1303,30 @@ or authority is consumed by P3O.
   ambiguity. Candidate create and all provider/billing mutation remain outside
   this authority and require a separate confirmation derived from a successful
   prepare result.
+- Seventh P3O.S4 protected prepare result: exact deployed-main workflow run
+  `34499126005` completed successfully for head
+  `a704a87ec8bf081d42e6bc1427aec1e7507bfd30`. It verified the immutable signed
+  Runtime v0.1.26 release, passed the complete deployment-host prerequisite
+  contract, reused the exact hostname-bound identity, validated the canonical
+  request, and returned status `runtime_ordering_canary_prepared` with request
+  SHA-256
+  `e5c9da200d13441c5ae8c6431147ccdeb8488c156c7c8fe9f91e85e21aebcfc9`.
+  Its exact create confirmation is
+  `CREATE-RUNTIME-ORDERING-CANARY:runtime-126-ubuntu-0910-a:7ac8e2d7722f32c7314c09fc162e681e87d4854eb2223633c2b6d9be5087598e:0.1.26:f4b1fd76f67cc01385a1309eaf38e2aaca5b5eb90254df1b0549a02a45040791:e5c9da200d13441c5ae8c6431147ccdeb8488c156c7c8fe9f91e85e21aebcfc9`.
+  Cleanup returned exact `directory=removed`, and the workflow's monthly-create
+  step was skipped. No task, provider key, server, VPS, payment, or charge was
+  created. A post-run read-only probe returned service `ok`, every dependency
+  true, `purchasingReady=true`, Standard `$15`, Ubuntu cloud-init and per-OS
+  Runtime eligibility true, and aggregate public Runtime support still false.
+  This one-shot prepare authority is consumed. Executing the confirmation will
+  atomically create a real internal `test_authorized` provider task and may
+  order one real Standard Ubuntu VPS without a customer x402 payment; it
+  remains separately gated by explicit owner authority.
+- Resource ledger addition: manager-created local file
+  `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
+  metadata, is not used by the workflow or product, and is a later cleanup
+  candidate. Retain it until project completion and the separately confirmed
+  cleanup phase.
 
 ### Live acceptance phase P4 header
 
