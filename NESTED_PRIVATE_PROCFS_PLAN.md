@@ -1072,6 +1072,43 @@ or authority is consumed by P3O.
   Merge current frontend main before implementation and again immediately
   before PR, obtain independent security and behavioral approval, deploy exact
   main, and rerun prepare only once.
+- Third live P3O.S4 recovery: PR `#142` merged the categorical identity guard
+  as frontend main `f698eaa`; exact-head run `34431794627` and exact-main test,
+  publication, and deployment run `34432284452` passed. The one bounded prepare
+  run `34433993866` again stopped before the marker with the new safe category
+  `key_derivation`, proving zero backend/task/provider/billing reachability. A
+  post-run review found a real test-oracle defect: production compared raw
+  `ssh-keygen -y` output with a stored public record normalized to two fields,
+  while the test shim itself pre-normalized `-y` output. An implementation that
+  preserves the comment in derived output therefore fails every valid pair even
+  when key type and bytes match. Recovery must reuse the existing hostname and
+  keypair, normalize both derived and stored records independently to exactly
+  key type plus Base64 bytes, require each source record to be present and
+  canonical, compare only those cryptographic fields, and retain the separate
+  exact one-line outer comment check. Remove the masking normalization from the
+  shim and add a sensitivity fixture where raw derived output includes the
+  expected comment; a true mismatched key must still return only
+  `key_derivation`. No second keypair, key-byte repair/removal, new hostname,
+  task, provider action, or VPS is authorized. Merge current frontend main
+  before implementation and immediately before PR, obtain two independent
+  reviews, deploy exact main, then run one prepare-only reuse attempt.
+- Fourth P3O.S4 recovery implementation checkpoint: frontend commit
+  `f4db664797447cf01c579420e8df1480a9460ebc` replaces the asymmetric raw-versus-
+  normalized comparison with independent single-record Ed25519 validation and
+  type-plus-Base64 normalization of both derived and stored records. It retains
+  the separate exact outer hostname-comment check, emits the stored public
+  record unchanged, and does not repair or rewrite any key bytes. The test shim
+  now passes default `ssh-keygen -y` output through unmodified; a real Linux
+  Ed25519 key produced three fields and failed the legacy comparison while
+  passing the corrected comparison. Comment-bearing success, cryptographic
+  mismatch, multiline refusal, redacted `key_derivation`, no marker/backend
+  reachability, and byte preservation all passed in the focused Linux harness.
+  The local complete frontend gate passed 252 tests (211 pass, 41 expected
+  skips, zero failures); Actionlint, YAML parsing, and diff checks passed. Two
+  independent reviewers approved the exact two-file diff with no material
+  bounded-recovery finding. PR, exact-head CI, exact-main deployment, and the
+  single prepare-only reuse attempt remain pending. Merge current frontend main
+  again immediately before the PR and stop on any conflict.
 
 ### Live acceptance phase P4 header
 
