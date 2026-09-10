@@ -1642,6 +1642,16 @@ or authority is consumed by P3O.
   A later corrected first-contact run remains subject to the same exact
   task/hostname/device binding and all existing no-order/no-payment/no-lifecycle
   restrictions.
+- P3O.S4 OpenSSH compatibility red checkpoint: status `tests_red`. Frontend main
+  `8f433317` was fetched and merged before implementation by a clean
+  fast-forward. The expanded helper suite passed 20/22 and failed exactly the
+  two missing contracts: canonical pre-8.8 publickey proof was rejected, while
+  a mixed legacy-plus-modern record was incorrectly accepted. Wrong legacy
+  method, either missing legacy half, duplicate modern proof, wrong endpoint,
+  and wrong port already failed closed. Production edits are authorized only to
+  accept one complete canonical legacy pair or one canonical modern record and
+  reject every ambiguous mixture/duplicate; no live access occurred in this red
+  gate.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
