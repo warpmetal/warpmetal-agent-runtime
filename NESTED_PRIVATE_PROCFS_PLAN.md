@@ -1809,12 +1809,20 @@ or authority is consumed by P3O.
   the complete frontend/backend gates, and independent subagent test execution.
   There is no manual-check exception: the single live branch workflow is the
   automated end-to-end gate.
+- Test-first red checkpoint: status `tests_red`. The branch-only executable
+  oracle `tests/runtime-ordering-exhaustive-vps.test.mjs` passes syntax and its
+  offline fixture dependency check; the focused Node run reports 12 tests with
+  one fixture pass and 11 expected contract failures. Every failure is caused
+  by the deliberately absent `exercise-runtime-ordering-canary` workflow
+  action/step or `ordering-exhaustive` driver operation; there are no fixture,
+  dependency, network, or live-resource failures. An independent test executor
+  reproduced that exact red boundary without source changes or live access.
 - Attempt bound and sequence: one local red checkpoint, one consolidated
   harness implementation, one complete automated green gate, then one live
   branch dispatch. A live failure returns to its deterministic stage/test
   packet once; do not merge/deploy or enter a repeated VPS trial loop. If green,
   record the evidence and only then design the separate destructive clean-OS
-  reload/order-time track. Status: `tests_pending`.
+  reload/order-time track. Status: `tests_red`.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
