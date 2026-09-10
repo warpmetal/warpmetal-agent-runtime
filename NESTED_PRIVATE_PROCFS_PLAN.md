@@ -1338,6 +1338,24 @@ or authority is consumed by P3O.
   empty protected-workflow queue immediately before dispatch. Stop on any
   mismatch, ambiguity, manual-review state, or failed create; do not dispatch a
   replacement or duplicate.
+- Seventh P3O.S4 protected create result: the one authorized dispatch completed
+  successfully in exact-main workflow run `34499656207` at head
+  `a704a87ec8bf081d42e6bc1427aec1e7507bfd30`. It consumed the exact prepared
+  request and confirmation once, created internal `test_authorized` task
+  `task_PT9aEIBCVIldPIQN59116hKl` and permanent server record
+  `srv_x_aNh3FA5Kp_founIWtVR3WJ`, accepted the live OGB1 provider quote of
+  `$10.0` within the approved `$15` ceiling, and fixed the test expiry at
+  `2026-09-10T22:03:52.196183Z`. The request remains bound to signed Runtime
+  v0.1.26 archive SHA-256
+  `f4b1fd76f67cc01385a1309eaf38e2aaca5b5eb90254df1b0549a02a45040791`
+  and request SHA-256
+  `e5c9da200d13441c5ae8c6431147ccdeb8488c156c7c8fe9f91e85e21aebcfc9`.
+  Transient request cleanup returned exact `directory=removed`. No customer
+  x402 payment was used. The worker is now authorized to create at most the one
+  real provider VPS represented by this exact task; do not dispatch another
+  create or replacement. Provisioning, Runtime installation, sandbox state,
+  provider device identity, and billing projection remain pending read-only
+  observation.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
