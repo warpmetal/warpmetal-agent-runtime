@@ -745,7 +745,7 @@ test -z "$(git tag --list "$TAG")"
 | P3O.S1 | Merge current Runtime main and correct trusted CLI-report execution | frozen entry hashes | `internal/containers`, `internal/toolreport`, reconcile/state/model and tests; Runtime README/SECURITY | Runtime internal contract; no HTTP schema | exact `podman exec warpmetal-<id> /usr/local/bin/warpmetal-agent-tool-report`, without `-i`; fixed sanitized child environment; no attached/transmitted stdin, login shell/profile/PATH/caller argument, or caller/desired-state environment injection; bounded stdout, discarded stderr, normalized errors; generic `Engine.Exec` and private-procfs behavior unchanged | direct-argv negative tests, migration/legacy state, focused race, full race/vet, installer/AppArmor/coexistence, four hosted distros | no | completed: main merged before implementation and PR; security/correctness blockers fixed; two final reviews approved; PR #22 head/merge CI green and merged as `bdcd05b` |
 | P3O.S2 | Review, merge, publish, and independently verify signed v0.1.26 prerelease | P3O.S1 | Runtime PR/default branch, annotated tag, release workflow and committed `cosign.pub` | release notes and exact six-asset contract | tag points to exact reviewed main merge and has both v0.1.25 main and reporting commit as ancestors; amd64/arm64 archives, checksums, detached signatures, static architectures, exact 13 regular files plus the root directory, and embedded supervisor `0.1.26` verify; release stays prerelease | exact-head/merge CI, download/re-hash/Cosign, archive membership, embedded version; live registration/report is P3O.S4 | no | completed: annotated tag/release exact, run `34412218346` green, six assets independently verified, prerelease retained |
 | P3O.S3 | Add protected pre-activation candidate create path, frontend work last | verified P3O.S2 assets | backend Runtime/operator, protected acceptance workflow, tests/runbook | internal operator only; no public eligibility change | protected workflow downloads the exact official v0.1.26 archive and verifies its digest and Cosign signature with the committed release key before protected create; backend exact-binds and durably persists that verified tuple with one minimal all-three-CLI sandbox before worker claim or provider mutation; confirmation/idempotency bind hostname, OS, version, artifact and request digests | state/order/concurrency/mismatch/redaction tests, workflow contract, full backend/site/Admin gates, main merge before implementation and PR | no | completed: frontend main `122f7d5` merged before implementation and was still current immediately before PR; branch commit `48fd6c2`, PR #140, merge `f9e8499`; exact-head run `34420708151` and exact-main run `34421199832` green; production deploy succeeded; public eligibility unchanged |
-| P3O.S4 | Run exact supported-OS order-time Runtime matrix | P3O.S3, explicit aggregate-cost authority | one fresh disposable smallest viable VPS per advertised OS; unique host key and task | private acceptance evidence only | exact OS/cloud-init; task/provider ready; registration before 45-minute deadline; supervisor 0.1.26 and artifact digest exact; desired/observed generation equal; signed image exact; sandbox running; three CLI observations present; owner SSH; cancellation and no-renewal reconcile, while provider service may remain through its prepaid term unless deletion is supported and separately authorized | protected workflow, safe logs, per-OS independent review; sequential stop-on-first-failure | no | in recovery: transport is proved, but live prepare exposed an undeclared deployment-host `jq` dependency; complete the full remote-command contract audit and one comprehensive recovery before any further deploy or prepare; never use the P4 VPS |
+| P3O.S4 | Run exact supported-OS order-time Runtime matrix | P3O.S3, explicit live-resource authority | one disposable smallest viable VPS, sequentially restored to a clean advertised OS for each order-time case; a fresh trust epoch and bootstrap proof are required after each destructive reload | private acceptance evidence only | exact OS/cloud-init; task/provider ready; registration before 45-minute deadline; supervisor 0.1.26 and artifact digest exact; desired/observed generation equal; signed image exact; sandbox running; three CLI observations present; owner SSH; final cancellation and no-renewal reconcile | protected workflow, safe logs, per-OS executable gate; sequential stop-on-first-failure | no | in_progress: the one Ubuntu VPS is live; post-install Runtime/sandbox state is healthy after guarded repair; comprehensive installed-host capability gate is active before any clean-OS reload |
 | P3O.S5 | Activate exact production tuple and public catalog | P3O.S4 | deployment workflow/secrets, blue-green script, catalog/OpenAPI/docs/LLM minimum | selected-CLI minimum becomes 0.1.26; no nested-private-procfs version rewrite | workflow cryptographically verifies tuple before upload; candidate and two post-switch catalog reads show product support true and all four OS flags true; failure leaves old slot public and restores prior tuple before retry | deploy workflow tests, backend/site/Admin/full gates, production deploy and catalog probes | no | pending; requires explicit production-config authority |
 | P3O.S6 | Public ordering smoke | P3O.S5 | public order preparation and one smallest paid Ubuntu order | validates existing public contract | unpaid preparation returns 201 with frozen Runtime intent and performs no checkout/payment/provider action; separately authorized paid order reaches Runtime 0.1.26 and all-three-CLI readiness | API/checkout smoke, payment/provider reconciliation, independent final review | no | pending; paid portion requires separate amount/payment authority |
 
@@ -1733,6 +1733,84 @@ or authority is consumed by P3O.
   and make the preflight aggregate every failed check into one fixed-category
   line before refusing the reboot. Re-run the same exact idempotent maintenance
   action only after its focused and regression gates pass.
+- P3O.S4 reboot and repair evidence: corrected branch commit `269a068` passed
+  the focused Runtime tests (27/27), all related Runtime suites (41 pass, one
+  documented macOS Bash-4 skip, zero failures), ShellCheck, Bash syntax,
+  Actionlint, YAML parsing, and diff checks. Exact branch run `34521629986`
+  proved Ubuntu's pending `libc6`, `linux-base`, and kernel activation, then
+  completed one provider-backed reboot and verified a changed boot ID, cleared
+  reboot marker, unchanged exact server/device binding, and all installer
+  prerequisites. The first post-reboot repair run `34521821704` returned
+  nonzero after entering the CLI install boundary, but a following read-only
+  strict-SSH diagnosis `34522264021` proved the signed operation had completed:
+  Runtime/supervisor `0.1.26` was ready at revision `2/2`, both Runtime services
+  were active, and the sole `runtime-ordering-canary` sandbox was running at
+  its exact desired image and generation. An unchanged idempotent repair retry
+  `34522373824` then passed with the same exact Runtime, sandbox, image, host
+  pin, and owner identity. Treat the first nonzero result as an unresolved
+  first-install completion race until a clean-OS replay captures its safe CLI
+  error; do not mask it merely because eventual convergence succeeded.
+
+#### P3O.S4 installed-host exhaustive VPS track
+
+- Outcome and scope: before another PR, production deploy, OS reload, public
+  catalog change, or order, exercise the already live Ubuntu VPS through one
+  branch-only, exact-resource-bound CLI `0.8.9` acceptance action. This track
+  covers R1-R5, R10-R11, and R15 on the installed host; it cannot satisfy R16's
+  fresh order-time cloud-init matrix and does not claim that result.
+- Entry evidence: frontend and Runtime-plan branches merged current `main`
+  without conflict on 2026-09-10; exact frontend head is `269a068`; task
+  `task_PT9aEIBCVIldPIQN59116hKl`, server
+  `srv_x_aNh3FA5Kp_founIWtVR3WJ`, provider device `69152`, hostname
+  `runtime-126-ubuntu-0910-a`, Runtime `0.1.26`, sandbox
+  `sbx_jZ8G54AbuX4qaaJOzDUAPrXQ`, and signed image digest are all live and
+  converged. Implementation of a branch-only acceptance action is authorized
+  by the owner's instruction to try all likely failures on this VPS before
+  changing and deploying product code.
+- Frozen behavior: require the exact task/server/device/hostname/Ubuntu/amd64,
+  active term, authenticated Ed25519 pin, owner key, CLI `0.8.9`, signed Runtime
+  `0.1.26` tuple, one exact running sandbox, and no unrelated active sandbox.
+  Use only official CLI lifecycle operations plus strict read-only host SSH.
+  Run explicit `enable`; verify the exact policy file/profile and positive
+  nested Bubblewrap private-`/proc` oracle; require all selected Codex, Claude,
+  and Cursor observations to be available and versioned; create one run-scoped
+  access key/grant, execute basic planning/coding/QA filesystem commands, and
+  prove the workspace and grant survive one sandbox `restart`. Run explicit
+  `preserve` and prove policy/workspace continuity; run explicit `disable` and
+  require the nested oracle to fail for the expected policy reason while an
+  ordinary command still works; finish with explicit `enable` and the positive
+  oracle. Revoke only the run-scoped grant, prove it no longer connects, and
+  remove only run-scoped key/profile/checkpoint material.
+- Failure and recovery: emit only a fixed stage and allowlisted CLI error code;
+  never print command output, API bodies, bootstrap material, keys, profiles,
+  or arbitrary host logs. Persist a root-owned run checkpoint before each
+  reversible mutation so replay can reconcile only the named temporary grant
+  and resume safely. Preserve the existing sandbox and workspace on every
+  failure. A failed enable may remain enabled; a failed disable/re-enable or
+  rollback/recovery error stops the track for operator diagnosis. No provider
+  power, reload, order, payment, renewal, sandbox creation/deletion, public
+  configuration, website, API, or release mutation is allowed.
+- Test-first gate: add workflow/source assertions and an executable extracted
+  Bash harness before production/action logic. The red run must fail because
+  the new exact action/checkpoint/stage contract is absent, not because of a
+  fixture or dependency error. Cover exact binding; CLI/Runtime/image/sandbox
+  versions; enable/preserve/disable/re-enable order; positive and negative
+  oracle routing; selected-tool completeness; restart and workspace
+  persistence; grant revocation and denied reconnect; replay after interruption
+  at every mutation boundary; unexpected extra resources; malformed or
+  credential-shaped output redaction; cleanup ownership; and bombs for order,
+  payment, reload, power, sandbox create/delete, raw Podman/Docker, and public
+  configuration paths. Then run focused tests, all existing Runtime ordering
+  and private-procfs suites, ShellCheck, Bash syntax, Actionlint, YAML parsing,
+  the complete frontend/backend gates, and independent subagent test execution.
+  There is no manual-check exception: the single live branch workflow is the
+  automated end-to-end gate.
+- Attempt bound and sequence: one local red checkpoint, one consolidated
+  harness implementation, one complete automated green gate, then one live
+  branch dispatch. A live failure returns to its deterministic stage/test
+  packet once; do not merge/deploy or enter a repeated VPS trial loop. If green,
+  record the evidence and only then design the separate destructive clean-OS
+  reload/order-time track. Status: `tests_pending`.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
