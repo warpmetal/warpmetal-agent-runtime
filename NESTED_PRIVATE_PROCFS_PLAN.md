@@ -1620,6 +1620,28 @@ or authority is consumed by P3O.
   or live acceptance action ran. The frozen one-TOFU/one-diagnosis live gate on
   the existing test VPS is now eligible; every repair, lifecycle, ordering,
   payment, renewal, replacement, and public-catalog mutation remains forbidden.
+- P3O.S4 first durable-TOFU live result: exact deployed-main workflow
+  `34516263490` validated the operator request and deployment-host trust, then
+  failed closed in 18 seconds with only
+  `acceptance_host_key_tofu_refused reason=first_use_authentication_result_invalid`;
+  the exact run-scoped cleanup passed. The SSH command itself returned zero,
+  but the helper rejected its debug authentication proof before the second task
+  inspection or pin publication. Its EXIT trap removed the isolated candidate,
+  so no durable acceptance pin exists and `canary-diagnose` must not run.
+  Upstream OpenSSH source confirms this is a real client-version contract, not
+  a VPS or Runtime failure: 7.6/8.2 emit exact separate
+  `debug1: Authentication succeeded (publickey).` and endpoint-only
+  `Authenticated to ... ([...]:22).` records, while 8.8+ emits the single exact
+  endpoint plus `using "publickey"` record currently modeled by the fixtures.
+  Freeze a compatibility-only recovery: add red tests for both canonical
+  formats plus wrong-method, missing-half, duplicate, mixed, endpoint, and port
+  negatives; accept exactly one modern record or exactly one complete legacy
+  pair, with the already fixed publickey-only SSH options and zero raw-log
+  output unchanged. Run the complete independent gates again before any PR or
+  deployment. Do not run another live TOFU or diagnosis from the failed build.
+  A later corrected first-contact run remains subject to the same exact
+  task/hostname/device binding and all existing no-order/no-payment/no-lifecycle
+  restrictions.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
