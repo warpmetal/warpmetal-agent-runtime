@@ -1031,6 +1031,25 @@ or authority is consumed by P3O.
   `agentRuntime.supported=false` for every product while the four advertised OS
   rows remain cloud-init/Runtime capable, and default-branch workflow source
   exposes both protected v0.1.26 actions.
+- First live P3O.S4 recovery: exact release verification passed in protected
+  prepare run `34426792761`, but the action failed before its transient remote
+  marker, backend operator call, task write, or provider-capable path. Cleanup
+  proved `directory=not_created`, so no VPS or charge was possible; at most the
+  hostname-bound deployment-host keypair was created. Two independent reviews
+  localized the failure to the first SSH identity block. A restrictive
+  `umask 077` reproduces the missing contract: `ssh-keygen` safely creates both
+  the private and public key files as mode `0600`, while the workflow required
+  the public half to be exactly `0644`. Recovery is bounded to accepting public
+  key mode `0600` or `0644` while retaining regular-file, non-symlink, owner,
+  single-link, derivation, comment, and private-key-`0600` checks, plus an
+  executable restrictive-umask identity test. Merge current frontend main
+  before implementation and again immediately before PR; stop on any conflict,
+  pass focused/full workflow gates and independent review, deploy exact main,
+  then rerun prepare only. Create remains blocked until the prepare result is
+  exact and the owner supplies its complete confirmation. Read-only preflight
+  run `34427217782` independently proved the deployment/backend/provider read
+  path healthy, Ubuntu 24.04 still eligible, location `OGB1`, and a live monthly
+  provider quote of `$10.0`, within the separately authorized `$15` cap.
 
 ### Live acceptance phase P4 header
 
