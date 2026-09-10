@@ -1688,6 +1688,28 @@ or authority is consumed by P3O.
   `0.1.21`/`0.1.23`/`0.1.24` expectations and therefore must not be used as a
   v0.1.26 ordering oracle. Re-run only branch `canary-diagnose`; use its one
   bounded failure stage or complete inventory to consolidate the next repair.
+- P3O.S4 complete existing-VPS diagnosis and repair packet: frontend candidate
+  `0ed2a85` passed branch workflow `34518185248`. The exact fixed-field host
+  record is cloud-init `error`, cloud-final `failed/exit-code/1`, no retained
+  bootstrap script/token, no Runtime install footprint, every declared command
+  and Ubuntu package present, Podman/supervisor/Docker inactive, and
+  `cloud_init_failed_unknown`; the API remains Runtime degraded at revision
+  `1/0` with the one exact sandbox pending. The separately downloaded signed
+  v0.1.26 amd64 archive matches SHA-256
+  `f4b1fd76f67cc01385a1309eaf38e2aaca5b5eb90254df1b0549a02a45040791`,
+  exact 13-file membership, and shell syntax. Therefore the next branch-only
+  live repair is one explicit protected action using official CLI `0.8.9`, the
+  existing owner identity and already-authenticated pin, and `runtime install`
+  with the default-equivalent `--nested-private-procfs preserve`. It may issue
+  one fresh bootstrap credential and install/start signed Runtime dependencies
+  and services on only the existing test VPS; it must create no order, payment,
+  server power/reload action, extra sandbox, or private-procfs policy change.
+  Success requires Runtime/supervisor `0.1.26`, desired/applied equality, and
+  the sole existing `runtime-ordering-canary` sandbox running at the exact
+  signed image digest and observed generation. CLI mapped installer failure is
+  the bounded oracle on failure. Only after this live repair succeeds may a
+  separate optional-private-procfs canary be frozen; production merge/deploy
+  and public catalog activation remain blocked.
 - Resource ledger addition: manager-created local file
   `/tmp/runtime-prepare-run-34499126005.json` contains only safe GitHub run
   metadata, is not used by the workflow or product, and is a later cleanup
