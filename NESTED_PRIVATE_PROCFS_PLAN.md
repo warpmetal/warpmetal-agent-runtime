@@ -1290,6 +1290,19 @@ or authority is consumed by P3O.
   one-shot prepare authority remains consumed; a new explicit prepare-only
   authorization is required before the protected internal no-customer-payment
   acceptance flow is retried.
+- Seventh P3O.S4 protected prepare authority: the owner's 2026-09-10 instruction
+  `ok do it`, given immediately after the manager stated that a fresh explicit
+  authorization was required, authorizes exactly one protected
+  `prepare-runtime-ordering-canary` retry from deployed frontend main
+  `a704a87ec8bf081d42e6bc1427aec1e7507bfd30`. The fixed request remains plan
+  `standard`, hostname/identity `runtime-126-ubuntu-0910-a`, exact OS
+  `Ubuntu 24.04 (VPS)`, location `OGB1`, six-hour acceptance lifetime, and
+  maximum monthly price `$15`. The prepare is non-billable and cannot create a
+  task, provider key, server, VPS, payment, or charge. Dispatch once after a
+  fresh CLI/health/catalog/default-branch gate and stop on any failure or
+  ambiguity. Candidate create and all provider/billing mutation remain outside
+  this authority and require a separate confirmation derived from a successful
+  prepare result.
 
 ### Live acceptance phase P4 header
 
