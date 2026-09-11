@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -46,5 +47,37 @@ func TestCopySessionOutputRejectsMissingTrailerWithoutDroppingOutput(t *testing.
 	}
 	if output.String() != "plain output" {
 		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestEntrypointForwardsOriginalSSHCommandOnlyToPrivateSupervisor(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, required := range []string{
+		`command := os.Getenv("SSH_ORIGINAL_COMMAND")`,
+		`net.Dial("unix", "/run/warpmetal/supervisor.sock")`,
+		"GrantID: os.Args[1]",
+		"Command: command",
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("forced gateway path omitted %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		`os/exec`,
+		`exec.Command`,
+		`/bin/sh`,
+		`/bin/bash`,
+		`ssh-keyscan`,
+		`StrictHostKeyChecking`,
+		`UserKnownHostsFile`,
+		`KnownHostsCommand`,
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("gateway entrypoint added host execution or alternate trust path %q", forbidden)
+		}
 	}
 }
