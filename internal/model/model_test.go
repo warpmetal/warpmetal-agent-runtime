@@ -26,40 +26,11 @@ func TestValidateManifestAcceptsFixedTemporarySandbox(t *testing.T) {
 				ExpiresInSeconds: &seconds,
 				DesiredState:     "running",
 				Generation:       1,
-				CLITools:         []string{"codex", "cursor"},
 			},
 		},
 	}
 	if err := ValidateManifest(manifest, "srv_test12345", 0); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestValidateManifestRejectsUnknownAndDuplicateCLITools(t *testing.T) {
-	manifest := Manifest{
-		ServerID:        "srv_test12345",
-		DesiredRevision: 1,
-		ImageDigest:     testImageDigest("a"),
-		Capacity:        Resources{CPUMillicores: 500, MemoryMiB: 1024, WorkspaceDiskGiB: 10},
-		Sandboxes: []Sandbox{{
-			ID: "sbx_test12345", Name: "main",
-			Resources:    Resources{CPUMillicores: 500, MemoryMiB: 1024, WorkspaceDiskGiB: 10, PIDs: 256},
-			Lifetime:     "persistent",
-			DesiredState: "running",
-			Generation:   1,
-			CLITools:     []string{"codex", "unknown"},
-		}},
-	}
-	if err := ValidateManifest(manifest, manifest.ServerID, 0); err == nil {
-		t.Fatal("expected unknown CLI tool to be rejected")
-	}
-	manifest.Sandboxes[0].CLITools = []string{"claude", "claude"}
-	if err := ValidateManifest(manifest, manifest.ServerID, 0); err == nil {
-		t.Fatal("expected duplicate CLI tool to be rejected")
-	}
-	manifest.Sandboxes[0].CLITools = nil
-	if err := ValidateManifest(manifest, manifest.ServerID, 0); err != nil {
-		t.Fatalf("legacy manifest omission was rejected: %v", err)
 	}
 }
 

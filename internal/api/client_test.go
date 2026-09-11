@@ -84,9 +84,9 @@ func TestClientUsesPublishedRuntimeRoutes(t *testing.T) {
 	}
 }
 
-func TestClientCarriesSelectedCLIToolsAndTheirObservedStatus(t *testing.T) {
+func TestClientToleratesLegacyManifestFieldsAndOmitsThemFromReports(t *testing.T) {
 	t.Parallel()
-	var received model.Report
+	var received map[string]any
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
@@ -119,28 +119,33 @@ func TestClientCarriesSelectedCLIToolsAndTheirObservedStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest.Sandboxes) != 1 ||
-		!reflect.DeepEqual(manifest.Sandboxes[0].CLITools, []string{"codex", "cursor"}) {
-		t.Fatalf("selected CLI tools were not decoded: %#v", manifest)
+	if len(manifest.Sandboxes) != 1 || manifest.Sandboxes[0].ID != "sbx_example123" {
+		t.Fatalf("legacy manifest fields prevented sandbox decoding: %#v", manifest)
 	}
 	report := model.Report{
 		ServerID: "srv_example123",
 		Sandboxes: []model.SandboxReport{{
 			ID: "sbx_example123", ObservedState: "running", ObservedGeneration: 1,
-			CLITools: []model.CLIToolReport{{ID: "codex", Status: "available", Version: "0.153.4"}},
 		}},
 		AccessGrants: []model.GrantReport{},
 	}
 	if err := client.Report(context.Background(), report); err != nil {
 		t.Fatal(err)
 	}
-	if len(received.Sandboxes) != 1 || len(received.Sandboxes[0].CLITools) != 1 ||
-		received.Sandboxes[0].CLITools[0].Version != "0.153.4" {
-		t.Fatalf("observed CLI tools were not encoded: %#v", received)
+	sandboxes, ok := received["sandboxes"].([]any)
+	if !ok || len(sandboxes) != 1 {
+		t.Fatalf("sandbox report was not encoded: %#v", received)
+	}
+	sandbox, ok := sandboxes[0].(map[string]any)
+	if !ok {
+		t.Fatalf("sandbox report has unexpected shape: %#v", sandboxes[0])
+	}
+	if _, exists := sandbox["cliTools"]; exists {
+		t.Fatalf("legacy CLI tool status was encoded: %#v", sandbox)
 	}
 }
 
-func TestClientDefaultsOmittedCLIToolsToEmpty(t *testing.T) {
+func TestClientDecodesCapacityOnlyManifest(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
@@ -163,7 +168,7 @@ func TestClientDefaultsOmittedCLIToolsToEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest.Sandboxes) != 1 || len(manifest.Sandboxes[0].CLITools) != 0 {
-		t.Fatalf("legacy manifest changed during decode: %#v", manifest)
+	if len(manifest.Sandboxes) != 1 || manifest.Sandboxes[0].ID != "sbx_example123" {
+		t.Fatalf("capacity-only manifest changed during decode: %#v", manifest)
 	}
 }

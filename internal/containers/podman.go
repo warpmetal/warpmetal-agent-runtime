@@ -23,7 +23,6 @@ type Engine interface {
 	Restart(context.Context, string) error
 	Remove(context.Context, string) error
 	Exec(context.Context, string, string, bool, io.Reader, io.Writer, io.Writer) error
-	ToolReport(context.Context, string, io.Writer) error
 }
 
 var (
@@ -43,7 +42,6 @@ const (
 	podmanSocket           = "unix:///run/warpmetal-podman/podman.sock"
 	podmanCgroupParent     = "/system.slice/warpmetal-podman.service"
 	imageDigestLabel       = "io.warpmetal.image-digest"
-	toolReportPath         = "/usr/local/bin/warpmetal-agent-tool-report"
 )
 
 func (p Podman) Ensure(
@@ -255,23 +253,6 @@ func (p Podman) Exec(
 	// Podman client launched by warpmetald runs in a sibling systemd cgroup and
 	// cannot migrate the exec process across that cgroup v2 delegation boundary.
 	return p.runCommandStreams(ctx, true, stdin, stdout, stderr, args...)
-}
-
-// ToolReport runs the one image-owned availability reporter without
-// exposing generic exec controls to desired state or to the caller.
-func (p Podman) ToolReport(ctx context.Context, id string, stdout io.Writer) error {
-	return p.runCommandStreams(
-		ctx,
-		true,
-		nil,
-		stdout,
-		io.Discard,
-		toolReportArguments(id)...,
-	)
-}
-
-func toolReportArguments(id string) []string {
-	return []string{"exec", containerName(id), toolReportPath}
 }
 
 func execArguments(id, command string, tty bool) []string {
