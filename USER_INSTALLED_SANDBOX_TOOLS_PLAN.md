@@ -674,7 +674,7 @@ git diff --check
 | P5.S7-B | Runtime tests-only proof for forced interactive/exec, wrong/revoked grants, active revocation, stale pins, host-shell/subsystem/forwarding denial | frozen plan | existing Go/unit and packaging tests; new harness only where behavior is not executable | current coverage gaps fail; existing green behavior is retained | focused `go test`, install/sshd scripts, full `go test ./...` | yes | verified |
 | P5.S7-C | Compatibility/docs tests-only contract using official sources and `80287de` | frozen plan | agent-kit README/skills tests; Runtime docs; frontend rendered/llms tests last | current docs say alias unsupported and omit install/refresh/remove/accurate Cursor result | link/parity/render/help/skill mirrors | yes, research first; frontend edit last | tests_red |
 | P5.S7-D | Implement token-free local SSH alias manager and CLI dispatch | A red accepted | agent-kit `src/connection.js`, new focused module, `src/cli.js`, package/check list | exact A assertions | A gates green; no Runtime/API call | no | verified |
-| P5.S7-E | Implement only Runtime changes proven necessary by B | B red accepted | Runtime access/gateway/sshd only if a real behavior gap exists | exact B assertions | B gates green; v0.1.26 compatibility preserved | no | verified; no production change |
+| P5.S7-E | Implement only Runtime changes proven necessary by B | B red accepted | Runtime access/gateway/sshd only if a real behavior gap exists | exact B assertions | B gates green; immutable v0.1.26 remains unchanged and any fix ships only in a future release | no | reopened: live prompt-streaming defect fixed locally; release/VPS proof pending |
 | P5.S7-F | Update CLI/Runtime docs and skill mirrors; record v0.8.10 requirement | D/E green | README/help/skills/references/package metadata | C assertions | docs/parity/package gates | yes after interfaces freeze | verified |
 | P5.S7-G | Bounded live alias, lifecycle, Codex, and Cursor compatibility on existing VPS | local gates green | no repository production code | frozen command/result ledger | exact live matrix; no deploy/reload/payment | no | pending |
 | P5.S7-H | Merge current main into frontend branch, reconcile `80287de`, update public/machine docs, and run final review | A-G green | frontend docs/tests only plus any already-held signature fix | rendered/llms red | full proportional frontend gate and one fresh review | no | pending |
@@ -1738,3 +1738,19 @@ This gate is detailed again immediately before deployment and cannot be waived:
   absolute first-precedence managed Include satisfies the documented discovery
   shape without duplicating or overwriting the Host block in the main config.
   Live remote-app startup still remains part of P5.S7-G.
+- P5.S7-E live prompt-streaming red/green checkpoint: the existing-v0.1.26
+  one-shot alias command passed and returned UID/GID 1000 inside the assigned
+  sandbox, but a real local PTY exposed a user-visible Runtime defect: the
+  gateway retained the last 128 output bytes until EOF while searching for its
+  private exit trailer, so a short interactive prompt and command response were
+  hidden until logout. A tests-only regression used an `io.Pipe` to require the
+  nine-byte prompt before the trailer or EOF and failed semantically after two
+  seconds on the old implementation. The bounded production fix now streams
+  all ordinary bytes immediately and retains only an exact in-progress private
+  trailer candidate. It strips the exact marker/status, preserves ordinary NUL
+  and mismatched-marker bytes, and parses only a final 0-255 exit status.
+  Focused Go 1.25 tests, `go test -race ./cmd/...`, full `go test ./...`, gofmt,
+  and diff hygiene pass. Immutable v0.1.26 is not modified; a future signed
+  Runtime release is required before this correction can become the ordering
+  default. Independent diff review and same-VPS binary acceptance remain open,
+  and production deployment remains forbidden until they pass.
