@@ -445,7 +445,7 @@ func TestPodmanInvocationUsesPrivateServiceForExec(t *testing.T) {
 func TestPodmanOrdinaryExecUsesExactStreamContract(t *testing.T) {
 	type streamCall struct {
 		remote bool
-		stdin  io.Reader
+		stdin  SessionInput
 		stdout io.Writer
 		stderr io.Writer
 		args   []string
@@ -454,7 +454,7 @@ func TestPodmanOrdinaryExecUsesExactStreamContract(t *testing.T) {
 	podman := Podman{runStreamCommand: func(
 		_ context.Context,
 		remote bool,
-		stdin io.Reader,
+		stdin SessionInput,
 		stdout io.Writer,
 		stderr io.Writer,
 		args ...string,
@@ -469,7 +469,7 @@ func TestPodmanOrdinaryExecUsesExactStreamContract(t *testing.T) {
 		return nil
 	}}
 
-	ordinaryStdin := strings.NewReader("ordinary input")
+	ordinaryStdin := &eofSessionInput{Reader: strings.NewReader("ordinary input")}
 	ordinaryStdout := &strings.Builder{}
 	ordinaryStderr := &strings.Builder{}
 	if err := podman.Exec(

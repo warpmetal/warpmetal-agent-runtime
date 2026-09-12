@@ -11,9 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 )
@@ -141,7 +143,7 @@ func (e *gatewayTestEngine) Exec(
 	sandboxID string,
 	command string,
 	tty bool,
-	_ io.Reader,
+	_ containers.SessionInput,
 	_ io.Writer,
 	_ io.Writer,
 ) error {
@@ -153,6 +155,12 @@ func (e *gatewayTestEngine) Exec(
 	close(e.executionEnded)
 	return ctx.Err()
 }
+
+type gatewayTestSessionInput struct {
+	io.Reader
+}
+
+func (gatewayTestSessionInput) InterruptRead() error { return nil }
 
 func gatewayTestStore(t *testing.T, grants ...state.LocalGrant) *state.Store {
 	t.Helper()
@@ -185,7 +193,11 @@ func startGatewayRequest(
 ) (gatewayResponse, *bufio.Reader, net.Conn) {
 	t.Helper()
 	server, client := net.Pipe()
-	go gateway.serveConnection(context.Background(), server)
+	go gateway.serveConnection(
+		context.Background(),
+		server,
+		gatewayTestSessionInput{Reader: server},
+	)
 	if err := json.NewEncoder(client).Encode(request); err != nil {
 		t.Fatal(err)
 	}
@@ -195,6 +207,130 @@ func startGatewayRequest(
 		t.Fatal(err)
 	}
 	return response, reader, client
+}
+
+func TestUnixSessionInputInterruptReadPreservesWriteHalf(t *testing.T) {
+	directory, err := os.MkdirTemp("/tmp", "warpmetal-access-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	address := &net.UnixAddr{Name: filepath.Join(directory, "session.sock"), Net: "unix"}
+	listener, err := net.ListenUnix("unix", address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	client, err := net.DialUnix("unix", nil, address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	server, err := listener.AcceptUnix()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+
+	input := unixSessionInput{connection: server}
+	readStarted := make(chan struct{})
+	readReturned := make(chan struct{})
+	go func() {
+		close(readStarted)
+		var buffer [1]byte
+		_, _ = input.Read(buffer[:])
+		close(readReturned)
+	}()
+	<-readStarted
+	if err := input.InterruptRead(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-readReturned:
+	case <-time.After(time.Second):
+		t.Fatal("CloseRead did not interrupt the session input read")
+	}
+
+	if _, err := server.Write([]byte("trailer")); err != nil {
+		t.Fatalf("write half was closed with the read half: %v", err)
+	}
+	if err := client.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	trailer := make([]byte, len("trailer"))
+	if _, err := io.ReadFull(client, trailer); err != nil {
+		t.Fatal(err)
+	}
+	if string(trailer) != "trailer" {
+		t.Fatalf("trailer = %q, want trailer", trailer)
+	}
+}
+
+func TestUnixSessionInputCloseReadFailureFallsBackToFullClose(t *testing.T) {
+	closeReadError := errors.New("close read failed")
+	connection := newCloseReadFailureConnection(closeReadError)
+	t.Cleanup(func() { _ = connection.Close() })
+	input := unixSessionInput{connection: connection}
+	readReturned := make(chan struct{})
+	go func() {
+		var buffer [1]byte
+		_, _ = input.Read(buffer[:])
+		close(readReturned)
+	}()
+	<-connection.readStarted
+
+	err := input.InterruptRead()
+	if !errors.Is(err, closeReadError) {
+		t.Fatalf("interrupt error = %v, want %v", err, closeReadError)
+	}
+	if !connection.fullCloseCalled() {
+		t.Fatal("CloseRead failure did not fall back to full Close")
+	}
+	select {
+	case <-readReturned:
+	case <-time.After(time.Second):
+		t.Fatal("full Close did not unblock the session input read")
+	}
+}
+
+type closeReadFailureConnection struct {
+	closeReadError error
+	readStarted    chan struct{}
+	closed         chan struct{}
+	readOnce       sync.Once
+	closeOnce      sync.Once
+}
+
+func newCloseReadFailureConnection(closeReadError error) *closeReadFailureConnection {
+	return &closeReadFailureConnection{
+		closeReadError: closeReadError,
+		readStarted:    make(chan struct{}),
+		closed:         make(chan struct{}),
+	}
+}
+
+func (c *closeReadFailureConnection) Read(_ []byte) (int, error) {
+	c.readOnce.Do(func() { close(c.readStarted) })
+	<-c.closed
+	return 0, net.ErrClosed
+}
+
+func (c *closeReadFailureConnection) CloseRead() error {
+	return c.closeReadError
+}
+
+func (c *closeReadFailureConnection) Close() error {
+	c.closeOnce.Do(func() { close(c.closed) })
+	return nil
+}
+
+func (c *closeReadFailureConnection) fullCloseCalled() bool {
+	select {
+	case <-c.closed:
+		return true
+	default:
+		return false
+	}
 }
 
 func TestGatewayRoutesInteractiveExecAndSubsystemRequestsOnlyToAssignedSandbox(t *testing.T) {

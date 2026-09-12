@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/access"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 	_ "modernc.org/sqlite"
@@ -74,7 +75,7 @@ func (e *contractEngine) Exec(
 	string,
 	string,
 	bool,
-	io.Reader,
+	containers.SessionInput,
 	io.Writer,
 	io.Writer,
 ) error {

@@ -131,12 +131,33 @@ type gatewayResponse struct {
 	ExitMarker string `json:"exitMarker,omitempty"`
 }
 
+type unixSessionConnection interface {
+	io.Reader
+	CloseRead() error
+	Close() error
+}
+
+type unixSessionInput struct {
+	connection unixSessionConnection
+}
+
+func (i unixSessionInput) Read(value []byte) (int, error) {
+	return i.connection.Read(value)
+}
+
+func (i unixSessionInput) InterruptRead() error {
+	if err := i.connection.CloseRead(); err != nil {
+		return errors.Join(err, i.connection.Close())
+	}
+	return nil
+}
+
 func (g *Gateway) Serve(ctx context.Context, socketPath string) error {
 	if err := os.MkdirAll(filepath.Dir(socketPath), 0755); err != nil {
 		return err
 	}
 	_ = os.Remove(socketPath)
-	listener, err := net.Listen("unix", socketPath)
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath, Net: "unix"})
 	if err != nil {
 		return err
 	}
@@ -149,18 +170,22 @@ func (g *Gateway) Serve(ctx context.Context, socketPath string) error {
 		listener.Close()
 	}()
 	for {
-		connection, err := listener.Accept()
+		connection, err := listener.AcceptUnix()
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
 			return err
 		}
-		go g.serveConnection(ctx, connection)
+		go g.serveConnection(ctx, connection, unixSessionInput{connection: connection})
 	}
 }
 
-func (g *Gateway) serveConnection(parent context.Context, connection net.Conn) {
+func (g *Gateway) serveConnection(
+	parent context.Context,
+	connection net.Conn,
+	input containers.SessionInput,
+) {
 	defer connection.Close()
 	decoder := json.NewDecoder(io.LimitReader(connection, 12*1024))
 	var request gatewayRequest
@@ -200,7 +225,7 @@ func (g *Gateway) serveConnection(parent context.Context, connection net.Conn) {
 		sandbox.ID,
 		request.Command,
 		request.TTY,
-		connection,
+		input,
 		connection,
 		connection,
 	)

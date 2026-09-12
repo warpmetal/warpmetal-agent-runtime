@@ -22,7 +22,13 @@ type Engine interface {
 	Stop(context.Context, string) error
 	Restart(context.Context, string) error
 	Remove(context.Context, string) error
-	Exec(context.Context, string, string, bool, io.Reader, io.Writer, io.Writer) error
+	Exec(context.Context, string, string, bool, SessionInput, io.Writer, io.Writer) error
+}
+
+type SessionInput interface {
+	io.Reader
+	// InterruptRead must guarantee that a currently blocked Read returns.
+	InterruptRead() error
 }
 
 var (
@@ -33,7 +39,7 @@ var (
 type Podman struct {
 	RuntimeUser      string
 	runCommand       func(context.Context, bool, ...string) (string, error)
-	runStreamCommand func(context.Context, bool, io.Reader, io.Writer, io.Writer, ...string) error
+	runStreamCommand func(context.Context, bool, SessionInput, io.Writer, io.Writer, ...string) error
 }
 
 const (
@@ -243,7 +249,7 @@ func (p Podman) Exec(
 	id string,
 	command string,
 	tty bool,
-	stdin io.Reader,
+	stdin SessionInput,
 	stdout io.Writer,
 	stderr io.Writer,
 ) error {
@@ -342,7 +348,7 @@ func (p Podman) runRemoteStreams(
 func (p Podman) runCommandStreams(
 	ctx context.Context,
 	remote bool,
-	stdin io.Reader,
+	stdin SessionInput,
 	stdout io.Writer,
 	stderr io.Writer,
 	args ...string,
@@ -350,10 +356,18 @@ func (p Podman) runCommandStreams(
 	if p.runStreamCommand != nil {
 		return p.runStreamCommand(ctx, remote, stdin, stdout, stderr, args...)
 	}
-	if remote {
-		return p.runRemoteStreams(ctx, stdin, stdout, stderr, args...)
+	runtimeUser := p.RuntimeUser
+	if runtimeUser == "" {
+		runtimeUser = "warpmetal-runtime"
 	}
-	return p.runStreams(ctx, stdin, stdout, stderr, args...)
+	identity, err := user.Lookup(runtimeUser)
+	if err != nil {
+		return fmt.Errorf("lookup runtime user: %w", err)
+	}
+	argv := podmanInvocation(runtimeUser, identity.HomeDir, remote, args...)
+	cmd := exec.CommandContext(ctx, "/usr/sbin/runuser", argv...)
+	configureProcessGroupCancellation(cmd)
+	return runProcessStreams(cmd, stdin, stdout, stderr)
 }
 
 func (p Podman) runAsRuntimeUser(
@@ -374,6 +388,14 @@ func (p Podman) runAsRuntimeUser(
 	}
 	argv := podmanInvocation(runtimeUser, identity.HomeDir, remote, args...)
 	cmd := exec.CommandContext(ctx, "/usr/sbin/runuser", argv...)
+	configureProcessGroupCancellation(cmd)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
+
+func configureProcessGroupCancellation(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
@@ -382,10 +404,52 @@ func (p Podman) runAsRuntimeUser(
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	cmd.WaitDelay = 5 * time.Second
-	cmd.Stdin = stdin
+}
+
+func runProcessStreams(
+	cmd *exec.Cmd,
+	stdin SessionInput,
+	stdout io.Writer,
+	stderr io.Writer,
+) error {
+	childInput, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	return cmd.Run()
+	if err := cmd.Start(); err != nil {
+		_ = childInput.Close()
+		return err
+	}
+
+	inputPumpDone := make(chan error, 1)
+	go func() {
+		_, copyErr := io.Copy(childInput, stdin)
+		inputPumpDone <- copyErr
+		_ = childInput.Close()
+	}()
+
+	waitErr := cmd.Wait()
+	_ = childInput.Close()
+	pumpCompletedBeforeInterrupt := false
+	var pumpErr error
+	select {
+	case pumpErr = <-inputPumpDone:
+		pumpCompletedBeforeInterrupt = true
+	default:
+	}
+	interruptErr := stdin.InterruptRead()
+	if !pumpCompletedBeforeInterrupt {
+		pumpErr = <-inputPumpDone
+	}
+	if waitErr != nil {
+		return waitErr
+	}
+	if !pumpCompletedBeforeInterrupt {
+		pumpErr = nil
+	}
+	return errors.Join(pumpErr, interruptErr)
 }
 
 func podmanInvocation(runtimeUser, home string, remote bool, args ...string) []string {
