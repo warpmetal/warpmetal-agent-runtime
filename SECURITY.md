@@ -33,6 +33,38 @@ tools and provider credentials remain subject to that boundary. A compromised
 program can access the sandbox home, network, and user-owned credentials made
 available to other processes in the same sandbox.
 
+## SSH alias and gateway boundary
+
+A standard OpenSSH alias created from a WarpMetal connection profile is a local
+client configuration, not a new server-side capability. It reaches the same host
+SSH service and locked `warpmetal-sandbox` account used by direct Runtime
+connections. The grant's public key remains forced through
+`warpmetal-sandbox-gateway`, which maps the grant to exactly one sandbox. Runtime
+does not install a sandbox `sshd`, expose an additional port, give the sandbox the
+VPS owner key, or allow the alias to start a host shell.
+
+Both `ssh <alias>` and `ssh <alias> '<command>'` stay behind that forced command.
+The first requests an interactive shell in the assigned sandbox. The second
+passes the client command through `SSH_ORIGINAL_COMMAND` for execution in that
+sandbox and returns its exit status. The alias does not use a client-side
+`RemoteCommand`; server-side grant resolution remains authoritative.
+
+The managed client configuration uses strict pinned host keys, disables password
+and keyboard-interactive authentication, selects only the sandbox identity, and
+clears forwarding. Host SSH policy and forced authorized-key options separately
+deny agent, TCP, stream-local, X11, tunnel, and user-rc forwarding. These controls
+are not weakened for interactive clients, one-shot commands, or GUI clients.
+Revocation denies new authentication and terminates tracked active sessions for
+that grant.
+
+A stale host pin is a hard failure. After an authorized OS reload or host-key
+rotation, the owner must first use the authenticated connection-profile refresh
+and wait for the grant to be applied, then explicitly refresh the local alias.
+Alias refresh trusts only the already-refreshed, control-plane-reported profile;
+it must not learn a replacement key from the live SSH endpoint. Operators and
+clients must not delete the pin, disable strict checking, use `accept-new`, or
+substitute `ssh-keyscan` to recover.
+
 The node credential remains root-only and outside sandbox mounts. Desired state
 contains lifecycle and capacity intent, not executable commands, package
 sources, login input, or provider credentials. Runtime reports sandbox state,

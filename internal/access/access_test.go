@@ -1,15 +1,20 @@
 package access
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 )
 
@@ -71,6 +76,270 @@ func TestRendererRejectsOptionInjection(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected injected key rejection")
+	}
+}
+
+func TestRendererPublishesOnlyActiveGrantKeysThroughTheForcedGateway(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "authorized_keys")
+	renderer := Renderer{Path: path}
+	err := renderer.Write([]state.LocalGrant{
+		{
+			ID:           "grant_active123",
+			SandboxID:    "sbx_assigned123",
+			SSHPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA active",
+			DesiredState: "active",
+		},
+		{
+			ID:           "grant_revoked123",
+			SandboxID:    "sbx_assigned123",
+			SSHPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB revoked",
+			DesiredState: "revoked",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	if strings.Count(text, "command=\"") != 1 ||
+		!strings.Contains(text, `command="/usr/libexec/warpmetal-sandbox-gateway grant_active123"`) ||
+		strings.Contains(text, "grant_revoked123") || strings.Contains(text, "BBBBBBBB") {
+		t.Fatalf("authorized keys did not expose exactly the active forced grant: %s", text)
+	}
+}
+
+type gatewayExecCall struct {
+	sandboxID string
+	command   string
+	tty       bool
+}
+
+type gatewayTestEngine struct {
+	calls               chan gatewayExecCall
+	waitForCancellation bool
+	executionEnded      chan struct{}
+}
+
+func (e *gatewayTestEngine) Ensure(context.Context, model.Sandbox, string, string) error {
+	return nil
+}
+
+func (e *gatewayTestEngine) Replace(context.Context, model.Sandbox, string, string, bool) error {
+	return nil
+}
+
+func (e *gatewayTestEngine) Start(context.Context, string) error   { return nil }
+func (e *gatewayTestEngine) Stop(context.Context, string) error    { return nil }
+func (e *gatewayTestEngine) Restart(context.Context, string) error { return nil }
+func (e *gatewayTestEngine) Remove(context.Context, string) error  { return nil }
+
+func (e *gatewayTestEngine) Exec(
+	ctx context.Context,
+	sandboxID string,
+	command string,
+	tty bool,
+	_ io.Reader,
+	_ io.Writer,
+	_ io.Writer,
+) error {
+	e.calls <- gatewayExecCall{sandboxID: sandboxID, command: command, tty: tty}
+	if !e.waitForCancellation {
+		return nil
+	}
+	<-ctx.Done()
+	close(e.executionEnded)
+	return ctx.Err()
+}
+
+func gatewayTestStore(t *testing.T, grants ...state.LocalGrant) *state.Store {
+	t.Helper()
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.PutSandbox(context.Background(), state.LocalSandbox{
+		ID:            "sbx_assigned123",
+		Name:          "assigned",
+		DesiredState:  "running",
+		ObservedState: "running",
+		Lifetime:      "persistent",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, grant := range grants {
+		if err := store.PutGrant(context.Background(), grant); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return store
+}
+
+func startGatewayRequest(
+	t *testing.T,
+	gateway *Gateway,
+	request gatewayRequest,
+) (gatewayResponse, *bufio.Reader, net.Conn) {
+	t.Helper()
+	server, client := net.Pipe()
+	go gateway.serveConnection(context.Background(), server)
+	if err := json.NewEncoder(client).Encode(request); err != nil {
+		t.Fatal(err)
+	}
+	reader := bufio.NewReader(client)
+	var response gatewayResponse
+	if err := json.NewDecoder(reader).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	return response, reader, client
+}
+
+func TestGatewayRoutesInteractiveExecAndSubsystemRequestsOnlyToAssignedSandbox(t *testing.T) {
+	grant := state.LocalGrant{
+		ID:            "grant_active123",
+		SandboxID:     "sbx_assigned123",
+		SSHPublicKey:  "ssh-ed25519 fixture",
+		DesiredState:  "active",
+		ObservedState: "applied",
+	}
+	engine := &gatewayTestEngine{calls: make(chan gatewayExecCall, 1)}
+	gateway := &Gateway{Store: gatewayTestStore(t, grant), Engine: engine}
+	tests := []struct {
+		name    string
+		command string
+		tty     bool
+	}{
+		{name: "interactive empty command", command: "", tty: true},
+		{name: "one-shot command", command: "printf assigned", tty: false},
+		{name: "SFTP subsystem", command: "internal-sftp", tty: false},
+		{name: "OpenSSH SFTP server", command: "/usr/lib/openssh/sftp-server", tty: false},
+		{name: "SCP sink", command: "scp -t /home/agent/workspace", tty: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response, reader, connection := startGatewayRequest(t, gateway, gatewayRequest{
+				GrantID: grant.ID,
+				Command: test.command,
+				TTY:     test.tty,
+			})
+			defer connection.Close()
+			if !response.OK || response.Error != "" || response.ExitMarker == "" {
+				t.Fatalf("gateway rejected assigned request: %#v", response)
+			}
+			call := <-engine.calls
+			if call != (gatewayExecCall{
+				sandboxID: "sbx_assigned123",
+				command:   test.command,
+				tty:       test.tty,
+			}) {
+				t.Fatalf("request escaped or changed assigned sandbox: %#v", call)
+			}
+			if _, err := io.ReadAll(reader); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestGatewayDeniesUnknownAndRevokedGrantsBeforeContainerExec(t *testing.T) {
+	revoked := state.LocalGrant{
+		ID:            "grant_revoked123",
+		SandboxID:     "sbx_assigned123",
+		SSHPublicKey:  "ssh-ed25519 fixture",
+		DesiredState:  "revoked",
+		ObservedState: "revoked",
+	}
+	engine := &gatewayTestEngine{calls: make(chan gatewayExecCall, 1)}
+	gateway := &Gateway{Store: gatewayTestStore(t, revoked), Engine: engine}
+	for _, grantID := range []string{"grant_unknown123", revoked.ID} {
+		response, reader, connection := startGatewayRequest(t, gateway, gatewayRequest{
+			GrantID: grantID,
+			Command: "id",
+		})
+		if response.OK || response.Error != "access_grant_unavailable" || response.ExitMarker != "" {
+			connection.Close()
+			t.Fatalf("unavailable grant was not denied: %#v", response)
+		}
+		if _, err := io.ReadAll(reader); err != nil {
+			connection.Close()
+			t.Fatal(err)
+		}
+		connection.Close()
+		select {
+		case call := <-engine.calls:
+			t.Fatalf("unavailable grant reached container exec: %#v", call)
+		default:
+		}
+	}
+}
+
+func TestActiveGatewaySessionTerminationWaitsForExecToEndAndBlocksReplay(t *testing.T) {
+	grant := state.LocalGrant{
+		ID:            "grant_active123",
+		SandboxID:     "sbx_assigned123",
+		SSHPublicKey:  "ssh-ed25519 fixture",
+		DesiredState:  "active",
+		ObservedState: "applied",
+	}
+	store := gatewayTestStore(t, grant)
+	engine := &gatewayTestEngine{
+		calls:               make(chan gatewayExecCall, 1),
+		waitForCancellation: true,
+		executionEnded:      make(chan struct{}),
+	}
+	gateway := &Gateway{Store: store, Engine: engine}
+	response, reader, connection := startGatewayRequest(t, gateway, gatewayRequest{
+		GrantID: grant.ID,
+		Command: "long-running",
+	})
+	defer connection.Close()
+	if !response.OK {
+		t.Fatalf("active session was rejected: %#v", response)
+	}
+	if call := <-engine.calls; call.sandboxID != "sbx_assigned123" {
+		t.Fatalf("active session reached wrong sandbox: %#v", call)
+	}
+	grant.DesiredState = "revoked"
+	grant.ObservedState = "revoking"
+	if err := store.PutGrant(context.Background(), grant); err != nil {
+		t.Fatal(err)
+	}
+	streamEnded := make(chan error, 1)
+	go func() {
+		_, err := io.ReadAll(reader)
+		streamEnded <- err
+	}()
+	terminated := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		terminated <- gateway.TerminateGrant(ctx, grant.ID)
+	}()
+	select {
+	case <-engine.executionEnded:
+	case <-time.After(time.Second):
+		t.Fatal("revocation did not cancel active container execution")
+	}
+	if err := <-streamEnded; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-terminated; err != nil {
+		t.Fatal(err)
+	}
+
+	replay, replayReader, replayConnection := startGatewayRequest(t, gateway, gatewayRequest{
+		GrantID: grant.ID,
+		Command: "replay",
+	})
+	defer replayConnection.Close()
+	if replay.OK || replay.Error != "access_grant_unavailable" {
+		t.Fatalf("revoked grant replay was not denied: %#v", replay)
+	}
+	if _, err := io.ReadAll(replayReader); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -142,5 +411,52 @@ func TestPackagedSSHMatchBlockReturnsToGlobalScope(t *testing.T) {
 	if permitUserEnvironment == -1 || matchStart == -1 || matchEnd == -1 ||
 		permitUserEnvironment > matchStart || matchStart > matchEnd {
 		t.Fatalf("PermitUserEnvironment must be global, before the sandbox Match block: %s", text)
+	}
+}
+
+func TestPackagedSSHBoundaryDeniesPasswordsForwardingAndHostSubsystemBypass(t *testing.T) {
+	content, err := os.ReadFile("../../packaging/sshd/warpmetal-sandbox.conf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, directive := range []string{
+		"Match User warpmetal-sandbox",
+		"AuthorizedKeysFile /etc/ssh/warpmetal-runtime/authorized_keys",
+		"AuthenticationMethods publickey",
+		"PasswordAuthentication no",
+		"KbdInteractiveAuthentication no",
+		"DisableForwarding yes",
+		"AllowAgentForwarding no",
+		"AllowTcpForwarding no",
+		"AllowStreamLocalForwarding no",
+		"PermitTunnel no",
+		"GatewayPorts no",
+		"X11Forwarding no",
+		"PermitUserRC no",
+		"PermitTTY yes",
+	} {
+		if strings.Count(text, directive) != 1 {
+			t.Fatalf("SSH boundary must contain exactly one %q: %s", directive, text)
+		}
+	}
+	for _, forbidden := range []string{
+		"PasswordAuthentication yes",
+		"KbdInteractiveAuthentication yes",
+		"AllowAgentForwarding yes",
+		"AllowTcpForwarding yes",
+		"AllowStreamLocalForwarding yes",
+		"PermitTunnel yes",
+		"GatewayPorts yes",
+		"X11Forwarding yes",
+		"ForceCommand internal-sftp",
+		"Subsystem sftp",
+		"TrustedUserCAKeys",
+		"AuthorizedPrincipalsFile",
+		"HostbasedAuthentication yes",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("SSH boundary introduced alternate access %q: %s", forbidden, text)
+		}
 	}
 }

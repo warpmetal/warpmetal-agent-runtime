@@ -44,6 +44,47 @@ seccomp, network, cgroup, and host-socket restrictions. Provider credentials
 remain user-owned files or process environment inside the workspace and must
 never be sent through desired state, registration, or runtime reports.
 
+## Standard SSH aliases use the forced gateway
+
+A WarpMetal CLI-managed OpenSSH alias is only a client-side view of an existing,
+pinned sandbox connection profile and its sandbox-specific private key. It does
+not add another Runtime access path. The alias connects to the host's existing
+SSH service as the locked `warpmetal-sandbox` account, where the public key is
+already bound to one opaque grant ID and forced through
+`warpmetal-sandbox-gateway`. Runtime does not start `sshd` in a sandbox, open a
+new port, copy or expose the VPS owner key, or provide a host shell.
+
+The two supported session forms retain the same grant and sandbox boundary:
+
+```sh
+ssh <alias>
+ssh <alias> '<command>'
+```
+
+An empty SSH command requests the assigned sandbox's interactive shell. A
+supplied command becomes `SSH_ORIGINAL_COMMAND` and is executed inside that same
+sandbox; its exit status is returned to the SSH client. The client alias does
+not set `RemoteCommand`, so it can support both forms. It uses strict pinned host
+keys and clears forwarding. Host SSH policy and each forced authorized-key entry
+also deny agent, TCP, stream-local, X11, tunnel, and user-rc forwarding. Adding
+an alias does not relax those controls.
+
+Access remains grant-scoped. Revoking a grant denies new connections and causes
+the supervisor to terminate its tracked active sessions without deleting the
+sandbox workspace. Each separately delegated sandbox should use its own key and
+grant; neither is an owner-management credential.
+
+After an OS reload or another authorized host-key rotation, never bypass a stale
+pin or delete it to make SSH connect. First reinstall Runtime, wait for the
+retained grant to become `applied`, and use the authenticated
+`warpmetal sandbox access refresh --confirm REFRESH` flow to replace the
+connection profile with control-plane-reported host keys. Then explicitly
+refresh the managed alias with
+`warpmetal sandbox access install-ssh --confirm REFRESH`. Alias refresh consumes
+that already-refreshed profile; it does not observe or trust a host key from the
+network. Do not use `StrictHostKeyChecking=no`, `accept-new`, or `ssh-keyscan` as
+a recovery shortcut.
+
 Build and test on Linux with Go 1.25 or newer:
 
 ```sh
