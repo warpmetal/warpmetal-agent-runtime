@@ -58,7 +58,7 @@ func (f *fakeEngine) Exec(
 	_ string,
 	command string,
 	_ bool,
-	_ io.Reader,
+	_ containers.SessionInput,
 	stdout io.Writer,
 	_ io.Writer,
 ) error {
