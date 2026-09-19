@@ -1,6 +1,7 @@
 package containers
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -22,6 +23,8 @@ type Engine interface {
 	Stop(context.Context, string) error
 	Restart(context.Context, string) error
 	Remove(context.Context, string) error
+	Preflight(context.Context, string) error
+	ExecSetup(context.Context, string, []byte) ([]byte, []byte, error)
 	Exec(context.Context, string, string, bool, SessionInput, io.Writer, io.Writer) error
 }
 
@@ -43,12 +46,41 @@ type Podman struct {
 }
 
 const (
-	podmanRuntimeDirectory = "/run/warpmetal-podman"
-	podmanRunRoot          = "/run/warpmetal-podman/containers"
-	podmanSocket           = "unix:///run/warpmetal-podman/podman.sock"
-	podmanCgroupParent     = "/system.slice/warpmetal-podman.service"
-	imageDigestLabel       = "io.warpmetal.image-digest"
+	podmanRuntimeDirectory       = "/run/warpmetal-podman"
+	podmanRunRoot                = "/run/warpmetal-podman/containers"
+	podmanSocket                 = "unix:///run/warpmetal-podman/podman.sock"
+	podmanCgroupParent           = "/system.slice/warpmetal-podman.service"
+	imageDigestLabel             = "io.warpmetal.image-digest"
+	maxSetupRequestBytes         = 64 * 1024
+	maxSetupReceiptBytes         = 64 * 1024
+	maxSetupDiagnosticBytes      = 16 * 1024
+	setupOperationTimeout        = 10 * time.Minute
+	nestedPreflightTimeout       = 30 * time.Second
+	nestedSandboxPreflightMarker = "warpmetal-nested-sandbox-preflight-v1"
+	capabilityLauncherPath       = "/usr/local/libexec/warpmetal-capability-launcher"
 )
+
+// New images own the launcher on the read-only root. Legacy pinned images keep
+// their ordinary shell behavior. User shell options/commands are separate argv
+// and are never incorporated into the fixed dispatch program.
+const capabilityLauncherDispatch = `if [ -x /usr/local/libexec/warpmetal-capability-launcher ]; then
+exec /usr/local/libexec/warpmetal-capability-launcher /bin/sh "$@"
+fi
+exec /bin/sh "$@"`
+
+const nestedSandboxPreflightScript = `set -eu
+grep -Eq '^CapEff:[[:space:]]+0+$' /proc/self/status
+grep -Eq '^CapBnd:[[:space:]]+0+$' /proc/self/status
+grep -Eq '^NoNewPrivs:[[:space:]]+1$' /proc/self/status
+test -r /proc/self/status
+probe=$(mktemp -d /home/agent/.warpmetal-nested-sandbox-preflight.XXXXXX)
+trap 'rm -rf -- "$probe"' EXIT HUP INT TERM
+printf '%s\n' workspace-ok > "$probe/workspace"
+test "$(cat "$probe/workspace")" = workspace-ok
+if (umask 077 && : > /etc/warpmetal-nested-sandbox-preflight) 2>/dev/null; then
+  exit 41
+fi
+printf '%s\n' ` + nestedSandboxPreflightMarker
 
 func (p Podman) Ensure(
 	ctx context.Context,
@@ -244,6 +276,41 @@ func (p Podman) Remove(ctx context.Context, id string) error {
 	return p.removeContainer(ctx, containerName(id))
 }
 
+// Preflight is a credential-free readiness oracle for the immutable nested
+// Bubblewrap helper. It runs only fixed Runtime-owned argv as UID/GID 1000
+// inside the already hardened Agent Box. Readiness fails unless Bubblewrap can
+// create its nested namespaces while inheriting the already-isolated outer
+// procfs, write only the approved workspace, and remains unable to write the
+// read-only image root. Inheriting procfs matches Codex's documented
+// restrictive-container fallback when a nested procfs mount is unavailable.
+func (p Podman) Preflight(ctx context.Context, id string) error {
+	preflightContext, cancel := context.WithTimeout(ctx, nestedPreflightTimeout)
+	defer cancel()
+	output, err := p.runOutput(
+		preflightContext,
+		true,
+		"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent",
+		containerName(id), capabilityLauncherPath, "/usr/local/libexec/warpmetal-bwrap",
+		"--die-with-parent", "--new-session",
+		"--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
+		"--unshare-cgroup-try", "--uid", "1000", "--gid", "1000",
+		"--ro-bind", "/", "/",
+		"--bind", "/home/agent", "/home/agent",
+		"--ro-bind", "/proc", "/proc", "--dev", "/dev",
+		"--tmpfs", "/tmp", "--chdir", "/home/agent",
+		"--clearenv", "--setenv", "HOME", "/home/agent",
+		"--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin",
+		"/bin/sh", "-ec", nestedSandboxPreflightScript,
+	)
+	if err != nil {
+		return fmt.Errorf("nested sandbox preflight: %w", err)
+	}
+	if strings.TrimSpace(output) != nestedSandboxPreflightMarker {
+		return errors.New("nested sandbox preflight returned an invalid completion marker")
+	}
+	return nil
+}
+
 func (p Podman) Exec(
 	ctx context.Context,
 	id string,
@@ -266,13 +333,75 @@ func execArguments(id, command string, tty bool) []string {
 	if tty {
 		args = append(args, "-t")
 	}
-	args = append(args, containerName(id), "/bin/sh")
+	args = append(args, containerName(id), "/bin/sh", "-c", capabilityLauncherDispatch, "warpmetal-shell")
 	if command == "" {
 		args = append(args, "-l")
 	} else {
 		args = append(args, "-lc", command)
 	}
 	return args
+}
+
+// ExecSetup is the only container execution path available to setup
+// reconciliation. The caller can select a sandbox and provide JSON stdin, but
+// cannot influence the executable, argv, uid, working directory, timeout, or
+// output limits.
+func (p Podman) ExecSetup(
+	ctx context.Context,
+	id string,
+	request []byte,
+) ([]byte, []byte, error) {
+	if len(request) == 0 || len(request) > maxSetupRequestBytes {
+		return nil, nil, errors.New("setup request exceeds the allowed size")
+	}
+	executionContext, cancel := context.WithTimeout(ctx, setupOperationTimeout)
+	defer cancel()
+	receipt := &boundedBuffer{maximum: maxSetupReceiptBytes}
+	diagnostic := &boundedBuffer{maximum: maxSetupDiagnosticBytes}
+	args := []string{
+		"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent",
+		containerName(id), "/usr/local/libexec/warpmetal-capability-launcher",
+		"/usr/local/bin/warpmetal-setup-runner",
+	}
+	err := p.runRemoteStreams(
+		executionContext,
+		bytes.NewReader(request),
+		receipt,
+		diagnostic,
+		args...,
+	)
+	if receipt.overflow || diagnostic.overflow {
+		err = errors.Join(err, errors.New("setup runner output exceeds the allowed size"))
+	}
+	if err != nil {
+		return receipt.Bytes(), diagnostic.Bytes(), err
+	}
+	return receipt.Bytes(), diagnostic.Bytes(), nil
+}
+
+type boundedBuffer struct {
+	buffer   bytes.Buffer
+	maximum  int
+	overflow bool
+}
+
+func (w *boundedBuffer) Write(content []byte) (int, error) {
+	remaining := w.maximum - w.buffer.Len()
+	if remaining <= 0 {
+		w.overflow = true
+		return len(content), nil
+	}
+	if len(content) > remaining {
+		w.overflow = true
+		_, _ = w.buffer.Write(content[:remaining])
+		return len(content), nil
+	}
+	_, _ = w.buffer.Write(content)
+	return len(content), nil
+}
+
+func (w *boundedBuffer) Bytes() []byte {
+	return append([]byte(nil), w.buffer.Bytes()...)
 }
 
 func (p Podman) run(ctx context.Context, stdin io.Reader, args ...string) error {
@@ -499,7 +628,7 @@ func createArguments(
 		"--workdir", "/home/agent",
 		"--entrypoint", "/bin/sh",
 		imageDigest,
-		"-c", "trap : TERM INT; sleep infinity & wait",
+		"-c", capabilityLauncherDispatch, "warpmetal-shell", "-c", "trap : TERM INT; sleep infinity & wait",
 	}
 }
 

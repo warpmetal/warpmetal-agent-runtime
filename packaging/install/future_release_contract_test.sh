@@ -44,14 +44,18 @@ do
     'no host container-runtime socket is exposed'
   require_document_fact \
     "$document" \
-    'Runtime does not install|owner[^.\n]*responsib|user[^.\n]*responsib' \
-    'users own software installation and Runtime does not install tools'
+    'owner[^.\n]*responsib|user[^.\n]*responsib|user owns|user-owned' \
+    'users own software configuration and credentials'
+  require_document_fact "$document" 'setup operation|setup materializer' \
+    'setup is a closed, explicit operation'
+  require_document_fact "$document" '/usr/local/libexec/warpmetal-bwrap' \
+    'nested policy attaches only to the exact immutable helper'
 done
 
 if grep -Eiq \
-  'nested-private-procfs|apparmor|cliTools|tool[- ]selection|tool readiness|allToolsInstalled|toolManifest|preinstall(ed|ation)' \
+  'allToolsInstalled|toolManifest|tool readiness' \
   "$runtime_readme" "$security_policy"; then
-  fail 'Runtime documentation retains a nested-policy or tool-selection/readiness promise'
+  fail 'Runtime documentation retains retired tool-report readiness promises'
 fi
 
 for base_source in \
@@ -68,19 +72,19 @@ do
   [ -s "$base_source" ] || fail "missing future Runtime base source: $base_source"
 done
 
-for removed_source in \
-  cmd/warpmetal-policy-metadata \
-  internal/toolreport \
-  packaging/apparmor \
-  packaging/install/warpmetal-apparmor-policy.sh
-do
-  [ ! -e "$removed_source" ] || fail "obsolete future Runtime source remains: $removed_source"
-done
+[ ! -e internal/toolreport ] || fail 'retired image tool-report executor remains'
 
-if grep -Eiq 'nested-private-procfs|apparmor|warpmetal-policy-metadata|tool[_-]report' \
+if grep -Eiq 'tool[_-]report|apparmor=unconfined|seccomp=unconfined|CAP_SYS_ADMIN|sysctl[[:space:]]+-w' \
   "$installer" "$release_workflow"; then
-  fail 'future installer or release workflow retains nested-policy/tool-report behavior'
+  fail 'installer or release workflow weakens isolation or executes retired tool reports'
 fi
+
+# The signed bundle supplies the only policy and metadata helper; no manifest,
+# workspace, environment override, or mutable download can select another path.
+grep -Fqx 'nested_private_procfs=preserve' "$installer" || fail 'policy default is not preserve'
+grep -Fqx '      apparmor_policy_destination=/etc/apparmor.d/warpmetal-agent-runtime-bwrap' "$installer" || fail 'policy destination is not closed'
+grep -Fqx '      apparmor_metadata_helper=$bundle_dir/warpmetal-policy-metadata' "$installer" || fail 'metadata helper is not bundle-owned'
+sh packaging/apparmor/profile_test.sh
 
 if find cmd internal -type f -name '*.go' ! -name '*_test.go' \
   -exec grep -HnE 'ToolReport|toolreport|warpmetal-agent-tool-report' {} +; then
@@ -92,9 +96,13 @@ actual_members=$(
 )
 expected_members=$(cat <<'EOF'
 install.sh
+nested-private-procfs-oracle.sh
+warpmetal-agent-runtime-bwrap
 warpmetal-agentctl
+warpmetal-apparmor-policy.sh
 warpmetal-podman-service
 warpmetal-podman.service
+warpmetal-policy-metadata
 warpmetal-sandbox-gateway
 warpmetal-sandbox-shell
 warpmetal-sandbox.conf

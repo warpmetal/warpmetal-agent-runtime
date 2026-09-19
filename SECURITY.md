@@ -24,8 +24,11 @@ The outer rootless Podman container is the Runtime boundary.
 Sandbox processes run as UID/GID 1000 with a read-only root.
 `/home/agent` is the persistent workspace.
 No host container runtime socket is exposed.
-Runtime does not install, configure, or authenticate user tools; each user owns
-their installation, configuration, authentication, updates, and removal.
+Runtime accepts only explicit setup operations containing bounded, digest-pinned
+generic materializers. A fixed image-owned runner installs their artifacts as
+UID/GID 1000 inside the sandbox; the host never executes an artifact or accepts
+caller-selected commands. Each user owns configuration, authentication,
+credentials, updates, and removal outside those explicit operations.
 
 The container also drops capabilities, sets no-new-privileges, applies the
 default seccomp policy, isolates networking, and enforces resource limits. User
@@ -66,10 +69,13 @@ clients must not delete the pin, disable strict checking, use `accept-new`, or
 substitute `ssh-keyscan` to recover.
 
 The node credential remains root-only and outside sandbox mounts. Desired state
-contains lifecycle and capacity intent, not executable commands, package
-sources, login input, or provider credentials. Runtime reports sandbox state,
-generation, image identity, timestamps, errors, host keys, and grants; it does
-not probe installed user software or return its output.
+contains lifecycle and capacity intent plus validated setup materializers with
+immutable artifact hashes and HTTPS sources, never executable commands, login
+input, or provider credentials. Runtime reports sandbox state, generation,
+image identity, timestamps, errors, host keys, grants, and bounded setup receipt
+identities and digests. It does not probe arbitrary installed user software or
+return tool output. Retired tool-selection fields remain passive and are never
+reported or executed.
 
 ## Installer and upgrades
 
@@ -88,8 +94,21 @@ operator review.
 The installer also treats existing persistent WarpMetal sandboxes as protected
 upgrade state. It starts the private Podman service when needed but does not
 restart an already-active service, avoiding a systemd cgroup teardown of live
-sandboxes during a supervisor upgrade. It does not change host user-namespace
-policy or install a host policy for software running inside a sandbox.
+sandboxes during a supervisor upgrade. The default policy mode is `preserve`.
+An explicit signed-installer `--nested-private-procfs enable` operation can load
+only the bundled policy attached to `/usr/local/libexec/warpmetal-bwrap` on
+supported amd64 hosts. It grants no outer container capabilities and forces
+descendant executables into a capability-denying profile. The helper path is
+owned by the trusted immutable image; no sandbox or setup field can select a
+policy or executable path. The policy is host-scoped, so immutable image trust
+remains a control-plane responsibility.
+
+Policy enable/disable uses root-only durable snapshots and restores the exact
+prior file metadata and loaded state on failure. Explicit disable restores the
+pre-enable state. Neither mode disables AppArmor, modifies global user-namespace
+sysctls, relaxes seccomp, exposes a runtime socket, or restarts the private Podman
+service. Agent setup preflight fails closed if the fixed nested helper cannot
+retain the read-only root, writable workspace, and empty capability sets.
 
 Signed v0.1.25 and v0.1.26 archives are immutable historical artifacts and are
 not rebuilt or edited by future source changes. Operators should install only

@@ -133,10 +133,14 @@ func (e *gatewayTestEngine) Replace(context.Context, model.Sandbox, string, stri
 	return nil
 }
 
-func (e *gatewayTestEngine) Start(context.Context, string) error   { return nil }
-func (e *gatewayTestEngine) Stop(context.Context, string) error    { return nil }
-func (e *gatewayTestEngine) Restart(context.Context, string) error { return nil }
-func (e *gatewayTestEngine) Remove(context.Context, string) error  { return nil }
+func (e *gatewayTestEngine) Start(context.Context, string) error     { return nil }
+func (e *gatewayTestEngine) Stop(context.Context, string) error      { return nil }
+func (e *gatewayTestEngine) Restart(context.Context, string) error   { return nil }
+func (e *gatewayTestEngine) Remove(context.Context, string) error    { return nil }
+func (e *gatewayTestEngine) Preflight(context.Context, string) error { return nil }
+func (e *gatewayTestEngine) ExecSetup(context.Context, string, []byte) ([]byte, []byte, error) {
+	return nil, nil, nil
+}
 
 func (e *gatewayTestEngine) Exec(
 	ctx context.Context,

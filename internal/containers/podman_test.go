@@ -45,7 +45,7 @@ func TestCreateArgumentsKeepRootlessIdentityAndIsolation(t *testing.T) {
 		"--workdir", "/home/agent",
 		"--entrypoint", "/bin/sh",
 		"registry.example/agent@sha256:example",
-		"-c", "trap : TERM INT; sleep infinity & wait",
+		"-c", capabilityLauncherDispatch, "warpmetal-shell", "-c", "trap : TERM INT; sleep infinity & wait",
 	}
 	if !reflect.DeepEqual(arguments, wantArguments) {
 		t.Fatalf("Podman create arguments changed:\n got: %#v\nwant: %#v", arguments, wantArguments)
@@ -76,9 +76,21 @@ func TestCreateArgumentsKeepRootlessIdentityAndIsolation(t *testing.T) {
 			t.Fatalf("missing hardened Podman arguments %q %q: %#v", pair[0], pair[1], arguments)
 		}
 	}
-	for _, forbidden := range []string{"--privileged", "--network=host", "--pid=host"} {
-		if slices.Contains(arguments, forbidden) {
-			t.Fatalf("unsafe Podman argument %q was present", forbidden)
+	for _, forbidden := range []string{
+		"--privileged",
+		"--network=host",
+		"--pid=host",
+		"--ipc=host",
+		"--uts=host",
+		"--cap-add=ALL",
+		"--cap-add",
+		"apparmor=unconfined",
+		"seccomp=unconfined",
+		"--sysctl",
+		"kernel.apparmor_restrict_unprivileged_userns=0",
+	} {
+		if slices.Contains(arguments, forbidden) || strings.Contains(strings.Join(arguments, " "), forbidden) {
+			t.Fatalf("unsafe Podman argument %q was present: %#v", forbidden, arguments)
 		}
 	}
 }
@@ -488,9 +500,71 @@ func TestPodmanOrdinaryExecUsesExactStreamContract(t *testing.T) {
 		t.Fatalf("ordinary exec stream contract changed: %#v", calls)
 	}
 	wantOrdinaryArgs := []string{
-		"exec", "-i", "-t", "warpmetal-sbx_example123", "/bin/sh", "-lc", "printf ordinary",
+		"exec", "-i", "-t", "warpmetal-sbx_example123", "/bin/sh", "-c",
+		capabilityLauncherDispatch, "warpmetal-shell", "-lc", "printf ordinary",
 	}
 	if !reflect.DeepEqual(calls[0].args, wantOrdinaryArgs) {
 		t.Fatalf("ordinary exec arguments changed:\n got: %#v\nwant: %#v", calls[0].args, wantOrdinaryArgs)
+	}
+}
+
+func TestShellDispatchKeepsUserCommandOutsideFixedHelperSelection(t *testing.T) {
+	command := "printf '%s' \"$(touch /tmp/must-not-run-by-dispatch)\"; exit 19"
+	args := execArguments("sbx_example123", command, false)
+	want := []string{"exec", "-i", "warpmetal-sbx_example123", "/bin/sh", "-c",
+		capabilityLauncherDispatch, "warpmetal-shell", "-lc", command}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("command escaped its argv boundary: %#v", args)
+	}
+	if strings.Contains(capabilityLauncherDispatch, command) ||
+		!strings.Contains(capabilityLauncherDispatch, `exec /bin/sh "$@"`) ||
+		!strings.Contains(capabilityLauncherDispatch, `exec /usr/local/libexec/warpmetal-capability-launcher /bin/sh "$@"`) {
+		t.Fatalf("dispatcher does not retain closed current/legacy shell branches: %s", capabilityLauncherDispatch)
+	}
+}
+
+func TestNestedSandboxPreflightUsesImmutableHelperAndClosedOracle(t *testing.T) {
+	var remote bool
+	var arguments []string
+	podman := Podman{runCommand: func(_ context.Context, isRemote bool, args ...string) (string, error) {
+		remote = isRemote
+		arguments = append([]string(nil), args...)
+		return nestedSandboxPreflightMarker + "\n", nil
+	}}
+	if err := podman.Preflight(context.Background(), "sbx_example123"); err != nil {
+		t.Fatal(err)
+	}
+	if !remote {
+		t.Fatal("nested sandbox preflight did not use the private Podman service")
+	}
+	joined := strings.Join(arguments, " ")
+	for _, required := range []string{
+		"exec -i --user 1000:1000 --workdir /home/agent warpmetal-sbx_example123",
+		"/usr/local/libexec/warpmetal-capability-launcher",
+		"/usr/local/libexec/warpmetal-bwrap",
+		"--unshare-user", "--unshare-pid", "--ro-bind /proc /proc",
+		"--ro-bind / /", "--bind /home/agent /home/agent",
+		"nested-sandbox-preflight",
+	} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("nested preflight is missing %q: %#v", required, arguments)
+		}
+	}
+	for _, forbidden := range []string{
+		"--privileged", "--cap-add=ALL", "apparmor=unconfined",
+		"seccomp=unconfined", "docker.sock", "podman.sock",
+	} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("nested preflight contains forbidden relaxation %q: %#v", forbidden, arguments)
+		}
+	}
+}
+
+func TestNestedSandboxPreflightRejectsMissingMarker(t *testing.T) {
+	podman := Podman{runCommand: func(context.Context, bool, ...string) (string, error) {
+		return "unexpected output\n", nil
+	}}
+	if err := podman.Preflight(context.Background(), "sbx_example123"); err == nil {
+		t.Fatal("nested sandbox preflight accepted a missing completion marker")
 	}
 }

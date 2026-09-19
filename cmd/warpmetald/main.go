@@ -28,6 +28,11 @@ import (
 
 var version = "dev"
 
+const (
+	controlPlaneTimeout = 45 * time.Second
+	reconcileTimeout    = 10*time.Minute + 5*time.Second
+)
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "register" {
 		if err := register(os.Args[2:]); err != nil {
@@ -150,16 +155,22 @@ func serve(arguments []string) error {
 				return fmt.Errorf("gateway stopped: %w", err)
 			}
 		case <-ticker.C:
-			iteration, cancel := context.WithTimeout(ctx, 45*time.Second)
-			err := reconciler.Expire(iteration)
+			expireContext, cancelExpire := context.WithTimeout(ctx, controlPlaneTimeout)
+			err := reconciler.Expire(expireContext)
+			cancelExpire()
 			var manifest model.Manifest
 			if err == nil {
-				manifest, err = client.Manifest(iteration)
+				manifestContext, cancelManifest := context.WithTimeout(ctx, controlPlaneTimeout)
+				manifest, err = client.Manifest(manifestContext)
+				cancelManifest()
 			}
 			if err == nil {
-				err = reconciler.Reconcile(iteration, manifest)
+				reconcileContext, cancelReconcile := context.WithTimeout(ctx, reconcileTimeout)
+				err = reconciler.Reconcile(reconcileContext, manifest)
+				cancelReconcile()
 			}
-			report, reportErr := reconciler.Report(iteration, settings.ServerID, version)
+			reportContext, cancelReport := context.WithTimeout(ctx, controlPlaneTimeout)
+			report, reportErr := reconciler.Report(reportContext, settings.ServerID, version)
 			report.HostKeys = hostKeys
 			if manifest.ImageDigest != "" {
 				report.ImageDigest = manifest.ImageDigest
@@ -171,9 +182,9 @@ func serve(arguments []string) error {
 				}
 			}
 			if reportErr == nil {
-				reportErr = client.Report(iteration, report)
+				reportErr = client.Report(reportContext, report)
 			}
-			cancel()
+			cancelReport()
 			if reportErr != nil {
 				log.Printf("runtime report failed: %s", bounded(reportErr.Error()))
 			}

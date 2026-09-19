@@ -32,14 +32,49 @@ to the owner of one server.
 - The root supervisor performs ext4 mount operations through PID 1's host mount
   namespace so the separate rootless engine sees only the intended workspace
   mounts; the rest of the supervisor stays inside its hardened mount namespace.
+- On amd64 hosts that actively enforce AppArmor's restricted-unprivileged-userns
+  control, an explicit signed-installer option can load a narrowly attached
+  policy for the exact root-owned `/usr/local/libexec/warpmetal-bwrap` helper in
+  the signed sandbox image. Bubblewrap may construct its inner namespaces and
+  mounts, but every descendant is forcibly stacked with a capability-denying
+  profile. The Agent Box keeps every capability set, including the bounding
+  set, empty. The policy does not attach to `/usr/bin/bwrap`, workspace
+  binaries, or generic `unshare`, and it does not add a container capability.
+  Codex and Claude Code use the same provider-neutral immutable helper; neither
+  receives a broader host privilege.
+
+## Automatic sandbox setup
+
+Tool setup is a durable Runtime reconciliation workflow. Each immutable setup
+operation follows `pending -> applying -> ready/failed/cancelled`, and those
+states survive daemon restarts.
+
+Runtime executes one setup operation per report cycle. Each has a 10-minute per-operation deadline.
+The applied revision advances only when all setup operations are ready.
+A failed, cancelled, or still-applying operation keeps the desired revision
+unapplied and visible in Runtime reports.
+
+Provisioning cloud-init is used only to bootstrap and then enroll Runtime.
+Cloud-init does not install provider tools or an AI CLI as host root. Provider
+artifacts are instead materialized by the fixed runner inside the target
+sandbox as its unprivileged user, after that sandbox exists and is running.
+
+The Runtime transports two closed generic materializers: exact offline npm
+package sets with optional updater-disabled Node launchers, and exact `tar.gz`
+archive binaries with one declared executable. This supports the unreleased
+`claude-code` 2.1.277 and install-only `claude-managed-ant` 1.33.0 candidates
+without adding Anthropic credentials or provider lifecycle policy to Runtime.
+Installing `ant` does not connect or activate Claude Managed Agents; that later
+capability requires protected per-work secrets and fenced execution leases.
 
 The outer rootless Podman container is the Runtime boundary.
 Sandbox processes run as UID/GID 1000 with a read-only root.
 `/home/agent` is the persistent workspace.
 No host container runtime socket is exposed.
-Runtime does not install, configure, authenticate, inspect, update, or remove
-user tools; each user owns their installation, configuration, authentication,
-updates, and removal. User tools inherit the sandbox's existing capability,
+Runtime materializes only explicit setup operations through the fixed sandbox
+runner. It does not authenticate providers or inspect arbitrary user tools;
+each user owns configuration, credentials, and later software maintenance.
+User tools inherit the sandbox's existing capability,
 seccomp, network, cgroup, and host-socket restrictions. Provider credentials
 remain user-owned files or process environment inside the workspace and must
 never be sent through desired state, registration, or runtime reports.
@@ -132,6 +167,34 @@ cosign verify-blob \
   warpmetal-runtime-<version>-linux-<arch>.tar.gz
 ```
 
+The archive also carries the AppArmor profile, its transactional installer
+library, the Linux metadata verifier, and
+`nested-private-procfs-oracle.sh`. That host-policy oracle is credential-free
+and verifies the fixed helper's ownership/mode and direct-host private-procfs
+policy behavior. It does not model the additional kernel restriction imposed
+by a rootless outer container and does not replace the required Ubuntu 24.04
+packaged/live qualification.
+
+For a newly started or generation-replaced running sandbox with an explicit
+setup operation, the supervisor also executes a closed, credential-free
+equivalent through the private Podman service before reporting that generation
+as running. It uses only fixed Runtime
+argv, UID/GID 1000, the immutable helper, nested namespaces, the already
+PID-isolated outer procfs mounted read-only, a private `/dev` and `/tmp`, and a
+temporary workspace probe. Inheriting procfs is Codex's documented
+restrictive-container fallback when the kernel denies a second procfs mount.
+The preflight also proves effective and bounding capabilities are empty and the image root
+remains unwritable. Failure stops the container and records
+`nested_sandbox_preflight_failed`; access grants and tool setup cannot advance
+against that generation.
+
+Each actual setup execution rechecks this boundary, including operations added
+to an already-running sandbox and work resumed after a daemon restart. Failed
+execution preflight produces a durable setup failure. Capacity-only sandboxes
+do not require the nested helper. Ordinary SSH keeps the existing streaming and
+cancellation contract: newer images use the fixed image-owned capability
+launcher, while pinned older images retain their original shell behavior.
+
 Only install a release through an authenticated WarpMetal runtime-install
 session. The installer requires root because it creates the dedicated runtime
 and SSH gateway accounts, installs host firewall rules, and enables the
@@ -160,15 +223,54 @@ instead of restarted. This keeps persistent sandboxes and their delegated
 cgroups running while the supervisor binaries are replaced. A fresh install,
 or an inactive service, is still started before registration.
 
-The installer never changes host user-namespace policy, runs `podman system
-reset`, or restarts a third-party container runtime. A preview install whose
-Podman state still points at the former user-manager run root exits with
+The installer accepts the closed option
+`--nested-private-procfs preserve|enable|disable`; omission is `preserve`.
+Preserve mode does not inspect, parse, load, unload, create, replace, or remove
+the Runtime AppArmor policy. Explicit `enable` is currently supported only on
+amd64 and installs the policy only when the host reports that AppArmor's
+restricted-unprivileged-userns control is active. When that restriction is
+definitively absent, enable is a no-op. Explicit `disable` removes Runtime's
+policy and restores the exact file and loaded state captured before the first
+enable.
+
+On a restricted AppArmor host, enable/disable requires the host's existing
+`apparmor_parser`. Runtime does not install an AppArmor package, write the
+restricted-userns sysctl, reload or restart AppArmor, restart Podman, grant
+host capabilities, mount a runtime socket, or relax container AppArmor/seccomp
+globally. The signed candidate is parsed first, only
+`/etc/apparmor.d/warpmetal-agent-runtime-bwrap` is atomically replaced, and only
+that file is loaded. Root-only durable state under
+`/var/lib/warpmetal/apparmor-policy-state` preserves the exact pre-enable file
+and kernel-loaded state. A mutating operation is committed only after Runtime
+registration and service restart succeed; installer failure restores the
+snapshot, and a later explicit enable/disable recovers an interrupted
+transaction before applying a new one. Conflicting disk/kernel state and
+metadata, parse, load, architecture, or recovery failures fail closed.
+
+This is a host-scoped policy for the exact immutable helper path, not a
+per-sandbox grant or an image-digest verifier. The control plane remains
+responsible for selecting a trusted immutable image. Agent-enabled first boot
+can opt in through the already verified signed Runtime bundle, so no later SSH
+step is required. The daemon has no autonomous signed maintenance operation:
+post-provision repair or policy-mode changes must re-run the authenticated
+signed installer through the provider's normal reload/reprovision path. No
+sandbox manifest or Runtime HTTP field is added.
+
+Workspace mounts receive a private Podman SELinux label on enforcing hosts.
+The ordinary installer does not install or replace a kernel. If a reboot is
+already pending, it exits with status 75 and `runtime_reboot_required` before
+updating package indexes or consuming the bootstrap token. Reboot only as a
+separately authorized maintenance action, then retry the same verified
+installer.
+
+The ordinary installer also never runs `podman system reset`. A preview install
+whose Podman state still points at the former user-manager run root exits with
 `runtime_legacy_migration_required`; preserve that host and use a separately
 reviewed migration procedure rather than deleting container metadata.
 
 Signed v0.1.25 and v0.1.26 archives are immutable historical releases. Their
-existing signed members remain unchanged; the reduced bundle contract applies
-only to future releases.
+existing signed members remain unchanged; future bundles carry only the closed
+setup and policy contract described here.
 
 ## Sandbox images and persistence
 

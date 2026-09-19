@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -43,6 +44,23 @@ type LocalGrant struct {
 	ObservedState string
 	ErrorCode     string
 	ErrorMessage  string
+}
+
+type LocalSetupOperation struct {
+	ID                string
+	SandboxID         string
+	SandboxGeneration int64
+	ProfileID         string
+	ProfileRevision   int64
+	ProfileDigest     string
+	DesiredRevision   int64
+	BodyDigest        string
+	RequestJSON       []byte
+	State             string
+	ReceiptJSON       []byte
+	ReceiptDigest     string
+	ErrorCode         string
+	ErrorMessage      string
 }
 
 func Open(path string) (*Store, error) {
@@ -109,6 +127,27 @@ CREATE TABLE IF NOT EXISTS grants (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS grants_sandbox_idx ON grants(sandbox_id);
+CREATE TABLE IF NOT EXISTS setup_operations (
+  id TEXT PRIMARY KEY,
+  sandbox_id TEXT NOT NULL REFERENCES sandboxes(id) ON DELETE CASCADE,
+  sandbox_generation INTEGER NOT NULL CHECK(sandbox_generation > 0),
+  profile_id TEXT NOT NULL,
+  profile_revision INTEGER NOT NULL CHECK(profile_revision > 0),
+  profile_digest TEXT NOT NULL,
+  desired_revision INTEGER NOT NULL CHECK(desired_revision > 0),
+  body_digest TEXT NOT NULL,
+  request_json BLOB NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('pending', 'applying', 'ready', 'failed', 'cancelled')),
+  receipt_json BLOB,
+  receipt_digest TEXT NOT NULL DEFAULT '',
+  error_code TEXT NOT NULL DEFAULT '',
+  error_message TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS setup_operations_sandbox_idx
+ON setup_operations(sandbox_id, sandbox_generation);
+CREATE INDEX IF NOT EXISTS setup_operations_revision_idx
+ON setup_operations(desired_revision, state);
 `
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("initialize local database: %w", err)
@@ -336,6 +375,173 @@ error_code, error_message FROM grants WHERE id = ?`,
 		return nil, nil
 	}
 	return &value, err
+}
+
+const setupOperationSelect = `SELECT id, sandbox_id, sandbox_generation,
+profile_id, profile_revision, profile_digest, desired_revision, body_digest,
+request_json, state, receipt_json, receipt_digest, error_code, error_message
+FROM setup_operations`
+
+func scanSetupOperation(row scanner) (*LocalSetupOperation, error) {
+	var value LocalSetupOperation
+	var receipt []byte
+	if err := row.Scan(
+		&value.ID,
+		&value.SandboxID,
+		&value.SandboxGeneration,
+		&value.ProfileID,
+		&value.ProfileRevision,
+		&value.ProfileDigest,
+		&value.DesiredRevision,
+		&value.BodyDigest,
+		&value.RequestJSON,
+		&value.State,
+		&receipt,
+		&value.ReceiptDigest,
+		&value.ErrorCode,
+		&value.ErrorMessage,
+	); err != nil {
+		return nil, err
+	}
+	value.RequestJSON = append([]byte(nil), value.RequestJSON...)
+	value.ReceiptJSON = append([]byte(nil), receipt...)
+	return &value, nil
+}
+
+func (s *Store) SetupOperation(ctx context.Context, id string) (*LocalSetupOperation, error) {
+	value, err := scanSetupOperation(s.db.QueryRowContext(ctx, setupOperationSelect+` WHERE id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return value, err
+}
+
+func (s *Store) SetupOperations(ctx context.Context) ([]LocalSetupOperation, error) {
+	rows, err := s.db.QueryContext(ctx, setupOperationSelect+` ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var values []LocalSetupOperation
+	for rows.Next() {
+		value, err := scanSetupOperation(rows)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, *value)
+	}
+	return values, rows.Err()
+}
+
+// PutSetupOperation creates an immutable desired-operation fence. Reusing an
+// ID for a different operation is rejected rather than silently replacing a
+// terminal receipt or changing the work represented by an in-flight row.
+func (s *Store) PutSetupOperation(ctx context.Context, value LocalSetupOperation) error {
+	if value.State != "pending" {
+		return errors.New("new setup operation must be pending")
+	}
+	result, err := s.db.ExecContext(ctx, `INSERT INTO setup_operations(
+id, sandbox_id, sandbox_generation, profile_id, profile_revision, profile_digest,
+desired_revision, body_digest, request_json, state, receipt_json, receipt_digest,
+error_code, error_message, updated_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, '', '', '', ?)
+ON CONFLICT(id) DO NOTHING`,
+		value.ID,
+		value.SandboxID,
+		value.SandboxGeneration,
+		value.ProfileID,
+		value.ProfileRevision,
+		value.ProfileDigest,
+		value.DesiredRevision,
+		value.BodyDigest,
+		value.RequestJSON,
+		time.Now().UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return err
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil || inserted == 1 {
+		return err
+	}
+	existing, err := s.SetupOperation(ctx, value.ID)
+	if err != nil {
+		return err
+	}
+	if existing == nil || existing.SandboxID != value.SandboxID ||
+		existing.SandboxGeneration != value.SandboxGeneration ||
+		existing.ProfileID != value.ProfileID ||
+		existing.ProfileRevision != value.ProfileRevision ||
+		existing.ProfileDigest != value.ProfileDigest ||
+		existing.BodyDigest != value.BodyDigest ||
+		string(existing.RequestJSON) != string(value.RequestJSON) {
+		return errors.New("setup operation ID conflicts with a different immutable fence")
+	}
+	return nil
+}
+
+// TransitionSetupOperation enforces the only allowed state edges:
+// pending -> applying, pending/applying -> cancelled, and applying -> ready/failed.
+func (s *Store) TransitionSetupOperation(
+	ctx context.Context,
+	id string,
+	status string,
+	receipt []byte,
+	errorCode string,
+	errorMessage string,
+) error {
+	current, err := s.SetupOperation(ctx, id)
+	if err != nil {
+		return err
+	}
+	if current == nil {
+		return errors.New("setup operation does not exist")
+	}
+	allowed := current.State == "pending" && (status == "applying" || status == "cancelled") ||
+		current.State == "applying" && (status == "ready" || status == "failed" || status == "cancelled")
+	if !allowed {
+		return fmt.Errorf("invalid setup operation transition %s -> %s", current.State, status)
+	}
+	if status == "ready" && len(receipt) == 0 {
+		return errors.New("ready setup operation requires a receipt")
+	}
+	if status != "ready" {
+		receipt = nil
+	}
+	receiptDigest := ""
+	if status == "ready" {
+		var envelope struct {
+			ReceiptDigest string `json:"receiptDigest"`
+		}
+		if err := json.Unmarshal(receipt, &envelope); err == nil {
+			receiptDigest = envelope.ReceiptDigest
+		}
+	}
+	if len(errorMessage) > 300 {
+		errorMessage = errorMessage[:300]
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE setup_operations
+SET state = ?, receipt_json = ?, receipt_digest = ?, error_code = ?, error_message = ?, updated_at = ?
+WHERE id = ? AND state = ?`, status, nullableBytes(receipt), receiptDigest, errorCode, errorMessage,
+		time.Now().UTC().Format(time.RFC3339Nano), id, current.State)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return errors.New("setup operation transition lost its state fence")
+	}
+	return nil
+}
+
+func nullableBytes(value []byte) any {
+	if len(value) == 0 {
+		return nil
+	}
+	return value
 }
 
 func nullableInt(value *int) any {
