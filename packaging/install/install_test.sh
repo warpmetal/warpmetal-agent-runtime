@@ -88,7 +88,8 @@ test "$(grep -Fc -- '--cgroup-manager cgroupfs' "$script")" -eq 1
 test "$(grep -Fc 'cd /var/lib/warpmetal-runtime' "$script")" -eq 1
 reject_match -Fq 'system reset --force' "$script"
 reject_match -Eq 'systemctl (stop|restart) (docker|containerd)' "$script"
-reject_match -Eiq 'nested-private-procfs|apparmor|warpmetal-policy-metadata|tool[_-]report' "$script" "$release_workflow"
+reject_match -Eiq 'tool[_-]report|apparmor=unconfined|seccomp=unconfined' "$script" "$release_workflow"
+sh packaging/install/future_release_contract_test.sh
 test "$(grep -Fc 'install -d -o warpmetal-runtime -g warpmetal-runtime -m 0700 /run/warpmetal-podman' "$script")" -eq 1
 grep -Fq "printf '[Service]\\nBindPaths=%s" "$script"
 grep -Fq 'ReadWritePaths=/run/warpmetal-podman %s' "$script"
@@ -124,3 +125,34 @@ grep -Fq -- '--prerelease' "$release_workflow"
 grep -Fq 'sh -n packaging/install/preserve_execution_test.sh' "$release_workflow"
 grep -Fq 'sh /source/packaging/install/preserve_execution_test.sh' "$release_workflow"
 test -x "$preserve_execution_test"
+
+# P1N installer policy mode is a closed signed-bundle input. Omission preserves
+# existing host policy, and the only accepted explicit values are the two
+# lifecycle transitions plus preserve itself.
+grep -Fq 'nested_private_procfs=preserve' "$script"
+grep -Fq -- '--nested-private-procfs)' "$script"
+grep -Eq 'preserve\|enable\|disable' "$script"
+grep -Fq 'invalid_nested_private_procfs_mode' "$script"
+test "$(grep -Fc -- '--nested-private-procfs)' "$script")" -eq 1
+
+# The signed release bundle, rather than cloud-init or a mutable download,
+# carries the policy, transactional lifecycle library, and metadata verifier.
+grep -Fq 'warpmetal-agent-runtime-bwrap "$stage/warpmetal-agent-runtime-bwrap"' "$release_workflow"
+grep -Fq 'warpmetal-apparmor-policy.sh "$stage/warpmetal-apparmor-policy.sh"' "$release_workflow"
+grep -Fq 'warpmetal-policy-metadata" ./cmd/warpmetal-policy-metadata' "$release_workflow"
+test -s packaging/apparmor/warpmetal-agent-runtime-bwrap
+test -s packaging/install/warpmetal-apparmor-policy.sh
+test -s cmd/warpmetal-policy-metadata/main.go
+
+# P1N must not obtain nested sandboxing by weakening the host or outer Agent
+# Box globally. The policy lifecycle is forbidden from mutating the global
+# restricted-userns knob or disabling/restarting AppArmor.
+! grep -Eq 'sysctl[[:space:]]+-w|/proc/sys/.+>|/sys/module/apparmor/.+>' \
+  "$script" packaging/install/warpmetal-apparmor-policy.sh
+! grep -Eq 'systemctl[[:space:]]+(start|stop|restart|reload|disable)[[:space:]]+apparmor' \
+  "$script" packaging/install/warpmetal-apparmor-policy.sh
+! grep -Eq 'apparmor=unconfined|seccomp=unconfined|--privileged|CAP_SYS_ADMIN' \
+  "$script" packaging/install/warpmetal-apparmor-policy.sh
+
+sh packaging/apparmor/profile_test.sh
+sh packaging/install/apparmor_policy_test.sh

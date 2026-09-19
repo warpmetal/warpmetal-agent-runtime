@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"path/filepath"
 	"strings"
@@ -15,15 +16,96 @@ import (
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 )
 
+func TestAgentSetupFailsClosedWhenNestedSandboxPreflightFails(t *testing.T) {
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	engine := &fakeEngine{preflightErr: errors.New("bubblewrap private procfs unavailable")}
+	reconciler := &Reconciler{
+		Store:        store,
+		Engine:       engine,
+		Workspaces:   &fakeWorkspaces{},
+		Access:       access.Renderer{Path: filepath.Join(t.TempDir(), "authorized_keys")},
+		Sessions:     &fakeSessions{},
+		HostCapacity: model.Resources{CPUMillicores: 2000, MemoryMiB: 4096, WorkspaceDiskGiB: 40},
+		ServerID:     "srv_test12345",
+	}
+	manifest := model.Manifest{
+		ServerID:        "srv_test12345",
+		DesiredRevision: 1,
+		ImageDigest:     "registry.example/sandbox@sha256:" + strings.Repeat("a", 64),
+		Capacity:        model.Resources{CPUMillicores: 1000, MemoryMiB: 2048, WorkspaceDiskGiB: 20},
+		Sandboxes: []model.Sandbox{{
+			ID: "sbx_test12345", Name: "worker", Size: "small",
+			Resources: model.Resources{CPUMillicores: 500, MemoryMiB: 1024, WorkspaceDiskGiB: 10, PIDs: 256},
+			Lifetime:  "persistent", DesiredState: "running", Generation: 1,
+		}},
+	}
+	manifest.SetupOperations = setupManifest(1).SetupOperations
+	if err := reconciler.Reconcile(context.Background(), manifest); err == nil {
+		t.Fatal("reconcile reported success after the nested sandbox preflight failed")
+	}
+	local, err := store.Sandbox(context.Background(), "sbx_test12345")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local == nil || local.ObservedState != "failed" ||
+		local.ErrorCode != "nested_sandbox_preflight_failed" {
+		t.Fatalf("failed preflight did not fail sandbox readiness closed: %#v", local)
+	}
+	if engine.preflighted != 1 || engine.stopped != 1 {
+		t.Fatalf("preflight/stop calls = %d/%d, want 1/1", engine.preflighted, engine.stopped)
+	}
+}
+
+func TestCapacityOnlySandboxDoesNotRequireNestedSandboxHelper(t *testing.T) {
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	engine := &fakeEngine{preflightErr: errors.New("legacy image has no helper")}
+	r := &Reconciler{
+		Store: store, Engine: engine, Workspaces: &fakeWorkspaces{},
+		Access:       access.Renderer{Path: filepath.Join(t.TempDir(), "authorized_keys")},
+		HostCapacity: model.Resources{CPUMillicores: 2000, MemoryMiB: 4096, WorkspaceDiskGiB: 40},
+		ServerID:     "srv_test12345",
+	}
+	manifest := setupManifest(1)
+	manifest.SetupOperations = nil
+	if err := r.Reconcile(context.Background(), manifest); err != nil {
+		t.Fatalf("capacity-only sandbox depends on setup helper: %v", err)
+	}
+	if engine.preflighted != 0 {
+		t.Fatalf("capacity-only sandbox invoked setup preflight %d times", engine.preflighted)
+	}
+}
+
 type fakeEngine struct {
-	created        int
-	replaced       int
-	restarted      int
-	removed        int
-	images         []string
-	replaceRunning bool
-	replaceErr     error
-	restartErr     error
+	created         int
+	replaced        int
+	restarted       int
+	removed         int
+	images          []string
+	replaceRunning  bool
+	replaceErr      error
+	restartErr      error
+	setupResult     []byte
+	setupResultFor  func(string, []byte) []byte
+	setupDiagnostic []byte
+	setupErr        error
+	setupInvoked    chan setupInvocation
+	preflighted     int
+	preflightErr    error
+	stopped         int
+}
+
+type setupInvocation struct {
+	sandboxID string
+	request   []byte
+	deadline  time.Time
 }
 
 func (f *fakeEngine) Replace(
@@ -50,9 +132,13 @@ func (f *fakeEngine) Ensure(
 	return nil
 }
 func (f *fakeEngine) Start(context.Context, string) error   { return nil }
-func (f *fakeEngine) Stop(context.Context, string) error    { return nil }
+func (f *fakeEngine) Stop(context.Context, string) error    { f.stopped++; return nil }
 func (f *fakeEngine) Restart(context.Context, string) error { f.restarted++; return f.restartErr }
 func (f *fakeEngine) Remove(context.Context, string) error  { f.removed++; return nil }
+func (f *fakeEngine) Preflight(context.Context, string) error {
+	f.preflighted++
+	return f.preflightErr
+}
 func (f *fakeEngine) Exec(
 	_ context.Context,
 	_ string,
@@ -63,6 +149,31 @@ func (f *fakeEngine) Exec(
 	_ io.Writer,
 ) error {
 	return nil
+}
+
+// ExecSetup is the deliberately narrow setup execution seam: callers can
+// select only the sandbox and provide the runner's JSON stdin. The container
+// engine owns every other execution detail, including argv, identity, workdir,
+// timeout and output bounds.
+func (f *fakeEngine) ExecSetup(
+	ctx context.Context,
+	sandboxID string,
+	request []byte,
+) ([]byte, []byte, error) {
+	invocation := setupInvocation{
+		sandboxID: sandboxID,
+		request:   append([]byte(nil), request...),
+	}
+	invocation.deadline, _ = ctx.Deadline()
+	if f.setupInvoked != nil {
+		f.setupInvoked <- invocation
+	}
+	result := f.setupResult
+	if f.setupResultFor != nil {
+		result = f.setupResultFor(sandboxID, request)
+	}
+	return append([]byte(nil), result...),
+		append([]byte(nil), f.setupDiagnostic...), f.setupErr
 }
 
 type fakeWorkspaces struct{ destroyed int }

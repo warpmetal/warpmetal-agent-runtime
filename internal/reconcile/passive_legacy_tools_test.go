@@ -70,6 +70,14 @@ func (e *contractEngine) Remove(context.Context, string) error {
 	return nil
 }
 
+func (e *contractEngine) Preflight(context.Context, string) error {
+	return fmt.Errorf("legacy image must not require a setup preflight")
+}
+
+func (e *contractEngine) ExecSetup(context.Context, string, []byte) ([]byte, []byte, error) {
+	return nil, nil, fmt.Errorf("legacy tools must not invoke setup")
+}
+
 func (e *contractEngine) Exec(
 	context.Context,
 	string,

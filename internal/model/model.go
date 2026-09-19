@@ -1,9 +1,13 @@
 package model
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -11,13 +15,20 @@ const (
 	MinTemporarySeconds     = 900
 	MaxTemporarySeconds     = 86400
 	DefaultTemporarySeconds = 86400
+	MaxSetupArtifactBytes   = 2_147_483_648
 )
 
 var (
-	namePattern  = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
-	idPattern    = regexp.MustCompile(`^(?:sbx|grant)_[A-Za-z0-9_-]{8,60}$`)
-	imagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$`)
-	validDesired = map[string]bool{"running": true, "stopped": true, "deleted": true}
+	namePattern         = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	idPattern           = regexp.MustCompile(`^(?:sbx|grant)_[A-Za-z0-9_-]{8,60}$`)
+	setupIDPattern      = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`)
+	imagePattern        = regexp.MustCompile(`^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$`)
+	setupDigestPattern  = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+	npmPackagePattern   = regexp.MustCompile(`^(?:@[a-z0-9][a-z0-9._-]{0,62}/)?[a-z0-9][a-z0-9._-]{0,62}$`)
+	npmBinPattern       = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
+	relativePathPattern = regexp.MustCompile(`^[A-Za-z0-9._/-]{1,256}$`)
+	semverPattern       = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
+	validDesired        = map[string]bool{"running": true, "stopped": true, "deleted": true}
 )
 
 type Resources struct {
@@ -56,6 +67,23 @@ type Sandbox struct {
 	Generation       int64      `json:"generation"`
 }
 
+// Keep the retired cliTools member inert during rolling upgrades without
+// permitting arbitrary new sandbox controls through the closed manifest API.
+func (sandbox *Sandbox) UnmarshalJSON(payload []byte) error {
+	type wireSandbox Sandbox
+	var decoded struct {
+		wireSandbox
+		LegacyTools json.RawMessage `json:"cliTools"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	*sandbox = Sandbox(decoded.wireSandbox)
+	return nil
+}
+
 type AccessGrant struct {
 	ID             string `json:"id"`
 	SandboxID      string `json:"sandboxId"`
@@ -64,13 +92,87 @@ type AccessGrant struct {
 	DesiredState   string `json:"desiredState"`
 }
 
+type SetupArtifact struct {
+	ID             string `json:"id"`
+	Source         string `json:"source"`
+	SHA256         string `json:"sha256"`
+	Format         string `json:"format"`
+	SizeBytes      int64  `json:"sizeBytes"`
+	PackageName    string `json:"packageName"`
+	PackageVersion string `json:"packageVersion"`
+	InstallAs      string `json:"installAs"`
+}
+
+type SetupMaterializer struct {
+	Kind      string                `json:"kind"`
+	Artifacts []SetupArtifact       `json:"artifacts,omitempty"`
+	Bins      []string              `json:"bins,omitempty"`
+	Launchers []SetupLauncher       `json:"launchers,omitempty"`
+	Artifact  *SetupArchiveArtifact `json:"artifact,omitempty"`
+	Bin       *SetupArchiveBin      `json:"bin,omitempty"`
+}
+
+type SetupLauncher struct {
+	Bin         string            `json:"bin"`
+	Kind        string            `json:"kind"`
+	ArtifactID  string            `json:"artifactId"`
+	Entrypoint  string            `json:"entrypoint"`
+	Environment map[string]string `json:"environment"`
+}
+
+type SetupArchiveArtifact struct {
+	ID        string `json:"id"`
+	Source    string `json:"source"`
+	SHA256    string `json:"sha256"`
+	Format    string `json:"format"`
+	SizeBytes int64  `json:"sizeBytes"`
+}
+
+type SetupArchiveBin struct {
+	Name   string `json:"name"`
+	Member string `json:"member"`
+}
+
+func (materializer SetupMaterializer) MarshalJSON() ([]byte, error) {
+	switch materializer.Kind {
+	case "npm-package-set":
+		return json.Marshal(struct {
+			Kind      string          `json:"kind"`
+			Artifacts []SetupArtifact `json:"artifacts"`
+			Bins      []string        `json:"bins"`
+			Launchers []SetupLauncher `json:"launchers,omitempty"`
+		}{materializer.Kind, materializer.Artifacts, materializer.Bins, materializer.Launchers})
+	case "archive-binary":
+		return json.Marshal(struct {
+			Kind     string                `json:"kind"`
+			Artifact *SetupArchiveArtifact `json:"artifact"`
+			Bin      *SetupArchiveBin      `json:"bin"`
+		}{materializer.Kind, materializer.Artifact, materializer.Bin})
+	default:
+		type raw SetupMaterializer
+		return json.Marshal(raw(materializer))
+	}
+}
+
+type SetupOperation struct {
+	ID                string            `json:"id"`
+	SchemaVersion     int               `json:"schemaVersion"`
+	SandboxID         string            `json:"sandboxId"`
+	SandboxGeneration int64             `json:"sandboxGeneration"`
+	ProfileID         string            `json:"profileId"`
+	ProfileRevision   int64             `json:"profileRevision"`
+	ProfileDigest     string            `json:"profileDigest"`
+	Materializer      SetupMaterializer `json:"materializer"`
+}
+
 type Manifest struct {
-	ServerID        string        `json:"serverId"`
-	DesiredRevision int64         `json:"desiredRevision"`
-	ImageDigest     string        `json:"imageDigest"`
-	Capacity        Resources     `json:"capacity"`
-	Sandboxes       []Sandbox     `json:"sandboxes"`
-	AccessGrants    []AccessGrant `json:"accessGrants"`
+	ServerID        string           `json:"serverId"`
+	DesiredRevision int64            `json:"desiredRevision"`
+	ImageDigest     string           `json:"imageDigest"`
+	Capacity        Resources        `json:"capacity"`
+	Sandboxes       []Sandbox        `json:"sandboxes"`
+	AccessGrants    []AccessGrant    `json:"accessGrants"`
+	SetupOperations []SetupOperation `json:"setupOperations,omitempty"`
 }
 
 type ItemError struct {
@@ -94,15 +196,28 @@ type GrantReport struct {
 	LastError     *ItemError `json:"lastError,omitempty"`
 }
 
+type SetupOperationReport struct {
+	ID                string     `json:"id"`
+	SandboxID         string     `json:"sandboxId"`
+	SandboxGeneration int64      `json:"sandboxGeneration"`
+	ProfileID         string     `json:"profileId"`
+	ProfileRevision   int64      `json:"profileRevision"`
+	ProfileDigest     string     `json:"profileDigest"`
+	Status            string     `json:"status"`
+	ReceiptDigest     string     `json:"receiptDigest,omitempty"`
+	LastError         *ItemError `json:"lastError,omitempty"`
+}
+
 type Report struct {
-	ServerID          string          `json:"serverId"`
-	AppliedRevision   int64           `json:"appliedRevision"`
-	SupervisorVersion string          `json:"supervisorVersion"`
-	ImageDigest       string          `json:"imageDigest,omitempty"`
-	HostKeys          []HostKey       `json:"hostKeys,omitempty"`
-	LastError         *ItemError      `json:"lastError,omitempty"`
-	Sandboxes         []SandboxReport `json:"sandboxes"`
-	AccessGrants      []GrantReport   `json:"accessGrants"`
+	ServerID          string                 `json:"serverId"`
+	AppliedRevision   int64                  `json:"appliedRevision"`
+	SupervisorVersion string                 `json:"supervisorVersion"`
+	ImageDigest       string                 `json:"imageDigest,omitempty"`
+	HostKeys          []HostKey              `json:"hostKeys,omitempty"`
+	LastError         *ItemError             `json:"lastError,omitempty"`
+	Sandboxes         []SandboxReport        `json:"sandboxes"`
+	AccessGrants      []GrantReport          `json:"accessGrants"`
+	SetupOperations   []SetupOperationReport `json:"setupOperations"`
 }
 
 type HostKey struct {
@@ -127,6 +242,7 @@ func ValidateManifest(manifest Manifest, expectedServer string, lastRevision int
 	seenNames := map[string]bool{}
 	seenIDs := map[string]bool{}
 	sandboxStates := map[string]string{}
+	sandboxGenerations := map[string]int64{}
 	allocated := Resources{}
 	for _, sandbox := range manifest.Sandboxes {
 		if !idPattern.MatchString(sandbox.ID) || !namePattern.MatchString(sandbox.Name) {
@@ -138,6 +254,7 @@ func ValidateManifest(manifest Manifest, expectedServer string, lastRevision int
 		seenIDs[sandbox.ID] = true
 		seenNames[sandbox.Name] = true
 		sandboxStates[sandbox.ID] = sandbox.DesiredState
+		sandboxGenerations[sandbox.ID] = sandbox.Generation
 		if !validDesired[sandbox.DesiredState] || sandbox.Generation < 1 {
 			return fmt.Errorf("invalid desired state for %s", sandbox.ID)
 		}
@@ -171,6 +288,38 @@ func ValidateManifest(manifest Manifest, expectedServer string, lastRevision int
 	if !allocated.Fits(manifest.Capacity) {
 		return errors.New("manifest exceeds purchased runtime capacity")
 	}
+	if len(manifest.SetupOperations) > 32 {
+		return errors.New("manifest exceeds setup operation limit")
+	}
+	seenSetupIDs := map[string]bool{}
+	for _, operation := range manifest.SetupOperations {
+		if !setupIDPattern.MatchString(operation.ID) || seenSetupIDs[operation.ID] {
+			return errors.New("invalid or duplicate setup operation identity")
+		}
+		seenSetupIDs[operation.ID] = true
+		generation, exists := sandboxGenerations[operation.SandboxID]
+		if !exists || generation != operation.SandboxGeneration {
+			return fmt.Errorf("setup operation %s has an invalid sandbox generation", operation.ID)
+		}
+		if operation.SchemaVersion != 1 ||
+			!setupIDPattern.MatchString(operation.ProfileID) ||
+			operation.ProfileRevision < 1 ||
+			!setupDigestPattern.MatchString(operation.ProfileDigest) {
+			return fmt.Errorf("setup operation %s has an invalid immutable tuple", operation.ID)
+		}
+		var materializerErr error
+		switch operation.Materializer.Kind {
+		case "npm-package-set":
+			materializerErr = validateNPMMaterializer(operation.Materializer)
+		case "archive-binary":
+			materializerErr = validateArchiveMaterializer(operation.Materializer)
+		default:
+			materializerErr = errors.New("unsupported materializer")
+		}
+		if materializerErr != nil {
+			return fmt.Errorf("setup operation %s has an invalid materializer: %w", operation.ID, materializerErr)
+		}
+	}
 	seenGrants := map[string]bool{}
 	seenKeys := map[string]bool{}
 	grantsPerSandbox := map[string]int{}
@@ -195,6 +344,107 @@ func ValidateManifest(manifest Manifest, expectedServer string, lastRevision int
 				return fmt.Errorf("sandbox %s exceeds grant limit", grant.SandboxID)
 			}
 		}
+	}
+	return nil
+}
+
+func validateNPMMaterializer(materializer SetupMaterializer) error {
+	if materializer.Artifact != nil || materializer.Bin != nil ||
+		len(materializer.Artifacts) < 1 || len(materializer.Artifacts) > 8 ||
+		len(materializer.Bins) > 8 || len(materializer.Launchers) > 8 ||
+		(len(materializer.Bins) == 0 && len(materializer.Launchers) == 0) {
+		return errors.New("invalid npm materializer shape")
+	}
+	seenArtifacts := map[string]bool{}
+	seenAliases := map[string]bool{}
+	var aggregateSize int64
+	for _, artifact := range materializer.Artifacts {
+		if !setupIDPattern.MatchString(artifact.ID) || seenArtifacts[artifact.ID] ||
+			!setupDigestPattern.MatchString(artifact.SHA256) ||
+			artifact.Format != "npm-tgz" || artifact.SizeBytes < 1 ||
+			artifact.SizeBytes > MaxSetupArtifactBytes ||
+			!npmPackagePattern.MatchString(artifact.PackageName) ||
+			!semverPattern.MatchString(artifact.PackageVersion) ||
+			!npmPackagePattern.MatchString(artifact.InstallAs) ||
+			seenAliases[artifact.InstallAs] {
+			return errors.New("invalid npm artifact")
+		}
+		seenArtifacts[artifact.ID] = true
+		seenAliases[artifact.InstallAs] = true
+		aggregateSize += artifact.SizeBytes
+		if aggregateSize > MaxSetupArtifactBytes {
+			return errors.New("artifact size limit exceeded")
+		}
+		if err := validateSetupArtifactSource(artifact.Source); err != nil {
+			return errors.New("invalid artifact source")
+		}
+	}
+	seenBins := map[string]bool{}
+	for _, bin := range materializer.Bins {
+		if !npmBinPattern.MatchString(bin) || seenBins[bin] {
+			return errors.New("invalid npm bin")
+		}
+		seenBins[bin] = true
+	}
+	for _, launcher := range materializer.Launchers {
+		if !npmBinPattern.MatchString(launcher.Bin) || seenBins[launcher.Bin] ||
+			launcher.Kind != "node-module" || !seenArtifacts[launcher.ArtifactID] ||
+			!safeRelativePath(launcher.Entrypoint) ||
+			len(launcher.Environment) != 1 || launcher.Environment["DISABLE_UPDATES"] != "1" {
+			return errors.New("invalid npm launcher")
+		}
+		seenBins[launcher.Bin] = true
+	}
+	return nil
+}
+
+func validateArchiveMaterializer(materializer SetupMaterializer) error {
+	if len(materializer.Artifacts) != 0 || len(materializer.Bins) != 0 ||
+		len(materializer.Launchers) != 0 || materializer.Artifact == nil || materializer.Bin == nil {
+		return errors.New("invalid archive materializer shape")
+	}
+	artifact := materializer.Artifact
+	if !setupIDPattern.MatchString(artifact.ID) ||
+		!setupDigestPattern.MatchString(artifact.SHA256) || artifact.Format != "tar-gz" ||
+		artifact.SizeBytes < 1 || artifact.SizeBytes > MaxSetupArtifactBytes ||
+		validateSetupArtifactSource(artifact.Source) != nil {
+		return errors.New("invalid archive artifact")
+	}
+	if !npmBinPattern.MatchString(materializer.Bin.Name) ||
+		!npmBinPattern.MatchString(materializer.Bin.Member) ||
+		strings.Contains(materializer.Bin.Member, "/") {
+		return errors.New("invalid archive bin")
+	}
+	return nil
+}
+
+func safeRelativePath(value string) bool {
+	if !relativePathPattern.MatchString(value) || strings.Contains(value, "\\") || strings.HasPrefix(value, "/") {
+		return false
+	}
+	for _, part := range strings.Split(value, "/") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+	}
+	return true
+}
+
+func validateSetupArtifactSource(value string) error {
+	parsed, err := url.Parse(value)
+	if err != nil || len(value) > len("https://")+500 || parsed.Scheme != "https" ||
+		parsed.Host == "" || parsed.Hostname() == "" || parsed.Opaque != "" || parsed.User != nil ||
+		strings.ContainsRune(value, '#') {
+		return errors.New("artifact source must be an absolute HTTPS URL")
+	}
+	for _, character := range value[len("https://"):] {
+		if (character >= 'a' && character <= 'z') ||
+			(character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') ||
+			strings.ContainsRune("._~:/?#[\\]@!$&'()*+,;=%-", character) {
+			continue
+		}
+		return errors.New("artifact source contains an unsupported character")
 	}
 	return nil
 }

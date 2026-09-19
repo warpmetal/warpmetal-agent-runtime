@@ -51,6 +51,7 @@ func (c Client) Register(
 		bootstrap,
 		registration,
 		&result,
+		false,
 	)
 	if err != nil {
 		return Registered{}, err
@@ -70,6 +71,7 @@ func (c Client) Manifest(ctx context.Context) (model.Manifest, error) {
 		c.NodeToken,
 		nil,
 		&result,
+		true,
 	)
 	return result, err
 }
@@ -85,6 +87,7 @@ func (c Client) Report(ctx context.Context, report model.Report) error {
 		c.NodeToken,
 		report,
 		&response,
+		false,
 	); err != nil {
 		return err
 	}
@@ -101,6 +104,7 @@ func (c Client) request(
 	token string,
 	body any,
 	result any,
+	strict bool,
 ) error {
 	origin, err := url.Parse(c.Origin)
 	if err != nil || origin.Scheme != "https" || origin.Host == "" {
@@ -149,8 +153,21 @@ func (c Client) request(
 		}
 		return fmt.Errorf("control-plane response %d (%s)", response.StatusCode, code)
 	}
-	if err := json.NewDecoder(limited).Decode(result); err != nil {
+	decoder := json.NewDecoder(limited)
+	if strict {
+		decoder.DisallowUnknownFields()
+	}
+	if err := decoder.Decode(result); err != nil {
 		return fmt.Errorf("decode control-plane response: %w", err)
+	}
+	if strict {
+		var trailing any
+		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+			if err == nil {
+				return errors.New("decode control-plane response: trailing JSON value")
+			}
+			return fmt.Errorf("decode control-plane response: %w", err)
+		}
 	}
 	return nil
 }
