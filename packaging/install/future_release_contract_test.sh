@@ -85,6 +85,8 @@ grep -Fqx 'nested_private_procfs=preserve' "$installer" || fail 'policy default 
 grep -Fqx '      apparmor_policy_destination=/etc/apparmor.d/warpmetal-agent-runtime-bwrap' "$installer" || fail 'policy destination is not closed'
 grep -Fqx '      apparmor_metadata_helper=$bundle_dir/warpmetal-policy-metadata' "$installer" || fail 'metadata helper is not bundle-owned'
 sh packaging/apparmor/profile_test.sh
+grep -Fq 'apparmor_parser -Q -K "$profile"' packaging/apparmor/profile_test.sh || \
+  fail 'unprivileged policy verification may touch the system AppArmor cache'
 
 if find cmd internal -type f -name '*.go' ! -name '*_test.go' \
   -exec grep -HnE 'ToolReport|toolreport|warpmetal-agent-tool-report' {} +; then
