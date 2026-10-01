@@ -94,6 +94,7 @@ type CheckpointLifecycle interface {
 }
 
 type ManagerControl interface {
+	RenewPendingTakeovers(context.Context, model.Manifest) error
 	Recover(context.Context) error
 	ApplyPolicies(context.Context, model.Manifest) error
 	Apply(context.Context, model.Manifest) error
@@ -200,11 +201,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) (er
 			err = errors.Join(deferredManagedProjectRemount, err)
 		}
 	}()
-	if r.Manager != nil {
-		if err := r.Manager.Recover(ctx); err != nil {
-			return fmt.Errorf("recover manager operations: %w", err)
-		}
-	}
 	lastRevision, err := r.Store.Revision(ctx)
 	if err != nil {
 		return err
@@ -214,6 +210,19 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) (er
 	}
 	if !requested(manifest.Sandboxes).Fits(r.HostCapacity) {
 		return errors.New("desired sandboxes exceed detected host capacity")
+	}
+	// The authenticated manifest must pass the existing complete identity,
+	// schema, revision and capacity gates before its fresh lease may prepare an
+	// exact pending protective Pause. This phase stores only that operation's
+	// deadline. Bounded exact-operation reconciliation follows immediately, and
+	// reservation, review, release and unrelated recovery errors remain fatal.
+	if r.Manager != nil {
+		if err := r.Manager.RenewPendingTakeovers(ctx, manifest); err != nil {
+			return fmt.Errorf("renew pending manager takeovers: %w", err)
+		}
+		if err := r.Manager.Recover(ctx); err != nil {
+			return fmt.Errorf("recover manager operations: %w", err)
+		}
 	}
 	setupSandboxes := make(map[string]bool, len(manifest.SetupOperations))
 	for _, operation := range manifest.SetupOperations {

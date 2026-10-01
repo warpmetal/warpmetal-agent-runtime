@@ -123,6 +123,78 @@ func (c *Coordinator) Apply(ctx context.Context, manifest model.Manifest) error 
 	return nil
 }
 
+// RenewPendingTakeovers prepares bounded exact-operation reconciliation from the freshly fetched,
+// schema-valid owner manifest. Only an already dispatched, still unknown
+// protective Pause may extend its lease; every authority field and the locally
+// applied Off policy stay unchanged. No helper action is dispatched here and
+// no phase, receipt, predecessor, release or new operation is advanced.
+func (c *Coordinator) RenewPendingTakeovers(ctx context.Context, manifest model.Manifest) error {
+	if c.Store == nil || c.Control == nil || c.Helper == nil {
+		return errors.New("manager coordinator is incompletely configured")
+	}
+	var renewals []state.LocalManagerTakeover
+	for _, candidate := range manifest.InsightsTakeovers {
+		if err := model.ValidateInsightsTakeoverManifest(candidate); err != nil {
+			return err
+		}
+		prior, err := c.Store.ManagerTakeover(ctx, candidate.OperationID)
+		if err != nil {
+			return err
+		}
+		if prior == nil || prior.Phase != "acquire_unknown" || prior.Manifest.Action != "pause_manager_and_hold_member" ||
+			candidate.Action != "pause_manager_and_hold_member" || reflect.DeepEqual(prior.Manifest, candidate) {
+			continue
+		}
+		if !prior.DispatchStarted || prior.Report != nil || !sameTakeoverAuthority(prior.Manifest, candidate) ||
+			!candidate.ValidUntil.After(prior.Manifest.ValidUntil) {
+			return state.ErrManagerConflict
+		}
+		now := c.now()
+		if !now.Before(candidate.ValidUntil) || candidate.ValidUntil.Sub(now) > 120*time.Second {
+			return errors.New("pending protective Pause renewal requires a fresh bounded lease")
+		}
+		if err := c.takeoverAuthority(ctx, candidate); err != nil {
+			return err
+		}
+		localPolicy, err := c.Store.ManagerPolicy(ctx, sourceSandbox(ctx, c.Store, candidate.Source))
+		if err != nil || localPolicy == nil || localPolicy.Manifest.Mode != "off" || localPolicy.Report.Status != "applied" ||
+			localPolicy.Manifest.SandboxGeneration != candidate.Source.SandboxGeneration ||
+			localPolicy.Report.PolicyRevision != candidate.PolicyRevision || localPolicy.Report.RunGeneration != candidate.RunGeneration {
+			return errors.Join(err, errors.New("pending protective Pause requires the exact applied Off policy"))
+		}
+		var fetchedPolicy *model.InsightsManagerPolicyManifestV1
+		for i := range manifest.InsightsManagerPolicies {
+			if manifest.InsightsManagerPolicies[i].SandboxID == localPolicy.Manifest.SandboxID {
+				if fetchedPolicy != nil {
+					return state.ErrManagerConflict
+				}
+				fetchedPolicy = &manifest.InsightsManagerPolicies[i]
+			}
+		}
+		if fetchedPolicy == nil {
+			return errors.New("pending protective Pause renewal requires the fetched Off policy")
+		}
+		if err := model.ValidateInsightsManagerPolicyManifest(*fetchedPolicy); err != nil {
+			return err
+		}
+		left, right := localPolicy.Manifest, *fetchedPolicy
+		left.ValidUntil, right.ValidUntil = time.Time{}, time.Time{}
+		if !reflect.DeepEqual(left, right) || !now.Before(fetchedPolicy.ValidUntil) || fetchedPolicy.ValidUntil.Sub(now) > 120*time.Second {
+			return errors.New("pending protective Pause renewal changed current Off policy authority")
+		}
+		renewed := *prior
+		renewed.Manifest.ValidUntil = candidate.ValidUntil
+		renewals = append(renewals, renewed)
+	}
+	// Validate every eligible renewal before changing any retained operation.
+	for _, renewed := range renewals {
+		if err := c.Store.PutManagerTakeover(ctx, renewed); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *Coordinator) Recover(ctx context.Context) error {
 	if c.Store == nil || c.Control == nil || c.Helper == nil {
 		return errors.New("manager coordinator is incompletely configured")
@@ -910,13 +982,39 @@ func (c *Coordinator) applyTakeover(ctx context.Context, manifest model.Insights
 		if reflect.DeepEqual(prior.Manifest, manifest) {
 			return nil
 		}
-		left, right := prior.Manifest, manifest
-		left.ValidUntil, right.ValidUntil = time.Time{}, time.Time{}
-		if !reflect.DeepEqual(left, right) || !manifest.ValidUntil.After(prior.Manifest.ValidUntil) || manifest.Action != "pause_manager_and_hold_member" {
+		if !sameTakeoverAuthority(prior.Manifest, manifest) || !manifest.ValidUntil.After(prior.Manifest.ValidUntil) || manifest.Action != "pause_manager_and_hold_member" {
 			return state.ErrManagerConflict
 		}
 		renewal = prior
 	}
+	if err := c.takeoverAuthority(ctx, manifest); err != nil {
+		return err
+	}
+	if renewal != nil {
+		renewal.Manifest = manifest
+		renewal.Phase = "acquiring"
+		renewal.Report = nil
+		if err := c.Store.PutManagerTakeover(ctx, *renewal); err != nil {
+			return err
+		}
+		return c.dispatchTakeover(ctx, renewal, "acquire_intervention_hold")
+	}
+	value := state.LocalManagerTakeover{Manifest: manifest, Phase: map[bool]string{true: "releasing", false: "acquiring"}[manifest.Action == "resume_manager_and_release_member"], DispatchStarted: true}
+	if err := c.Store.PutManagerTakeover(ctx, value); err != nil {
+		return err
+	}
+	return c.dispatchTakeover(ctx, &value, map[bool]string{true: "release_intervention_hold", false: "acquire_intervention_hold"}[manifest.Action == "resume_manager_and_release_member"])
+}
+
+func sameTakeoverAuthority(left, right model.InsightsTakeoverManifestV1) bool {
+	left.ValidUntil, right.ValidUntil = time.Time{}, time.Time{}
+	return reflect.DeepEqual(left, right)
+}
+
+// takeoverAuthority is the shared local authority boundary for applying a
+// takeover and renewing an already dispatched protective Pause. It does not
+// persist an operation, dispatch a helper action, or change the current policy.
+func (c *Coordinator) takeoverAuthority(ctx context.Context, manifest model.InsightsTakeoverManifestV1) error {
 	policy, err := c.Store.ManagerPolicy(ctx, sourceSandbox(ctx, c.Store, manifest.Source))
 	policyModeAllowed := policy != nil && (policy.Manifest.Mode == "off" ||
 		manifest.Action == "resume_manager_and_release_member" && policy.Manifest.Mode == "recommend")
@@ -949,20 +1047,7 @@ func (c *Coordinator) applyTakeover(ctx context.Context, manifest model.Insights
 	if err := c.localTargetAuthority(ctx, manifest.Source, manifest.Target); err != nil {
 		return err
 	}
-	if renewal != nil {
-		renewal.Manifest = manifest
-		renewal.Phase = "acquiring"
-		renewal.Report = nil
-		if err := c.Store.PutManagerTakeover(ctx, *renewal); err != nil {
-			return err
-		}
-		return c.dispatchTakeover(ctx, renewal, "acquire_intervention_hold")
-	}
-	value := state.LocalManagerTakeover{Manifest: manifest, Phase: map[bool]string{true: "releasing", false: "acquiring"}[manifest.Action == "resume_manager_and_release_member"], DispatchStarted: true}
-	if err := c.Store.PutManagerTakeover(ctx, value); err != nil {
-		return err
-	}
-	return c.dispatchTakeover(ctx, &value, map[bool]string{true: "release_intervention_hold", false: "acquire_intervention_hold"}[manifest.Action == "resume_manager_and_release_member"])
+	return nil
 }
 
 func (c *Coordinator) dispatchTakeover(ctx context.Context, value *state.LocalManagerTakeover, action string) error {
