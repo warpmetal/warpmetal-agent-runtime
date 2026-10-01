@@ -3190,6 +3190,11 @@ func (s *Store) MarkManagedServiceCreationDispatched(ctx context.Context, id, co
 	if value == nil || value.Manifest.ConfigDigest != configDigest {
 		return ErrManagedServiceConflict
 	}
+	// Dispatch is durable once recorded. Health renewals and lookup-only
+	// recovery must preserve the established phase until they observe a result.
+	if value.CreationDispatched {
+		return nil
+	}
 	_, err = s.db.ExecContext(ctx, `UPDATE managed_services SET creation_dispatched=1, phase='starting', updated_at=? WHERE service_registration_id=?`, time.Now().UTC().Format(time.RFC3339Nano), id)
 	return err
 }

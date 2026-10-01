@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -14,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/access"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
@@ -134,6 +138,7 @@ type fakeManagedRuntime struct {
 	// statusProbe, when set, answers a supervisor status probe. A nil payload
 	// with a nil error falls through to the fixture's default status receipt.
 	statusProbe func(sandboxID string, request map[string]any) ([]byte, error)
+	startProbe  func(*state.LocalManagedService)
 }
 
 func (runtime *fakeManagedRuntime) ExecManagedSupervisor(_ context.Context, _ string, action containers.ManagedSupervisorAction, payload []byte) ([]byte, []byte, error) {
@@ -179,6 +184,9 @@ func (runtime *fakeManagedRuntime) ExecManagedSupervisor(_ context.Context, _ st
 		persisted, err := runtime.store.ManagedService(context.Background(), runtime.serviceID)
 		if err != nil || persisted == nil || !persisted.CreationDispatched {
 			return nil, nil, errors.New("creation was dispatched before its durable intent")
+		}
+		if runtime.startProbe != nil {
+			runtime.startProbe(persisted)
 		}
 		runtime.startCalls++
 		if action == containers.ManagedSupervisorStart && runtime.failStart && runtime.startCalls == 1 {
@@ -641,9 +649,28 @@ func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishin
 			if err != nil {
 				t.Fatal(err)
 			}
+			if err := store.MarkManagedServiceCreationDispatched(context.Background(), runtime.serviceID, "sha256:foreign-config"); !errors.Is(err, state.ErrManagedServiceConflict) {
+				t.Fatalf("completed creation marker bypassed the exact config fence: %v", err)
+			}
+			// Keep the ordinary reconciler paused at its supervisor start boundary
+			// while a real gateway connection opens the already verified session.
+			// The prior report remains ready during this health renewal.
+			renewalHandoff := managedRenewalGateway(t, store, beforeRenewal, fixedNow())
+			startProbes := 0
+			runtime.startProbe = func(current *state.LocalManagedService) {
+				startProbes++
+				renewalHandoff()
+				if current.Phase != "ready" || !current.CreationDispatched || !reflect.DeepEqual(current.Report, beforeRenewal.Report) {
+					t.Fatalf("ordinary renewal changed completed native readiness: phase=%s dispatched=%t", current.Phase, current.CreationDispatched)
+				}
+			}
 			reconciler.Now = func() time.Time { return fixedNow().Add(time.Second) }
 			if _, err := reconciler.reconcileManagedServices(context.Background(), manifest); err != nil {
 				t.Fatal(err)
+			}
+			runtime.startProbe = nil
+			if startProbes != 1 {
+				t.Fatalf("ordinary renewal supervisor boundary calls = %d, want 1", startProbes)
 			}
 			afterRenewal, err := store.ManagedService(context.Background(), fixture.ServiceManifest.Identity.ServiceRegistrationID)
 			if err != nil || !reflect.DeepEqual(beforeRenewal.Report, afterRenewal.Report) {
@@ -746,6 +773,113 @@ func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishin
 				t.Fatalf("retired source tombstone = %#v %v", sources, err)
 			}
 		})
+	}
+}
+
+type managedRenewalBridge struct {
+	calls chan containers.SessionHandoffLaunch
+}
+
+func (bridge *managedRenewalBridge) ExecSessionHandoff(_ context.Context, _ string, launch containers.SessionHandoffLaunch, _ containers.SessionInput, _, _ io.Writer) error {
+	bridge.calls <- launch
+	return nil
+}
+
+func managedRenewalGateway(t *testing.T, store *state.Store, service *state.LocalManagedService, now time.Time) func() {
+	t.Helper()
+	manifest, native := service.Manifest, service.Report.NativeRegistration
+	if service.Phase != "ready" || native == nil {
+		t.Fatal("renewal gateway requires the ordinary producer's completed service")
+	}
+	identity := manifest.Identity
+	target := model.SessionHandoffV1{
+		FormatVersion: 1, Action: "open_session", HandoffID: "handoff_ordinary_renewal_0001", IssuedAt: now, ExpiresAt: now.Add(time.Minute),
+		Identity: model.SessionHandoffIdentityV1{
+			ServerID: identity.ServerID, TeamID: identity.TeamID, MemberID: identity.MemberID, SandboxID: identity.SandboxID,
+			SandboxGeneration: identity.SandboxGeneration, ServiceRegistrationID: identity.ServiceRegistrationID,
+			ServiceGeneration: service.ServiceGeneration, Instance: identity.Instance, Role: identity.Role,
+			ProjectID: manifest.Workspace.ProjectID, WorkspaceEpoch: manifest.Workspace.WorkspaceEpoch,
+			ProfileID: manifest.Profile.ProfileID, ProfileRevision: manifest.Profile.ProfileRevision, ProfileDigest: manifest.Profile.ProfileDigest,
+			InstructionRevision: manifest.Instructions.InstructionRevision, InstructionDigest: manifest.Instructions.InstructionDigest,
+		},
+		Source: model.SessionHandoffSourceV1{RegisteredSourceID: native.RegisteredSourceID, NativeSessionID: native.NativeSessionID,
+			NativeProjectID: native.NativeProjectID, NativeLocationDigest: native.NativeLocationDigest},
+	}
+	if err := model.ValidateSessionHandoffV1(target, now); err != nil {
+		t.Fatalf("ordinary producer target is invalid: %v", err)
+	}
+	const grantID = "grant_ordinaryrenewal0001"
+	if err := store.PutGrant(context.Background(), state.LocalGrant{ID: grantID, SandboxID: identity.SandboxID, DesiredState: "active", ObservedState: "applied"}); err != nil {
+		t.Fatal(err)
+	}
+	// Keep the Unix path below the platform limit regardless of the test name.
+	directory, err := os.MkdirTemp("", "wm-renewal-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge := &managedRenewalBridge{calls: make(chan containers.SessionHandoffLaunch, 1)}
+	gateway := &access.Gateway{Store: store, SessionHandoffEngine: bridge, HostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", Now: func() time.Time { return now }}
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan error, 1)
+	socket := filepath.Join(directory, "g.sock")
+	go func() { stopped <- gateway.Serve(ctx, socket) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case err := <-stopped:
+			if err != nil {
+				t.Errorf("renewal gateway stopped: %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Error("renewal gateway did not stop")
+		}
+		_ = os.RemoveAll(directory)
+	})
+	hello, err := json.Marshal(map[string]any{"protocol": "wm-team-control/1", "handoff": target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame := make([]byte, len(hello)+5)
+	binary.BigEndian.PutUint32(frame[:4], uint32(len(hello)+1))
+	frame[4] = 0x01
+	copy(frame[5:], hello)
+	return func() {
+		t.Helper()
+		var connection net.Conn
+		deadline := time.Now().Add(time.Second)
+		for {
+			connection, err = net.Dial("unix", socket)
+			if err == nil || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(time.Millisecond)
+		}
+		if err != nil {
+			t.Fatalf("connect ordinary renewal gateway: %v", err)
+		}
+		defer connection.Close()
+		_ = connection.SetDeadline(time.Now().Add(time.Second))
+		if err := json.NewEncoder(connection).Encode(map[string]any{"grantId": grantID, "command": "warpmetal-team-control", "tty": true, "sessionHandoff": target, "sessionHandoffHello": frame}); err != nil {
+			t.Fatal(err)
+		}
+		var response struct {
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+		}
+		if err := json.NewDecoder(connection).Decode(&response); err != nil {
+			t.Fatalf("decode ordinary renewal gateway response: %v", err)
+		}
+		if !response.OK {
+			t.Fatalf("ordinary ready-service renewal denied actual gateway handoff: %s", response.Error)
+		}
+		select {
+		case launch := <-bridge.calls:
+			if !bytes.Equal(launch.HelloFrame, frame) || launch.Grant.Engine.Port != service.Port || launch.Grant.Instance != identity.Instance {
+				t.Fatal("renewal gateway changed the exact bridge launch")
+			}
+		case <-time.After(time.Second):
+			t.Fatal("renewal gateway did not reach the fixed bridge boundary")
+		}
 	}
 }
 
