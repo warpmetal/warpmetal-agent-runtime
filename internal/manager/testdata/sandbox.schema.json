@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.invalid/contracts/agent-manager-sandbox-v1.schema.json",
+  "title": "AgentManagerSandboxV1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "startReviewRequest": {"$ref": "#/$defs/startReviewRequest"},
+    "continueReviewRequest": {"$ref": "#/$defs/runRequest"},
+    "reconcileReviewRequest": {"$ref": "#/$defs/runRequest"},
+    "lookupManagerSessionRequest": {"$ref": "#/$defs/runRequest"},
+    "reviewReceipt": {"$ref": "#/$defs/reviewReceipt"},
+    "findingEvidence": {"$ref": "#/$defs/findingEvidence"},
+    "managerEvidencePacket": {"$ref": "#/$defs/evidencePacket"},
+    "managerEvidenceRequest": {"$ref": "#/$defs/evidenceRequest"},
+    "managerSelectionEvent": {"$ref": "#/$defs/selection"},
+    "correctionProposal": {"$ref": "#/$defs/proposal"},
+    "guidanceReceipt": {"$ref": "#/$defs/guidanceReceipt"},
+    "acquireHoldRequest": {"$ref": "#/$defs/holdRequest"},
+    "releaseHoldRequest": {"$ref": "#/$defs/holdRequest"},
+    "holdReceipt": {"$ref": "#/$defs/holdReceipt"}
+  },
+  "required": ["startReviewRequest", "continueReviewRequest", "reconcileReviewRequest", "lookupManagerSessionRequest", "reviewReceipt", "findingEvidence", "managerEvidencePacket", "managerEvidenceRequest", "managerSelectionEvent", "correctionProposal", "guidanceReceipt", "acquireHoldRequest", "releaseHoldRequest", "holdReceipt"],
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{3,159}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "positive": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "dateTime": {"type": "string", "format": "date-time"},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "registeredSourceId": {"$ref": "#/$defs/id"}, "workspaceEpoch": {"$ref": "#/$defs/id"},
+        "nativeSessionId": {"$ref": "#/$defs/id"}, "serviceRegistrationId": {"$ref": "#/$defs/id"},
+        "serviceGeneration": {"$ref": "#/$defs/positive"}, "sandboxGeneration": {"$ref": "#/$defs/positive"},
+        "profileRevision": {"$ref": "#/$defs/positive"}, "instructionRevision": {"$ref": "#/$defs/positive"}
+      },
+      "required": ["registeredSourceId", "workspaceEpoch", "nativeSessionId", "serviceRegistrationId", "serviceGeneration", "sandboxGeneration", "profileRevision", "instructionRevision"]
+    },
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "teamId": {"$ref": "#/$defs/id"}, "memberId": {"$ref": "#/$defs/id"},
+        "taskId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "taskAttempt": {"oneOf": [{"$ref": "#/$defs/positive"}, {"type": "null"}]},
+        "workId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "workRevision": {"oneOf": [{"$ref": "#/$defs/positive"}, {"type": "null"}]},
+        "bindingId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "bindingRevision": {"oneOf": [{"$ref": "#/$defs/positive"}, {"type": "null"}]}
+      },
+      "required": ["teamId", "memberId", "taskId", "taskAttempt", "workId", "workRevision", "bindingId", "bindingRevision"],
+      "allOf": [
+        {"oneOf": [
+          {"properties": {"taskId": {"type": "null"}, "taskAttempt": {"type": "null"}}},
+          {"properties": {"taskId": {"$ref": "#/$defs/id"}, "taskAttempt": {"$ref": "#/$defs/positive"}}}
+        ]},
+        {"oneOf": [
+          {"properties": {"workId": {"type": "null"}, "workRevision": {"type": "null"}, "bindingId": {"type": "null"}, "bindingRevision": {"type": "null"}}},
+          {"properties": {"workId": {"$ref": "#/$defs/id"}, "workRevision": {"$ref": "#/$defs/positive"}, "bindingId": {"$ref": "#/$defs/id"}, "bindingRevision": {"$ref": "#/$defs/positive"}}}
+        ]}
+      ]
+    },
+    "managerProfile": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"profileId": {"const": "warpmetal-insights-manager"}, "profileRevision": {"$ref": "#/$defs/positive"}, "profileDigest": {"$ref": "#/$defs/digest"}},
+      "required": ["profileId", "profileRevision", "profileDigest"]
+    },
+    "budget": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"modelRequests": {"type": "integer", "minimum": 1, "maximum": 2}, "inputTokens": {"type": "integer", "minimum": 1, "maximum": 16000}, "outputTokens": {"type": "integer", "minimum": 1, "maximum": 2000}},
+      "required": ["modelRequests", "inputTokens", "outputTokens"]
+    },
+    "authority": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "formatVersion": {"const": 1}, "reservationId": {"$ref": "#/$defs/id"}, "runId": {"$ref": "#/$defs/id"}, "manual": {"const": true},
+        "findingId": {"$ref": "#/$defs/id"}, "findingRevision": {"$ref": "#/$defs/positive"},
+        "policyRevision": {"$ref": "#/$defs/positive"},
+        "ruleId": {"enum": ["repeated_identical_failure@1", "repeated_identical_call@1", "empty_result_loop@1", "suspected_stall@1"]},
+        "recipeId": {"enum": ["inspect_first_failure@1", "check_repeated_operation@1", "refine_query@1", "inspect_active_phase@1"]},
+        "providerRouteDigest": {"$ref": "#/$defs/digest"}, "managerProfile": {"$ref": "#/$defs/managerProfile"},
+        "source": {"$ref": "#/$defs/source"}, "target": {"$ref": "#/$defs/target"}, "budget": {"$ref": "#/$defs/budget"},
+        "validUntil": {"$ref": "#/$defs/dateTime"}
+      },
+      "required": ["formatVersion", "reservationId", "runId", "manual", "findingId", "findingRevision", "policyRevision", "ruleId", "recipeId", "providerRouteDigest", "managerProfile", "source", "target", "budget", "validUntil"]
+    },
+    "routeCapability": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "nativeVersion": {"const": "2.0.14"}, "nativeSourceRevision": {"const": "08462140ec0de1e4b17d4a353d8d5827f53cf7b0"},
+        "protocol": {"const": "opencode-supervisor/1"},
+        "nativeProtocol": {"enum": ["openai_chat", "open_responses", "anthropic_messages", "gemini", "bedrock_converse", "mistral_chat"]},
+        "providerId": {"$ref": "#/$defs/id"}, "modelId": {"$ref": "#/$defs/id"}, "providerRouteDigest": {"$ref": "#/$defs/digest"},
+        "recipeIds": {"type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": {"enum": ["inspect_first_failure@1", "check_repeated_operation@1", "refine_query@1", "inspect_active_phase@1"]}},
+        "managerPluginDigest": {"$ref": "#/$defs/digest"}, "maxInputTokens": {"const": 8000}, "maxOutputTokens": {"const": 1000},
+        "finalRequestMaxBytes": {"const": 7000}, "toolsAllowed": {"const": false}, "mediaAllowed": {"const": false},
+        "hardOutputTokenLimit": {"type": "boolean"}, "available": {"type": "boolean"},
+        "reason": {"enum": [null, "native_guard_unqualified", "budget_isolation_unavailable", "source_unavailable", "runtime_unavailable", "target_stale", "binding_not_verified", "task_stale", "manager_session_pending", "manager_session_unavailable"]}
+      },
+      "required": ["nativeVersion", "nativeSourceRevision", "protocol", "nativeProtocol", "providerId", "modelId", "providerRouteDigest", "recipeIds", "managerPluginDigest", "maxInputTokens", "maxOutputTokens", "finalRequestMaxBytes", "toolsAllowed", "mediaAllowed", "hardOutputTokenLimit", "available", "reason"]
+    },
+    "findingEvidence": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "findingId": {"$ref": "#/$defs/id"}, "findingRevision": {"$ref": "#/$defs/positive"}, "journalGeneration": {"$ref": "#/$defs/id"},
+        "ruleId": {"type": "string"}, "nativeSessionId": {"$ref": "#/$defs/id"},
+        "firstSequence": {"$ref": "#/$defs/positive"}, "lastSequence": {"$ref": "#/$defs/positive"}, "count": {"$ref": "#/$defs/positive"},
+        "matchedCallIds": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "coverage": {"const": "complete"}, "firstObservedAt": {"$ref": "#/$defs/dateTime"}, "lastObservedAt": {"$ref": "#/$defs/dateTime"},
+        "toolCategory": {"type": "string", "maxLength": 32}, "phase": {"type": "string", "maxLength": 32}
+      },
+      "required": ["findingId", "findingRevision", "journalGeneration", "ruleId", "nativeSessionId", "firstSequence", "lastSequence", "count", "matchedCallIds", "coverage", "firstObservedAt", "lastObservedAt", "toolCategory", "phase"]
+    },
+    "selection": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "selectionId": {"$ref": "#/$defs/id"}, "kind": {"enum": ["tool_input", "tool_result", "native_message", "session_state"]},
+        "nativeSessionId": {"$ref": "#/$defs/id"}, "messageId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "callId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "sequence": {"$ref": "#/$defs/positive"},
+        "contentDigest": {"$ref": "#/$defs/digest"}, "byteCount": {"type": "integer", "minimum": 0, "maximum": 4096},
+        "truncated": {"type": "boolean"}, "redacted": {"type": "boolean"}, "excerpt": {"type": "string", "maxLength": 4096}
+      },
+      "required": ["selectionId", "kind", "nativeSessionId", "messageId", "callId", "sequence", "contentDigest", "byteCount", "truncated", "redacted", "excerpt"]
+    },
+    "evidencePacket": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "formatVersion": {"const": 1}, "runId": {"$ref": "#/$defs/id"}, "recipeId": {"type": "string"},
+        "finding": {"$ref": "#/$defs/findingEvidence"}, "selections": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/selection"}},
+        "selectionDigest": {"$ref": "#/$defs/digest"}, "contentBytes": {"type": "integer", "minimum": 0, "maximum": 32768},
+        "tokenUpperBound": {"type": "integer", "minimum": 0, "maximum": 4000}, "nativeReadCount": {"type": "integer", "minimum": 0, "maximum": 4},
+        "nativeReadBytes": {"type": "integer", "minimum": 0, "maximum": 262144}, "fallbackPages": {"type": "integer", "minimum": 0, "maximum": 2},
+        "fallbackMessages": {"type": "integer", "minimum": 0, "maximum": 8}
+      },
+      "required": ["formatVersion", "runId", "recipeId", "finding", "selections", "selectionDigest", "contentBytes", "tokenUpperBound", "nativeReadCount", "nativeReadBytes", "fallbackPages", "fallbackMessages"]
+    },
+    "evidenceReference": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"kind": {"enum": ["tool_input", "tool_result", "native_message", "session_state"]}, "messageId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "callId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "sequence": {"$ref": "#/$defs/positive"}},
+      "required": ["kind", "messageId", "callId", "sequence"]
+    },
+    "evidenceRequest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "type": {"const": "request_evidence"}, "recipeId": {"type": "string"}, "references": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"$ref": "#/$defs/evidenceReference"}}},
+      "required": ["formatVersion", "type", "recipeId", "references"]
+    },
+    "citation": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"selectionId": {"$ref": "#/$defs/id"}, "sequence": {"$ref": "#/$defs/positive"}},
+      "required": ["selectionId", "sequence"]
+    },
+    "proposal": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "formatVersion": {"const": 1}, "type": {"const": "correction_proposal"},
+        "recipeId": {"type": "string"}, "outcome": {"enum": ["recommendation", "no_action", "needs_owner"]},
+        "rationaleCode": {"enum": ["unchanged_failure_repeated", "repeated_call_detected", "query_refinement_available", "active_phase_stalled", "no_safe_action"]},
+        "citations": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/citation"}},
+        "guidance": {"oneOf": [{"type": "null"}, {"type": "string", "minLength": 1, "maxLength": 2048}]}
+      },
+      "required": ["formatVersion", "type", "recipeId", "outcome", "rationaleCode", "citations", "guidance"]
+    },
+    "guidanceReceipt": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "mode": {"const": "recommend_only"}, "status": {"const": "not_delivered"}, "atomicNativeGuard": {"const": false}, "autoSteer": {"const": false}, "guidanceDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}, "pendingInputId": {"type": "null"}},
+      "required": ["formatVersion", "mode", "status", "atomicNativeGuard", "autoSteer", "guidanceDigest", "pendingInputId"]
+    },
+    "managerSession": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"nativeSessionId": {"$ref": "#/$defs/id"}, "nativeProjectId": {"type": "string", "pattern": "^(global|[a-f0-9]{40})$"}, "nativeLocationDigest": {"$ref": "#/$defs/digest"}, "serviceRegistrationId": {"$ref": "#/$defs/id"}, "serviceGeneration": {"$ref": "#/$defs/positive"}, "providerRouteDigest": {"$ref": "#/$defs/digest"}, "managerProfile": {"$ref": "#/$defs/managerProfile"}},
+      "required": ["nativeSessionId", "nativeProjectId", "nativeLocationDigest", "serviceRegistrationId", "serviceGeneration", "providerRouteDigest", "managerProfile"]
+    },
+    "startReviewRequest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "action": {"const": "start_review"}, "instance": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"}, "authority": {"$ref": "#/$defs/authority"}, "finding": {"$ref": "#/$defs/findingEvidence"}, "capability": {"$ref": "#/$defs/routeCapability"}},
+      "required": ["formatVersion", "action", "instance", "authority", "finding", "capability"]
+    },
+    "runRequest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "action": {"enum": ["continue_review", "reconcile_review", "lookup_manager_session"]}, "instance": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"}, "reservationId": {"$ref": "#/$defs/id"}, "runId": {"$ref": "#/$defs/id"}, "policyRevision": {"$ref": "#/$defs/positive"}, "runGeneration": {"$ref": "#/$defs/positive"}, "source": {"$ref": "#/$defs/source"}},
+      "required": ["formatVersion", "action", "instance", "reservationId", "runId", "policyRevision", "runGeneration", "source"]
+    },
+    "reviewReceipt": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "action": {"type": "string"}, "status": {"enum": ["reviewing", "recommended", "needs_owner", "failed", "execution_unknown", "refused"]}, "reservationId": {"$ref": "#/$defs/id"}, "runId": {"$ref": "#/$defs/id"}, "modelRequests": {"type": "integer", "minimum": 0, "maximum": 2}, "reservedInputTokens": {"type": "integer", "minimum": 0, "maximum": 16000}, "reservedOutputTokens": {"type": "integer", "minimum": 0, "maximum": 2000}, "managerRegisteredSourceId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "managerSession": {"oneOf": [{"$ref": "#/$defs/managerSession"}, {"type": "null"}]}, "proposalDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}, "guidanceReceipt": {"$ref": "#/$defs/guidanceReceipt"}, "receiptDigest": {"$ref": "#/$defs/digest"}, "error": {"type": ["string", "null"]}},
+      "required": ["formatVersion", "action", "status", "reservationId", "runId", "modelRequests", "reservedInputTokens", "reservedOutputTokens", "managerRegisteredSourceId", "managerSession", "proposalDigest", "guidanceReceipt", "receiptDigest", "error"]
+    },
+    "holdManifest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "operationId": {"$ref": "#/$defs/id"}, "predecessorOperationId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "action": {"enum": ["pause_manager_and_hold_member", "resume_manager_and_release_member"]}, "findingId": {"$ref": "#/$defs/id"}, "findingRevision": {"$ref": "#/$defs/positive"}, "policyRevision": {"$ref": "#/$defs/positive"}, "runGeneration": {"$ref": "#/$defs/positive"}, "holdId": {"$ref": "#/$defs/id"}, "holdRevision": {"$ref": "#/$defs/positive"}, "holdState": {"enum": ["active", "released"]}, "source": {"$ref": "#/$defs/source"}, "target": {"$ref": "#/$defs/target"}, "validUntil": {"$ref": "#/$defs/dateTime"}},
+      "required": ["formatVersion", "operationId", "predecessorOperationId", "action", "findingId", "findingRevision", "policyRevision", "runGeneration", "holdId", "holdRevision", "holdState", "source", "target", "validUntil"]
+    },
+    "holdRequest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "action": {"enum": ["acquire_intervention_hold", "release_intervention_hold", "reconcile_intervention_hold"]}, "instance": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"}, "manifest": {"$ref": "#/$defs/holdManifest"}},
+      "required": ["formatVersion", "action", "instance", "manifest"]
+    },
+    "holdReceipt": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "action": {"enum": ["acquire_intervention_hold", "release_intervention_hold", "reconcile_intervention_hold"]}, "status": {"enum": ["active", "released", "unsettled"]}, "operationId": {"$ref": "#/$defs/id"}, "predecessorOperationId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "findingId": {"$ref": "#/$defs/id"}, "findingRevision": {"$ref": "#/$defs/positive"}, "holdId": {"$ref": "#/$defs/id"}, "holdRevision": {"$ref": "#/$defs/positive"}, "holdState": {"enum": ["active", "released"]}, "policyRevision": {"$ref": "#/$defs/positive"}, "runGeneration": {"$ref": "#/$defs/positive"}, "source": {"$ref": "#/$defs/source"}, "target": {"$ref": "#/$defs/target"}, "validUntil": {"$ref": "#/$defs/dateTime"}, "pendingInput": {"type": "object", "additionalProperties": false, "properties": {"state": {"enum": ["none_pending", "canceled", "already_available_to_worker", "unknown"]}, "alreadyConsumed": {"type": "boolean"}}, "required": ["state", "alreadyConsumed"]}, "receiptDigest": {"$ref": "#/$defs/digest"}, "errorCode": {"type": "null"}},
+      "required": ["formatVersion", "action", "status", "operationId", "predecessorOperationId", "findingId", "findingRevision", "holdId", "holdRevision", "holdState", "policyRevision", "runGeneration", "source", "target", "validUntil", "pendingInput", "receiptDigest", "errorCode"]
+    }
+  }
+}

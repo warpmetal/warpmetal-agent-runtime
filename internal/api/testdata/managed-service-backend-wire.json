@@ -1,0 +1,912 @@
+{
+  "changedAuthorityManifest": {
+    "accessGrants": [],
+    "capacity": {
+      "cpuMillicores": 3500,
+      "memoryMiB": 7168,
+      "workspaceDiskGiB": 70
+    },
+    "continuityContinuationReleases": [],
+    "continuityContinuations": [],
+    "continuityHandoffReleases": [],
+    "continuityHandoffs": [],
+    "continuityOperations": [],
+    "continuityRegistrations": [],
+    "continuityRestores": [],
+    "desiredRevision": 5,
+    "imageDigest": "ghcr.io/warpmetal/test-sandbox@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "insightsManagerPolicies": [],
+    "insightsManagerReviews": [],
+    "insightsTakeovers": [],
+    "managedServices": [
+      {
+        "actionRevision": 5,
+        "authority": {
+          "authMode": "api_key",
+          "modelId": "claude-sonnet-4",
+          "providerId": "anthropic",
+          "teamRevision": 4
+        },
+        "configDigest": "sha256:60dcb9c7252943fc41d36f5d8fcea7676fb736c0fbab14e73cd53095e2329452",
+        "desiredRevision": 3,
+        "desiredState": "active",
+        "formatVersion": 1,
+        "identity": {
+          "expectedServiceGeneration": 1,
+          "instance": "default",
+          "memberId": "tmem_cDwh92MlHKL0xYuATubR7vFh",
+          "role": "worker",
+          "sandboxGeneration": 1,
+          "sandboxId": "sbx_builder_e57c9a88dca4",
+          "serverId": "srv_s1m-wire",
+          "serviceRegistrationId": "service_3Ys6PakzagnhYMFInT3L3J4N",
+          "teamId": "team_DXhtFfVsKLOf_jul9WIjEv1-"
+        },
+        "instructions": {
+          "instructionDigest": "sha256:eb26f4464ef6524d7fdc472c8f9d30a49794724ad1df82d978fc43a22941dae6",
+          "instructionRevision": 1
+        },
+        "operationId": "op_s1m_wire_restart_0001",
+        "profile": {
+          "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+          "profileId": "opencode",
+          "profileRevision": 1,
+          "setupOperationId": "setup-0674034467b9087f6954025d94c087b33d47"
+        },
+        "sessionMode": "lookup_only",
+        "workspace": {
+          "designation": "team_project",
+          "projectId": "project_s1m-wire_0",
+          "rootAttestation": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "scopeRevision": 1,
+          "selectionId": "selection_s1m-wire_0",
+          "workspaceEpoch": "epoch_s1m-wire_0"
+        }
+      },
+      {
+        "actionRevision": 5,
+        "authority": {
+          "authMode": "chatgpt_subscription",
+          "modelId": null,
+          "providerId": "openai",
+          "teamRevision": 1
+        },
+        "configDigest": "sha256:2470f7e9df281074aa8a09d03dd48a3d6f7c41ebe48114d157d3c8eae1da1e3c",
+        "desiredRevision": 3,
+        "desiredState": "active",
+        "formatVersion": 1,
+        "identity": {
+          "expectedServiceGeneration": 1,
+          "instance": "default",
+          "memberId": "tmem_etuHf7MhkQeJUiwtYNTc2q3-",
+          "role": "manager",
+          "sandboxGeneration": 1,
+          "sandboxId": "sbx_manager_e57c9a88dca4",
+          "serverId": "srv_s1m-wire",
+          "serviceRegistrationId": "service_PYEJjjCmCoLem3d5-xVRnitl",
+          "teamId": "team_DXhtFfVsKLOf_jul9WIjEv1-"
+        },
+        "instructions": {
+          "instructionDigest": "sha256:6c086888730813498880f99cf9d614520d3aacf5d54b730e7529e2e24725ac47",
+          "instructionRevision": 1
+        },
+        "operationId": "op_s1m_wire_restart_0001",
+        "profile": {
+          "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+          "profileId": "opencode",
+          "profileRevision": 1,
+          "setupOperationId": "setup-aac37f6c9b6b645260e62a893c4b503a0a29"
+        },
+        "sessionMode": "lookup_only",
+        "workspace": {
+          "designation": "team_project",
+          "projectId": "project_s1m-wire_1",
+          "rootAttestation": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "scopeRevision": 1,
+          "selectionId": "selection_s1m-wire_1",
+          "workspaceEpoch": "epoch_s1m-wire_1"
+        }
+      }
+    ],
+    "managedWorkspaceRequests": [],
+    "sandboxes": [
+      {
+        "desiredState": "running",
+        "expiresAt": null,
+        "expiresInSeconds": null,
+        "generation": 1,
+        "id": "sbx_manager_e57c9a88dca4",
+        "lifetime": "persistent",
+        "name": "manager",
+        "resources": {
+          "cpuMillicores": 1000,
+          "memoryMiB": 1024,
+          "pids": 256,
+          "workspaceDiskGiB": 10
+        },
+        "size": "small",
+        "startedAt": null
+      },
+      {
+        "desiredState": "running",
+        "expiresAt": null,
+        "expiresInSeconds": null,
+        "generation": 1,
+        "id": "sbx_builder_e57c9a88dca4",
+        "lifetime": "persistent",
+        "name": "builder",
+        "resources": {
+          "cpuMillicores": 1000,
+          "memoryMiB": 1024,
+          "pids": 256,
+          "workspaceDiskGiB": 10
+        },
+        "size": "small",
+        "startedAt": null
+      }
+    ],
+    "serverId": "srv_s1m-wire",
+    "setupOperations": [
+      {
+        "id": "setup-aac37f6c9b6b645260e62a893c4b503a0a29",
+        "materializer": {
+          "artifact": {
+            "format": "tar-gz",
+            "id": "opencode-cli-linux-x64",
+            "integrity": "sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==",
+            "sha256": "sha256:a3824cc0d080fd69e95c47ae751a8ba49b668f6492fcfe377f5c941c337e53a9",
+            "sizeBytes": 88757774,
+            "source": "https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.14.tgz"
+          },
+          "bin": {
+            "environment": {
+              "OPENCODE_DISABLE_AUTOUPDATE": "1"
+            },
+            "member": "package/bin/opencode",
+            "name": "opencode",
+            "sha256": "sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb",
+            "version": "2.0.14"
+          },
+          "kind": "archive-binary",
+          "platform": "linux/amd64"
+        },
+        "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_manager_e57c9a88dca4",
+        "schemaVersion": 1
+      },
+      {
+        "id": "setup-0674034467b9087f6954025d94c087b33d47",
+        "materializer": {
+          "artifact": {
+            "format": "tar-gz",
+            "id": "opencode-cli-linux-x64",
+            "integrity": "sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==",
+            "sha256": "sha256:a3824cc0d080fd69e95c47ae751a8ba49b668f6492fcfe377f5c941c337e53a9",
+            "sizeBytes": 88757774,
+            "source": "https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.14.tgz"
+          },
+          "bin": {
+            "environment": {
+              "OPENCODE_DISABLE_AUTOUPDATE": "1"
+            },
+            "member": "package/bin/opencode",
+            "name": "opencode",
+            "sha256": "sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb",
+            "version": "2.0.14"
+          },
+          "kind": "archive-binary",
+          "platform": "linux/amd64"
+        },
+        "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_builder_e57c9a88dca4",
+        "schemaVersion": 1
+      }
+    ]
+  },
+  "pauseManifest": {
+    "accessGrants": [],
+    "capacity": {
+      "cpuMillicores": 3500,
+      "memoryMiB": 7168,
+      "workspaceDiskGiB": 70
+    },
+    "continuityContinuationReleases": [],
+    "continuityContinuations": [],
+    "continuityHandoffReleases": [],
+    "continuityHandoffs": [],
+    "continuityOperations": [],
+    "continuityRegistrations": [],
+    "continuityRestores": [],
+    "desiredRevision": 4,
+    "imageDigest": "ghcr.io/warpmetal/test-sandbox@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "insightsManagerPolicies": [],
+    "insightsManagerReviews": [],
+    "insightsTakeovers": [],
+    "managedServices": [
+      {
+        "actionRevision": 3,
+        "authority": {
+          "authMode": "api_key",
+          "modelId": "deepseek-flash",
+          "providerId": "deepseek",
+          "teamRevision": 1
+        },
+        "configDigest": "sha256:0306ffa6a5797391666691f0cf28b8c4601064d4620d15bea96cc2c8a95875a0",
+        "desiredRevision": 2,
+        "desiredState": "paused",
+        "formatVersion": 1,
+        "identity": {
+          "expectedServiceGeneration": 1,
+          "instance": "default",
+          "memberId": "tmem_cDwh92MlHKL0xYuATubR7vFh",
+          "role": "worker",
+          "sandboxGeneration": 1,
+          "sandboxId": "sbx_builder_e57c9a88dca4",
+          "serverId": "srv_s1m-wire",
+          "serviceRegistrationId": "service_3Ys6PakzagnhYMFInT3L3J4N",
+          "teamId": "team_DXhtFfVsKLOf_jul9WIjEv1-"
+        },
+        "instructions": {
+          "instructionDigest": "sha256:eb26f4464ef6524d7fdc472c8f9d30a49794724ad1df82d978fc43a22941dae6",
+          "instructionRevision": 1
+        },
+        "operationId": "op_s1m_wire_pause_0001",
+        "profile": {
+          "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+          "profileId": "opencode",
+          "profileRevision": 1,
+          "setupOperationId": "setup-0674034467b9087f6954025d94c087b33d47"
+        },
+        "sessionMode": "lookup_only",
+        "workspace": {
+          "designation": "team_project",
+          "projectId": "project_s1m-wire_0",
+          "rootAttestation": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "scopeRevision": 1,
+          "selectionId": "selection_s1m-wire_0",
+          "workspaceEpoch": "epoch_s1m-wire_0"
+        }
+      },
+      {
+        "actionRevision": 3,
+        "authority": {
+          "authMode": "chatgpt_subscription",
+          "modelId": null,
+          "providerId": "openai",
+          "teamRevision": 1
+        },
+        "configDigest": "sha256:2470f7e9df281074aa8a09d03dd48a3d6f7c41ebe48114d157d3c8eae1da1e3c",
+        "desiredRevision": 2,
+        "desiredState": "paused",
+        "formatVersion": 1,
+        "identity": {
+          "expectedServiceGeneration": 1,
+          "instance": "default",
+          "memberId": "tmem_etuHf7MhkQeJUiwtYNTc2q3-",
+          "role": "manager",
+          "sandboxGeneration": 1,
+          "sandboxId": "sbx_manager_e57c9a88dca4",
+          "serverId": "srv_s1m-wire",
+          "serviceRegistrationId": "service_PYEJjjCmCoLem3d5-xVRnitl",
+          "teamId": "team_DXhtFfVsKLOf_jul9WIjEv1-"
+        },
+        "instructions": {
+          "instructionDigest": "sha256:6c086888730813498880f99cf9d614520d3aacf5d54b730e7529e2e24725ac47",
+          "instructionRevision": 1
+        },
+        "operationId": "op_s1m_wire_pause_0001",
+        "profile": {
+          "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+          "profileId": "opencode",
+          "profileRevision": 1,
+          "setupOperationId": "setup-aac37f6c9b6b645260e62a893c4b503a0a29"
+        },
+        "sessionMode": "lookup_only",
+        "workspace": {
+          "designation": "team_project",
+          "projectId": "project_s1m-wire_1",
+          "rootAttestation": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "scopeRevision": 1,
+          "selectionId": "selection_s1m-wire_1",
+          "workspaceEpoch": "epoch_s1m-wire_1"
+        }
+      }
+    ],
+    "managedWorkspaceRequests": [],
+    "sandboxes": [
+      {
+        "desiredState": "running",
+        "expiresAt": null,
+        "expiresInSeconds": null,
+        "generation": 1,
+        "id": "sbx_manager_e57c9a88dca4",
+        "lifetime": "persistent",
+        "name": "manager",
+        "resources": {
+          "cpuMillicores": 1000,
+          "memoryMiB": 1024,
+          "pids": 256,
+          "workspaceDiskGiB": 10
+        },
+        "size": "small",
+        "startedAt": null
+      },
+      {
+        "desiredState": "running",
+        "expiresAt": null,
+        "expiresInSeconds": null,
+        "generation": 1,
+        "id": "sbx_builder_e57c9a88dca4",
+        "lifetime": "persistent",
+        "name": "builder",
+        "resources": {
+          "cpuMillicores": 1000,
+          "memoryMiB": 1024,
+          "pids": 256,
+          "workspaceDiskGiB": 10
+        },
+        "size": "small",
+        "startedAt": null
+      }
+    ],
+    "serverId": "srv_s1m-wire",
+    "setupOperations": [
+      {
+        "id": "setup-aac37f6c9b6b645260e62a893c4b503a0a29",
+        "materializer": {
+          "artifact": {
+            "format": "tar-gz",
+            "id": "opencode-cli-linux-x64",
+            "integrity": "sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==",
+            "sha256": "sha256:a3824cc0d080fd69e95c47ae751a8ba49b668f6492fcfe377f5c941c337e53a9",
+            "sizeBytes": 88757774,
+            "source": "https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.14.tgz"
+          },
+          "bin": {
+            "environment": {
+              "OPENCODE_DISABLE_AUTOUPDATE": "1"
+            },
+            "member": "package/bin/opencode",
+            "name": "opencode",
+            "sha256": "sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb",
+            "version": "2.0.14"
+          },
+          "kind": "archive-binary",
+          "platform": "linux/amd64"
+        },
+        "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_manager_e57c9a88dca4",
+        "schemaVersion": 1
+      },
+      {
+        "id": "setup-0674034467b9087f6954025d94c087b33d47",
+        "materializer": {
+          "artifact": {
+            "format": "tar-gz",
+            "id": "opencode-cli-linux-x64",
+            "integrity": "sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==",
+            "sha256": "sha256:a3824cc0d080fd69e95c47ae751a8ba49b668f6492fcfe377f5c941c337e53a9",
+            "sizeBytes": 88757774,
+            "source": "https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.14.tgz"
+          },
+          "bin": {
+            "environment": {
+              "OPENCODE_DISABLE_AUTOUPDATE": "1"
+            },
+            "member": "package/bin/opencode",
+            "name": "opencode",
+            "sha256": "sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb",
+            "version": "2.0.14"
+          },
+          "kind": "archive-binary",
+          "platform": "linux/amd64"
+        },
+        "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_builder_e57c9a88dca4",
+        "schemaVersion": 1
+      }
+    ]
+  },
+  "progressReports": [
+    {
+      "actionRevision": 2,
+      "configDigest": "sha256:0306ffa6a5797391666691f0cf28b8c4601064d4620d15bea96cc2c8a95875a0",
+      "enrollmentStatus": "ready",
+      "formatVersion": 1,
+      "identity": {
+        "expectedServiceGeneration": 1,
+        "instance": "default",
+        "memberId": "tmem_cDwh92MlHKL0xYuATubR7vFh",
+        "role": "worker",
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_builder_e57c9a88dca4",
+        "serverId": "srv_s1m-wire",
+        "serviceRegistrationId": "service_3Ys6PakzagnhYMFInT3L3J4N",
+        "teamId": "team_DXhtFfVsKLOf_jul9WIjEv1-"
+      },
+      "instructionApplied": false,
+      "instructionDigest": "sha256:eb26f4464ef6524d7fdc472c8f9d30a49794724ad1df82d978fc43a22941dae6",
+      "instructionRevision": 1,
+      "observedDesiredRevision": 1,
+      "observedState": "registering",
+      "operationId": "op_s1m_wire_start_0001",
+      "profileStatus": "ready",
+      "receiptDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "serviceGeneration": 1,
+      "workerStatus": "failed",
+      "workspaceStatus": "ready"
+    },
+    {
+      "actionRevision": 2,
+      "configDigest": "sha256:2470f7e9df281074aa8a09d03dd48a3d6f7c41ebe48114d157d3c8eae1da1e3c",
+      "enrollmentStatus": "ready",
+      "formatVersion": 1,
+      "identity": {
+        "expectedServiceGeneration": 1,
+        "instance": "default",
+        "memberId": "tmem_etuHf7MhkQeJUiwtYNTc2q3-",
+        "role": "manager",
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_manager_e57c9a88dca4",
+        "serverId": "srv_s1m-wire",
+        "serviceRegistrationId": "service_PYEJjjCmCoLem3d5-xVRnitl",
+        "teamId": "team_DXhtFfVsKLOf_jul9WIjEv1-"
+      },
+      "instructionApplied": false,
+      "instructionDigest": "sha256:6c086888730813498880f99cf9d614520d3aacf5d54b730e7529e2e24725ac47",
+      "instructionRevision": 1,
+      "observedDesiredRevision": 1,
+      "observedState": "registering",
+      "operationId": "op_s1m_wire_start_0001",
+      "profileStatus": "ready",
+      "receiptDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "serviceGeneration": 1,
+      "workerStatus": "failed",
+      "workspaceStatus": "ready"
+    }
+  ],
+  "readyReports": [
+    {
+      "actionRevision": 2,
+      "configDigest": "sha256:0306ffa6a5797391666691f0cf28b8c4601064d4620d15bea96cc2c8a95875a0",
+      "enrollmentStatus": "ready",
+      "formatVersion": 1,
+      "identity": {
+        "expectedServiceGeneration": 1,
+        "instance": "default",
+        "memberId": "tmem_cDwh92MlHKL0xYuATubR7vFh",
+        "role": "worker",
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_builder_e57c9a88dca4",
+        "serverId": "srv_s1m-wire",
+        "serviceRegistrationId": "service_3Ys6PakzagnhYMFInT3L3J4N",
+        "teamId": "team_DXhtFfVsKLOf_jul9WIjEv1-"
+      },
+      "instructionApplied": true,
+      "instructionDigest": "sha256:eb26f4464ef6524d7fdc472c8f9d30a49794724ad1df82d978fc43a22941dae6",
+      "instructionRevision": 1,
+      "nativeRegistration": {
+        "nativeLocationDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+        "nativeProjectId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "nativeSessionId": "ses_s1m_wire_0",
+        "registeredSourceId": "source_s1m_wire_0",
+        "workspaceEpoch": "epoch_s1m-wire_0"
+      },
+      "observedDesiredRevision": 1,
+      "observedState": "ready",
+      "operationId": "op_s1m_wire_start_0001",
+      "profileStatus": "ready",
+      "receiptDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "serviceGeneration": 1,
+      "workerStatus": "ready",
+      "workspaceStatus": "ready"
+    },
+    {
+      "actionRevision": 2,
+      "configDigest": "sha256:2470f7e9df281074aa8a09d03dd48a3d6f7c41ebe48114d157d3c8eae1da1e3c",
+      "enrollmentStatus": "ready",
+      "formatVersion": 1,
+      "identity": {
+        "expectedServiceGeneration": 1,
+        "instance": "default",
+        "memberId": "tmem_etuHf7MhkQeJUiwtYNTc2q3-",
+        "role": "manager",
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_manager_e57c9a88dca4",
+        "serverId": "srv_s1m-wire",
+        "serviceRegistrationId": "service_PYEJjjCmCoLem3d5-xVRnitl",
+        "teamId": "team_DXhtFfVsKLOf_jul9WIjEv1-"
+      },
+      "instructionApplied": true,
+      "instructionDigest": "sha256:6c086888730813498880f99cf9d614520d3aacf5d54b730e7529e2e24725ac47",
+      "instructionRevision": 1,
+      "nativeRegistration": {
+        "nativeLocationDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+        "nativeProjectId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "nativeSessionId": "ses_s1m_wire_1",
+        "registeredSourceId": "source_s1m_wire_1",
+        "workspaceEpoch": "epoch_s1m-wire_1"
+      },
+      "observedDesiredRevision": 1,
+      "observedState": "ready",
+      "operationId": "op_s1m_wire_start_0001",
+      "profileStatus": "ready",
+      "receiptDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "serviceGeneration": 1,
+      "workerStatus": "ready",
+      "workspaceStatus": "ready"
+    }
+  ],
+  "serviceManifest": {
+    "accessGrants": [],
+    "capacity": {
+      "cpuMillicores": 3500,
+      "memoryMiB": 7168,
+      "workspaceDiskGiB": 70
+    },
+    "continuityContinuationReleases": [],
+    "continuityContinuations": [],
+    "continuityHandoffReleases": [],
+    "continuityHandoffs": [],
+    "continuityOperations": [],
+    "continuityRegistrations": [],
+    "continuityRestores": [],
+    "desiredRevision": 3,
+    "imageDigest": "ghcr.io/warpmetal/test-sandbox@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "insightsManagerPolicies": [],
+    "insightsManagerReviews": [],
+    "insightsTakeovers": [],
+    "managedServices": [
+      {
+        "actionRevision": 2,
+        "authority": {
+          "authMode": "api_key",
+          "modelId": "deepseek-flash",
+          "providerId": "deepseek",
+          "teamRevision": 1
+        },
+        "configDigest": "sha256:0306ffa6a5797391666691f0cf28b8c4601064d4620d15bea96cc2c8a95875a0",
+        "desiredRevision": 1,
+        "desiredState": "active",
+        "formatVersion": 1,
+        "identity": {
+          "expectedServiceGeneration": 1,
+          "instance": "default",
+          "memberId": "tmem_cDwh92MlHKL0xYuATubR7vFh",
+          "role": "worker",
+          "sandboxGeneration": 1,
+          "sandboxId": "sbx_builder_e57c9a88dca4",
+          "serverId": "srv_s1m-wire",
+          "serviceRegistrationId": "service_3Ys6PakzagnhYMFInT3L3J4N",
+          "teamId": "team_DXhtFfVsKLOf_jul9WIjEv1-"
+        },
+        "instructions": {
+          "instructionDigest": "sha256:eb26f4464ef6524d7fdc472c8f9d30a49794724ad1df82d978fc43a22941dae6",
+          "instructionRevision": 1
+        },
+        "operationId": "op_s1m_wire_start_0001",
+        "profile": {
+          "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+          "profileId": "opencode",
+          "profileRevision": 1,
+          "setupOperationId": "setup-0674034467b9087f6954025d94c087b33d47"
+        },
+        "sessionMode": "create_initial",
+        "workspace": {
+          "designation": "team_project",
+          "projectId": "project_s1m-wire_0",
+          "rootAttestation": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "scopeRevision": 1,
+          "selectionId": "selection_s1m-wire_0",
+          "workspaceEpoch": "epoch_s1m-wire_0"
+        }
+      },
+      {
+        "actionRevision": 2,
+        "authority": {
+          "authMode": "chatgpt_subscription",
+          "modelId": null,
+          "providerId": "openai",
+          "teamRevision": 1
+        },
+        "configDigest": "sha256:2470f7e9df281074aa8a09d03dd48a3d6f7c41ebe48114d157d3c8eae1da1e3c",
+        "desiredRevision": 1,
+        "desiredState": "active",
+        "formatVersion": 1,
+        "identity": {
+          "expectedServiceGeneration": 1,
+          "instance": "default",
+          "memberId": "tmem_etuHf7MhkQeJUiwtYNTc2q3-",
+          "role": "manager",
+          "sandboxGeneration": 1,
+          "sandboxId": "sbx_manager_e57c9a88dca4",
+          "serverId": "srv_s1m-wire",
+          "serviceRegistrationId": "service_PYEJjjCmCoLem3d5-xVRnitl",
+          "teamId": "team_DXhtFfVsKLOf_jul9WIjEv1-"
+        },
+        "instructions": {
+          "instructionDigest": "sha256:6c086888730813498880f99cf9d614520d3aacf5d54b730e7529e2e24725ac47",
+          "instructionRevision": 1
+        },
+        "operationId": "op_s1m_wire_start_0001",
+        "profile": {
+          "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+          "profileId": "opencode",
+          "profileRevision": 1,
+          "setupOperationId": "setup-aac37f6c9b6b645260e62a893c4b503a0a29"
+        },
+        "sessionMode": "create_initial",
+        "workspace": {
+          "designation": "team_project",
+          "projectId": "project_s1m-wire_1",
+          "rootAttestation": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "scopeRevision": 1,
+          "selectionId": "selection_s1m-wire_1",
+          "workspaceEpoch": "epoch_s1m-wire_1"
+        }
+      }
+    ],
+    "managedWorkspaceRequests": [],
+    "sandboxes": [
+      {
+        "desiredState": "running",
+        "expiresAt": null,
+        "expiresInSeconds": null,
+        "generation": 1,
+        "id": "sbx_manager_e57c9a88dca4",
+        "lifetime": "persistent",
+        "name": "manager",
+        "resources": {
+          "cpuMillicores": 1000,
+          "memoryMiB": 1024,
+          "pids": 256,
+          "workspaceDiskGiB": 10
+        },
+        "size": "small",
+        "startedAt": null
+      },
+      {
+        "desiredState": "running",
+        "expiresAt": null,
+        "expiresInSeconds": null,
+        "generation": 1,
+        "id": "sbx_builder_e57c9a88dca4",
+        "lifetime": "persistent",
+        "name": "builder",
+        "resources": {
+          "cpuMillicores": 1000,
+          "memoryMiB": 1024,
+          "pids": 256,
+          "workspaceDiskGiB": 10
+        },
+        "size": "small",
+        "startedAt": null
+      }
+    ],
+    "serverId": "srv_s1m-wire",
+    "setupOperations": [
+      {
+        "id": "setup-aac37f6c9b6b645260e62a893c4b503a0a29",
+        "materializer": {
+          "artifact": {
+            "format": "tar-gz",
+            "id": "opencode-cli-linux-x64",
+            "integrity": "sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==",
+            "sha256": "sha256:a3824cc0d080fd69e95c47ae751a8ba49b668f6492fcfe377f5c941c337e53a9",
+            "sizeBytes": 88757774,
+            "source": "https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.14.tgz"
+          },
+          "bin": {
+            "environment": {
+              "OPENCODE_DISABLE_AUTOUPDATE": "1"
+            },
+            "member": "package/bin/opencode",
+            "name": "opencode",
+            "sha256": "sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb",
+            "version": "2.0.14"
+          },
+          "kind": "archive-binary",
+          "platform": "linux/amd64"
+        },
+        "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_manager_e57c9a88dca4",
+        "schemaVersion": 1
+      },
+      {
+        "id": "setup-0674034467b9087f6954025d94c087b33d47",
+        "materializer": {
+          "artifact": {
+            "format": "tar-gz",
+            "id": "opencode-cli-linux-x64",
+            "integrity": "sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==",
+            "sha256": "sha256:a3824cc0d080fd69e95c47ae751a8ba49b668f6492fcfe377f5c941c337e53a9",
+            "sizeBytes": 88757774,
+            "source": "https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.14.tgz"
+          },
+          "bin": {
+            "environment": {
+              "OPENCODE_DISABLE_AUTOUPDATE": "1"
+            },
+            "member": "package/bin/opencode",
+            "name": "opencode",
+            "sha256": "sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb",
+            "version": "2.0.14"
+          },
+          "kind": "archive-binary",
+          "platform": "linux/amd64"
+        },
+        "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_builder_e57c9a88dca4",
+        "schemaVersion": 1
+      }
+    ]
+  },
+  "workspaceManifest": {
+    "accessGrants": [],
+    "capacity": {
+      "cpuMillicores": 3500,
+      "memoryMiB": 7168,
+      "workspaceDiskGiB": 70
+    },
+    "continuityContinuationReleases": [],
+    "continuityContinuations": [],
+    "continuityHandoffReleases": [],
+    "continuityHandoffs": [],
+    "continuityOperations": [],
+    "continuityRegistrations": [],
+    "continuityRestores": [],
+    "desiredRevision": 3,
+    "imageDigest": "ghcr.io/warpmetal/test-sandbox@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "insightsManagerPolicies": [],
+    "insightsManagerReviews": [],
+    "insightsTakeovers": [],
+    "managedServices": [],
+    "managedWorkspaceRequests": [
+      {
+        "actionRevision": 2,
+        "allocationDigest": "sha256:8f8e7aad2057992d97a169d15877544e58c77bcd37cf00707d8d59a2e1524369",
+        "desiredRevision": 1,
+        "formatVersion": 1,
+        "memberId": "tmem_cDwh92MlHKL0xYuATubR7vFh",
+        "operationId": "op_s1m_wire_start_0001",
+        "request": "create_default",
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_builder_e57c9a88dca4",
+        "serverId": "srv_s1m-wire",
+        "serviceRegistrationId": "service_3Ys6PakzagnhYMFInT3L3J4N",
+        "teamId": "team_DXhtFfVsKLOf_jul9WIjEv1-"
+      },
+      {
+        "actionRevision": 2,
+        "allocationDigest": "sha256:80c4b2baa0b8e4f42b13355fd2d724b0f343093c1bb2ea7cdfc65de0e7deb1aa",
+        "desiredRevision": 1,
+        "formatVersion": 1,
+        "memberId": "tmem_etuHf7MhkQeJUiwtYNTc2q3-",
+        "operationId": "op_s1m_wire_start_0001",
+        "request": "create_default",
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_manager_e57c9a88dca4",
+        "serverId": "srv_s1m-wire",
+        "serviceRegistrationId": "service_PYEJjjCmCoLem3d5-xVRnitl",
+        "teamId": "team_DXhtFfVsKLOf_jul9WIjEv1-"
+      }
+    ],
+    "sandboxes": [
+      {
+        "desiredState": "running",
+        "expiresAt": null,
+        "expiresInSeconds": null,
+        "generation": 1,
+        "id": "sbx_manager_e57c9a88dca4",
+        "lifetime": "persistent",
+        "name": "manager",
+        "resources": {
+          "cpuMillicores": 1000,
+          "memoryMiB": 1024,
+          "pids": 256,
+          "workspaceDiskGiB": 10
+        },
+        "size": "small",
+        "startedAt": null
+      },
+      {
+        "desiredState": "running",
+        "expiresAt": null,
+        "expiresInSeconds": null,
+        "generation": 1,
+        "id": "sbx_builder_e57c9a88dca4",
+        "lifetime": "persistent",
+        "name": "builder",
+        "resources": {
+          "cpuMillicores": 1000,
+          "memoryMiB": 1024,
+          "pids": 256,
+          "workspaceDiskGiB": 10
+        },
+        "size": "small",
+        "startedAt": null
+      }
+    ],
+    "serverId": "srv_s1m-wire",
+    "setupOperations": [
+      {
+        "id": "setup-aac37f6c9b6b645260e62a893c4b503a0a29",
+        "materializer": {
+          "artifact": {
+            "format": "tar-gz",
+            "id": "opencode-cli-linux-x64",
+            "integrity": "sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==",
+            "sha256": "sha256:a3824cc0d080fd69e95c47ae751a8ba49b668f6492fcfe377f5c941c337e53a9",
+            "sizeBytes": 88757774,
+            "source": "https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.14.tgz"
+          },
+          "bin": {
+            "environment": {
+              "OPENCODE_DISABLE_AUTOUPDATE": "1"
+            },
+            "member": "package/bin/opencode",
+            "name": "opencode",
+            "sha256": "sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb",
+            "version": "2.0.14"
+          },
+          "kind": "archive-binary",
+          "platform": "linux/amd64"
+        },
+        "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_manager_e57c9a88dca4",
+        "schemaVersion": 1
+      },
+      {
+        "id": "setup-0674034467b9087f6954025d94c087b33d47",
+        "materializer": {
+          "artifact": {
+            "format": "tar-gz",
+            "id": "opencode-cli-linux-x64",
+            "integrity": "sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==",
+            "sha256": "sha256:a3824cc0d080fd69e95c47ae751a8ba49b668f6492fcfe377f5c941c337e53a9",
+            "sizeBytes": 88757774,
+            "source": "https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.14.tgz"
+          },
+          "bin": {
+            "environment": {
+              "OPENCODE_DISABLE_AUTOUPDATE": "1"
+            },
+            "member": "package/bin/opencode",
+            "name": "opencode",
+            "sha256": "sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb",
+            "version": "2.0.14"
+          },
+          "kind": "archive-binary",
+          "platform": "linux/amd64"
+        },
+        "profileDigest": "sha256:11e6cc8878e01a17cfe65c2ddc8f3e7dd1f7840b11cf26f566f853534cb29942",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_builder_e57c9a88dca4",
+        "schemaVersion": 1
+      }
+    ]
+  }
+}

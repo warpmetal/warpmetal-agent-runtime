@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/agent-continuation-handoff-v1.schema.json",
+  "title": "WarpMetal Agent Separate-Session Handoff v1",
+  "type": "object",
+  "additionalProperties": false,
+  "x-draft-shared-definitions": {
+    "safeId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "workId": {"$ref": "#/$defs/safeId"}, "projectId": {"$ref": "#/$defs/safeId"},
+        "sandboxId": {"$ref": "#/$defs/safeId"}, "workspaceEpoch": {"$ref": "#/$defs/safeId"},
+        "sandboxGeneration": {"type": "integer", "minimum": 1},
+        "expectedRevision": {"type": "integer", "minimum": 1}
+      },
+      "required": ["workId", "projectId", "sandboxId", "workspaceEpoch", "sandboxGeneration", "expectedRevision"]
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "bindingId": {"$ref": "#/$defs/safeId"}, "bindingRevision": {"type": "integer", "minimum": 1},
+        "scopeRevision": {"type": "integer", "minimum": 1},
+        "serviceRegistrationId": {"$ref": "#/$defs/safeId"}, "serviceGeneration": {"type": "integer", "minimum": 1},
+        "registeredSourceId": {"$ref": "#/$defs/safeId"}, "nativeSessionId": {"$ref": "#/$defs/safeId"},
+        "nativeProjectId": {"type": "string", "pattern": "^(?:global|[a-f0-9]{40})$"},
+        "nativeLocationDigest": {"$ref": "#/$defs/digest"}
+      },
+      "required": ["bindingId", "bindingRevision", "scopeRevision", "serviceRegistrationId", "serviceGeneration", "registeredSourceId", "nativeSessionId", "nativeProjectId", "nativeLocationDigest"]
+    },
+    "checkpoint": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "operationId": {"$ref": "#/$defs/safeId"}, "checkpointId": {"$ref": "#/$defs/safeId"},
+        "manifestDigest": {"$ref": "#/$defs/digest"}, "bytes": {"type": "integer", "minimum": 0, "maximum": 268435456},
+        "objectCount": {"type": "integer", "minimum": 0, "maximum": 10000}
+      },
+      "required": ["operationId", "checkpointId", "manifestDigest", "bytes", "objectCount"]
+    },
+    "lineage": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "sourceWorkId": {"$ref": "#/$defs/safeId"}, "sourceRevision": {"type": "integer", "minimum": 1},
+        "sourceTaskId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]},
+        "checkpointOperationId": {"$ref": "#/$defs/safeId"},
+        "restoreOperationId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}
+      },
+      "required": ["sourceWorkId", "sourceRevision", "sourceTaskId", "checkpointOperationId", "restoreOperationId"]
+    },
+    "targetPolicy": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "teamId": {"$ref": "#/$defs/safeId"}, "teamRevision": {"type": "integer", "minimum": 1},
+        "policyRevision": {"type": "integer", "minimum": 1}, "memberId": {"$ref": "#/$defs/safeId"},
+        "role": {"type": "string", "enum": ["worker", "reviewer"]},
+        "sandboxId": {"$ref": "#/$defs/safeId"}, "sandboxGeneration": {"type": "integer", "minimum": 1},
+        "serviceRegistrationId": {"$ref": "#/$defs/safeId"}, "serviceGeneration": {"type": "integer", "minimum": 1},
+        "serviceDesiredRevision": {"type": "integer", "minimum": 1}, "serviceActionRevision": {"type": "integer", "minimum": 1},
+        "profileId": {"$ref": "#/$defs/safeId"}, "profileRevision": {"type": "integer", "minimum": 1},
+        "profileDigest": {"$ref": "#/$defs/digest"}, "instructionRevision": {"type": "integer", "minimum": 1},
+        "instructionDigest": {"$ref": "#/$defs/digest"}
+      },
+      "required": ["teamId", "teamRevision", "policyRevision", "memberId", "role", "sandboxId", "sandboxGeneration", "serviceRegistrationId", "serviceGeneration", "serviceDesiredRevision", "serviceActionRevision", "profileId", "profileRevision", "profileDigest", "instructionRevision", "instructionDigest"]
+    },
+    "workspaceRequest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "mode": {"type": "string", "enum": ["allocate_and_materialize", "accepted_restore"]},
+        "restoreOperationId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]},
+        "selectionId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]},
+        "projectId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]},
+        "workspaceEpoch": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]},
+        "scopeRevision": {"type": ["integer", "null"], "minimum": 1},
+        "rootAttestation": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}
+      },
+      "required": ["mode", "restoreOperationId", "selectionId", "projectId", "workspaceEpoch", "scopeRevision", "rootAttestation"],
+      "allOf": [
+        {"if": {"properties": {"mode": {"const": "allocate_and_materialize"}}}, "then": {"properties": {"restoreOperationId": {"type": "null"}, "selectionId": {"type": "null"}, "projectId": {"type": "null"}, "workspaceEpoch": {"type": "null"}, "scopeRevision": {"type": "null"}, "rootAttestation": {"type": "null"}}}},
+        {"if": {"properties": {"mode": {"const": "accepted_restore"}}}, "then": {"properties": {"restoreOperationId": {"type": "string"}, "selectionId": {"type": "string"}, "projectId": {"type": "string"}, "workspaceEpoch": {"type": "string"}, "scopeRevision": {"type": "integer"}, "rootAttestation": {"type": "string"}}}}
+      ]
+    },
+    "targetWorkspace": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "selectionId": {"$ref": "#/$defs/safeId"}, "projectId": {"$ref": "#/$defs/safeId"},
+        "workspaceEpoch": {"$ref": "#/$defs/safeId"}, "scopeRevision": {"type": "integer", "minimum": 1},
+        "rootAttestation": {"$ref": "#/$defs/digest"}
+      },
+      "required": ["selectionId", "projectId", "workspaceEpoch", "scopeRevision", "rootAttestation"]
+    },
+    "session": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "mappingId": {"$ref": "#/$defs/safeId"}, "registeredSourceId": {"$ref": "#/$defs/safeId"},
+        "nativeSessionId": {"$ref": "#/$defs/safeId"},
+        "nativeProjectId": {"type": "string", "pattern": "^(?:global|[a-f0-9]{40})$"},
+        "nativeLocationDigest": {"$ref": "#/$defs/digest"},
+        "instructionRevision": {"type": "integer", "minimum": 1}, "instructionDigest": {"$ref": "#/$defs/digest"},
+        "instructionApplied": {"const": true}
+      },
+      "required": ["mappingId", "registeredSourceId", "nativeSessionId", "nativeProjectId", "nativeLocationDigest", "instructionRevision", "instructionDigest", "instructionApplied"]
+    },
+    "baseline": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "baselineId": {"$ref": "#/$defs/safeId"}, "baselineDigest": {"$ref": "#/$defs/digest"},
+        "nativeSessionId": {"$ref": "#/$defs/safeId"}, "serviceGeneration": {"type": "integer", "minimum": 1},
+        "readyAt": {"type": "string", "format": "date-time"}
+      },
+      "required": ["baselineId", "baselineDigest", "nativeSessionId", "serviceGeneration", "readyAt"]
+    },
+    "context": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"digest": {"$ref": "#/$defs/digest"}, "bytes": {"type": "integer", "minimum": 0, "maximum": 32768}, "tokenUpperBound": {"type": "integer", "minimum": 0, "maximum": 8192}},
+      "required": ["digest", "bytes", "tokenUpperBound"]
+    }
+  },
+  "properties": {
+    "reviewerRequest": {"$ref": "#/$defs/request"},
+    "reviewerManifest": {"$ref": "#/$defs/manifest"},
+    "reviewerReport": {"$ref": "#/$defs/report"},
+    "restoredTargetRequest": {"$ref": "#/$defs/request"},
+    "restoredTargetManifest": {"$ref": "#/$defs/manifest"},
+    "restoredTargetReport": {"$ref": "#/$defs/report"},
+    "handoffReleaseManifest": {"$ref": "#/$defs/releaseManifest"},
+    "handoffReleaseReport": {"$ref": "#/$defs/releaseReport"},
+    "ownerOperation": {"$ref": "#/$defs/ownerOperation"},
+    "handoffTargets": {"$ref": "#/$defs/handoffTargets"}
+  },
+  "required": ["reviewerRequest", "reviewerManifest", "reviewerReport", "restoredTargetRequest", "restoredTargetManifest", "restoredTargetReport", "handoffReleaseManifest", "handoffReleaseReport", "ownerOperation", "handoffTargets"],
+  "$defs": {
+    "safeId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"workId": {"$ref": "#/$defs/safeId"}, "projectId": {"$ref": "#/$defs/safeId"}, "sandboxId": {"$ref": "#/$defs/safeId"}, "workspaceEpoch": {"$ref": "#/$defs/safeId"}, "sandboxGeneration": {"type": "integer", "minimum": 1}, "expectedRevision": {"type": "integer", "minimum": 1}},
+      "required": ["workId", "projectId", "sandboxId", "workspaceEpoch", "sandboxGeneration", "expectedRevision"]
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"bindingId": {"$ref": "#/$defs/safeId"}, "bindingRevision": {"type": "integer", "minimum": 1}, "scopeRevision": {"type": "integer", "minimum": 1}, "serviceRegistrationId": {"$ref": "#/$defs/safeId"}, "serviceGeneration": {"type": "integer", "minimum": 1}, "registeredSourceId": {"$ref": "#/$defs/safeId"}, "nativeSessionId": {"$ref": "#/$defs/safeId"}, "nativeProjectId": {"type": "string", "pattern": "^(?:global|[a-f0-9]{40})$"}, "nativeLocationDigest": {"$ref": "#/$defs/digest"}},
+      "required": ["bindingId", "bindingRevision", "scopeRevision", "serviceRegistrationId", "serviceGeneration", "registeredSourceId", "nativeSessionId", "nativeProjectId", "nativeLocationDigest"]
+    },
+    "checkpoint": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"operationId": {"$ref": "#/$defs/safeId"}, "checkpointId": {"$ref": "#/$defs/safeId"}, "manifestDigest": {"$ref": "#/$defs/digest"}, "bytes": {"type": "integer", "minimum": 0, "maximum": 268435456}, "objectCount": {"type": "integer", "minimum": 0, "maximum": 10000}},
+      "required": ["operationId", "checkpointId", "manifestDigest", "bytes", "objectCount"]
+    },
+    "lineage": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"sourceWorkId": {"$ref": "#/$defs/safeId"}, "sourceRevision": {"type": "integer", "minimum": 1}, "sourceTaskId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}, "checkpointOperationId": {"$ref": "#/$defs/safeId"}, "restoreOperationId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}},
+      "required": ["sourceWorkId", "sourceRevision", "sourceTaskId", "checkpointOperationId", "restoreOperationId"]
+    },
+    "targetPolicy": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"teamId": {"$ref": "#/$defs/safeId"}, "teamRevision": {"type": "integer", "minimum": 1}, "policyRevision": {"type": "integer", "minimum": 1}, "memberId": {"$ref": "#/$defs/safeId"}, "role": {"type": "string", "enum": ["worker", "reviewer"]}, "sandboxId": {"$ref": "#/$defs/safeId"}, "sandboxGeneration": {"type": "integer", "minimum": 1}, "serviceRegistrationId": {"$ref": "#/$defs/safeId"}, "serviceGeneration": {"type": "integer", "minimum": 1}, "serviceDesiredRevision": {"type": "integer", "minimum": 1}, "serviceActionRevision": {"type": "integer", "minimum": 1}, "profileId": {"$ref": "#/$defs/safeId"}, "profileRevision": {"type": "integer", "minimum": 1}, "profileDigest": {"$ref": "#/$defs/digest"}, "instructionRevision": {"type": "integer", "minimum": 1}, "instructionDigest": {"$ref": "#/$defs/digest"}},
+      "required": ["teamId", "teamRevision", "policyRevision", "memberId", "role", "sandboxId", "sandboxGeneration", "serviceRegistrationId", "serviceGeneration", "serviceDesiredRevision", "serviceActionRevision", "profileId", "profileRevision", "profileDigest", "instructionRevision", "instructionDigest"]
+    },
+    "workspaceRequest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"mode": {"type": "string", "enum": ["allocate_and_materialize", "accepted_restore"]}, "restoreOperationId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}, "selectionId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}, "projectId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}, "workspaceEpoch": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}, "scopeRevision": {"type": ["integer", "null"], "minimum": 1}, "rootAttestation": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}},
+      "required": ["mode", "restoreOperationId", "selectionId", "projectId", "workspaceEpoch", "scopeRevision", "rootAttestation"],
+      "allOf": [
+        {"if": {"properties": {"mode": {"const": "allocate_and_materialize"}}}, "then": {"properties": {"restoreOperationId": {"type": "null"}, "selectionId": {"type": "null"}, "projectId": {"type": "null"}, "workspaceEpoch": {"type": "null"}, "scopeRevision": {"type": "null"}, "rootAttestation": {"type": "null"}}}},
+        {"if": {"properties": {"mode": {"const": "accepted_restore"}}}, "then": {"properties": {"restoreOperationId": {"type": "string"}, "selectionId": {"type": "string"}, "projectId": {"type": "string"}, "workspaceEpoch": {"type": "string"}, "scopeRevision": {"type": "integer"}, "rootAttestation": {"type": "string"}}}}
+      ]
+    },
+    "targetWorkspace": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"selectionId": {"$ref": "#/$defs/safeId"}, "projectId": {"$ref": "#/$defs/safeId"}, "workspaceEpoch": {"$ref": "#/$defs/safeId"}, "scopeRevision": {"type": "integer", "minimum": 1}, "rootAttestation": {"$ref": "#/$defs/digest"}},
+      "required": ["selectionId", "projectId", "workspaceEpoch", "scopeRevision", "rootAttestation"]
+    },
+    "session": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"mappingId": {"$ref": "#/$defs/safeId"}, "registeredSourceId": {"$ref": "#/$defs/safeId"}, "nativeSessionId": {"$ref": "#/$defs/safeId"}, "nativeProjectId": {"type": "string", "pattern": "^(?:global|[a-f0-9]{40})$"}, "nativeLocationDigest": {"$ref": "#/$defs/digest"}, "instructionRevision": {"type": "integer", "minimum": 1}, "instructionDigest": {"$ref": "#/$defs/digest"}, "instructionApplied": {"const": true}},
+      "required": ["mappingId", "registeredSourceId", "nativeSessionId", "nativeProjectId", "nativeLocationDigest", "instructionRevision", "instructionDigest", "instructionApplied"]
+    },
+    "baseline": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"baselineId": {"$ref": "#/$defs/safeId"}, "baselineDigest": {"$ref": "#/$defs/digest"}, "nativeSessionId": {"$ref": "#/$defs/safeId"}, "serviceGeneration": {"type": "integer", "minimum": 1}, "readyAt": {"type": "string", "format": "date-time"}},
+      "required": ["baselineId", "baselineDigest", "nativeSessionId", "serviceGeneration", "readyAt"]
+    },
+    "context": {"type": "object", "additionalProperties": false, "properties": {"digest": {"$ref": "#/$defs/digest"}, "bytes": {"type": "integer", "minimum": 0, "maximum": 32768}, "tokenUpperBound": {"type": "integer", "minimum": 0, "maximum": 8192}}, "required": ["digest", "bytes", "tokenUpperBound"]},
+    "request": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"version": {"const": 1}, "operationId": {"$ref": "#/$defs/safeId"}, "requestId": {"$ref": "#/$defs/safeId"}, "expectedRevision": {"type": "integer", "minimum": 1}, "expectedBindingRevision": {"type": "integer", "minimum": 1}, "scopeRevision": {"type": "integer", "minimum": 1}, "checkpointOperationId": {"$ref": "#/$defs/safeId"}, "handoffKind": {"type": "string", "enum": ["reviewer", "restored_target"]}, "restoreOperationId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}, "targetMemberId": {"$ref": "#/$defs/safeId"}, "sessionChoice": {"const": "create_separate"}, "title": {"type": "string", "minLength": 1, "maxLength": 160}, "instruction": {"type": "string", "minLength": 1, "maxLength": 8192}, "turnLimit": {"type": "integer", "minimum": 1, "maximum": 200}, "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 1800}},
+      "required": ["version", "operationId", "requestId", "expectedRevision", "expectedBindingRevision", "scopeRevision", "checkpointOperationId", "handoffKind", "restoreOperationId", "targetMemberId", "sessionChoice", "title", "instruction", "turnLimit", "timeoutSeconds"],
+      "allOf": [{"if": {"properties": {"handoffKind": {"const": "reviewer"}}}, "then": {"properties": {"restoreOperationId": {"type": "null"}}}}, {"if": {"properties": {"handoffKind": {"const": "restored_target"}}}, "then": {"properties": {"restoreOperationId": {"type": "string"}}}}]
+    },
+    "manifest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "operationId": {"$ref": "#/$defs/safeId"}, "action": {"const": "prepare_handoff"}, "desiredRevision": {"type": "integer", "minimum": 1}, "handoffKind": {"type": "string", "enum": ["reviewer", "restored_target"]}, "sessionMode": {"const": "create_separate"}, "targetWorkId": {"$ref": "#/$defs/safeId"}, "mappingId": {"$ref": "#/$defs/safeId"}, "identity": {"$ref": "#/$defs/identity"}, "binding": {"$ref": "#/$defs/binding"}, "checkpoint": {"$ref": "#/$defs/checkpoint"}, "lineage": {"$ref": "#/$defs/lineage"}, "targetPolicy": {"$ref": "#/$defs/targetPolicy"}, "workspace": {"$ref": "#/$defs/workspaceRequest"}, "context": {"$ref": "#/$defs/context"}},
+      "required": ["formatVersion", "operationId", "action", "desiredRevision", "handoffKind", "sessionMode", "targetWorkId", "mappingId", "identity", "binding", "checkpoint", "lineage", "targetPolicy", "workspace", "context"]
+    },
+    "report": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "operationId": {"$ref": "#/$defs/safeId"}, "action": {"const": "prepare_handoff"}, "desiredRevision": {"type": "integer", "minimum": 1}, "handoffKind": {"type": "string", "enum": ["reviewer", "restored_target"]}, "sessionMode": {"const": "create_separate"}, "targetWorkId": {"$ref": "#/$defs/safeId"}, "mappingId": {"$ref": "#/$defs/safeId"}, "identity": {"$ref": "#/$defs/identity"}, "binding": {"$ref": "#/$defs/binding"}, "checkpoint": {"$ref": "#/$defs/checkpoint"}, "lineage": {"$ref": "#/$defs/lineage"}, "targetPolicy": {"$ref": "#/$defs/targetPolicy"}, "workspaceRequest": {"$ref": "#/$defs/workspaceRequest"}, "contextDigest": {"$ref": "#/$defs/digest"}, "status": {"type": "string", "enum": ["ready", "failed"]}, "targetWorkspace": {"oneOf": [{"$ref": "#/$defs/targetWorkspace"}, {"type": "null"}]}, "session": {"oneOf": [{"$ref": "#/$defs/session"}, {"type": "null"}]}, "baseline": {"oneOf": [{"$ref": "#/$defs/baseline"}, {"type": "null"}]}, "receiptDigest": {"$ref": "#/$defs/digest"}, "errorCode": {"type": ["string", "null"], "maxLength": 80}},
+      "required": ["formatVersion", "operationId", "action", "desiredRevision", "handoffKind", "sessionMode", "targetWorkId", "mappingId", "identity", "binding", "checkpoint", "lineage", "targetPolicy", "workspaceRequest", "contextDigest", "status", "targetWorkspace", "session", "baseline", "receiptDigest", "errorCode"],
+      "allOf": [{"if": {"properties": {"status": {"const": "ready"}}}, "then": {"properties": {"targetWorkspace": {"type": "object"}, "session": {"type": "object"}, "baseline": {"type": "object"}, "errorCode": {"type": "null"}}}}, {"if": {"properties": {"status": {"const": "failed"}}}, "then": {"properties": {"targetWorkspace": {"type": "null"}, "session": {"type": "null"}, "baseline": {"type": "null"}, "errorCode": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$"}}}}]
+    },
+    "releaseManifest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "operationId": {"$ref": "#/$defs/safeId"}, "action": {"const": "release_handoff"}, "desiredRevision": {"type": "integer", "minimum": 1}, "prepareDesiredRevision": {"type": "integer", "minimum": 1}, "reason": {"type": "string", "enum": ["failed", "superseded"]}, "handoffKind": {"type": "string", "enum": ["reviewer", "restored_target"]}, "sessionMode": {"const": "create_separate"}, "targetWorkId": {"$ref": "#/$defs/safeId"}, "mappingId": {"$ref": "#/$defs/safeId"}, "identity": {"$ref": "#/$defs/identity"}, "binding": {"$ref": "#/$defs/binding"}, "checkpoint": {"$ref": "#/$defs/checkpoint"}, "lineage": {"$ref": "#/$defs/lineage"}, "targetPolicy": {"$ref": "#/$defs/targetPolicy"}, "workspace": {"$ref": "#/$defs/workspaceRequest"}, "context": {"$ref": "#/$defs/context"}},
+      "required": ["formatVersion", "operationId", "action", "desiredRevision", "prepareDesiredRevision", "reason", "handoffKind", "sessionMode", "targetWorkId", "mappingId", "identity", "binding", "checkpoint", "lineage", "targetPolicy", "workspace", "context"]
+    },
+    "releaseReport": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "operationId": {"$ref": "#/$defs/safeId"}, "action": {"const": "release_handoff"}, "desiredRevision": {"type": "integer", "minimum": 1}, "prepareDesiredRevision": {"type": "integer", "minimum": 1}, "reason": {"type": "string", "enum": ["failed", "superseded"]}, "handoffKind": {"type": "string", "enum": ["reviewer", "restored_target"]}, "sessionMode": {"const": "create_separate"}, "targetWorkId": {"$ref": "#/$defs/safeId"}, "mappingId": {"$ref": "#/$defs/safeId"}, "identity": {"$ref": "#/$defs/identity"}, "binding": {"$ref": "#/$defs/binding"}, "checkpoint": {"$ref": "#/$defs/checkpoint"}, "lineage": {"$ref": "#/$defs/lineage"}, "targetPolicy": {"$ref": "#/$defs/targetPolicy"}, "workspace": {"$ref": "#/$defs/workspaceRequest"}, "context": {"$ref": "#/$defs/context"}, "status": {"type": "string", "enum": ["released", "failed"]}, "receiptDigest": {"$ref": "#/$defs/digest"}, "errorCode": {"type": ["string", "null"], "maxLength": 80}},
+      "required": ["formatVersion", "operationId", "action", "desiredRevision", "prepareDesiredRevision", "reason", "handoffKind", "sessionMode", "targetWorkId", "mappingId", "identity", "binding", "checkpoint", "lineage", "targetPolicy", "workspace", "context", "status", "receiptDigest", "errorCode"]
+    },
+    "ownerOperation": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"operationId": {"$ref": "#/$defs/safeId"}, "requestId": {"$ref": "#/$defs/safeId"}, "action": {"const": "prepare_handoff"}, "handoffKind": {"type": "string", "enum": ["reviewer", "restored_target"]}, "sessionChoice": {"const": "create_separate"}, "state": {"type": "string", "enum": ["pending", "accepted", "failed", "superseded"]}, "sourceWorkId": {"$ref": "#/$defs/safeId"}, "sourceRevision": {"type": "integer", "minimum": 1}, "targetWorkId": {"$ref": "#/$defs/safeId"}, "checkpointOperationId": {"$ref": "#/$defs/safeId"}, "restoreOperationId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}, "targetMember": {"type": "object", "additionalProperties": false, "properties": {"memberId": {"$ref": "#/$defs/safeId"}, "label": {"type": "string", "minLength": 1, "maxLength": 160}, "role": {"type": "string", "enum": ["worker", "reviewer"]}, "sandboxId": {"$ref": "#/$defs/safeId"}}, "required": ["memberId", "label", "role", "sandboxId"]}, "targetWorkspace": {"oneOf": [{"$ref": "#/$defs/targetWorkspace"}, {"type": "null"}]}, "session": {"oneOf": [{"type": "object", "additionalProperties": false, "properties": {"mappingId": {"$ref": "#/$defs/safeId"}, "registeredSourceId": {"$ref": "#/$defs/safeId"}, "nativeSessionId": {"$ref": "#/$defs/safeId"}, "nativeProjectId": {"type": "string", "pattern": "^(?:global|[a-f0-9]{40})$"}, "nativeLocationDigest": {"$ref": "#/$defs/digest"}}, "required": ["mappingId", "registeredSourceId", "nativeSessionId", "nativeProjectId", "nativeLocationDigest"]}, {"type": "null"}]}, "baselineId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}, "taskId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}, "parentTaskId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}, "errorCode": {"type": ["string", "null"], "maxLength": 80}, "createdAt": {"type": "string", "format": "date-time"}, "updatedAt": {"type": "string", "format": "date-time"}},
+      "required": ["operationId", "requestId", "action", "handoffKind", "sessionChoice", "state", "sourceWorkId", "sourceRevision", "targetWorkId", "checkpointOperationId", "restoreOperationId", "targetMember", "targetWorkspace", "session", "baselineId", "taskId", "parentTaskId", "errorCode", "createdAt", "updatedAt"]
+    },
+    "handoffTargets": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "targets": {"type": "array", "maxItems": 8, "items": {"type": "object", "additionalProperties": false, "properties": {"memberId": {"$ref": "#/$defs/safeId"}, "label": {"type": "string", "minLength": 1, "maxLength": 160}, "role": {"type": "string", "enum": ["worker", "reviewer"]}, "sandboxId": {"$ref": "#/$defs/safeId"}}, "required": ["memberId", "label", "role", "sandboxId"]}},
+        "nextCursor": {"type": "null"},
+        "restores": {"type": "array", "maxItems": 20, "items": {"type": "object", "additionalProperties": false, "properties": {"operationId": {"$ref": "#/$defs/safeId"}, "projectId": {"$ref": "#/$defs/safeId"}, "workspaceEpoch": {"$ref": "#/$defs/safeId"}, "sandboxId": {"$ref": "#/$defs/safeId"}}, "required": ["operationId", "projectId", "workspaceEpoch", "sandboxId"]}},
+        "restoresTruncated": {"type": "boolean"}
+      },
+      "required": ["targets", "nextCursor", "restores", "restoresTruncated"]
+    }
+  }
+}

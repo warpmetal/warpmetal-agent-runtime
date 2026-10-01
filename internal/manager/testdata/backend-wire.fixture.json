@@ -1,0 +1,1407 @@
+{
+  "activityList": {
+    "nextCursor": null,
+    "runs": [
+      {
+        "createdAt": "2026-09-27T19:07:49Z",
+        "errorCode": null,
+        "findingId": "finding_insights0001",
+        "inputTokens": 16000,
+        "managerSession": {
+          "capability": "exact_session",
+          "reason": null
+        },
+        "manual": true,
+        "modelRequests": 2,
+        "outputTokens": 2000,
+        "rationaleCode": "unchanged_failure_repeated",
+        "recipeId": "inspect_first_failure@1",
+        "requestId": "req_managerrecheck_test0001",
+        "reservationId": "reservation_ffcb5c125ff4705a0e503be0",
+        "ruleId": "repeated_identical_failure@1",
+        "runId": "run_e08a1d47ab3f7c77fa64096b9a1670aa",
+        "source": {
+          "instructionRevision": 1,
+          "nativeSessionId": "ses_managerreview",
+          "profileRevision": 1,
+          "registeredSourceId": "source_managerreview",
+          "sandboxGeneration": 1,
+          "serviceGeneration": 3,
+          "serviceRegistrationId": "service_managerreview",
+          "workspaceEpoch": "epoch_managerreview"
+        },
+        "state": "recommended",
+        "target": {
+          "bindingId": null,
+          "bindingRevision": null,
+          "memberId": "tmem_CaAquDcA8fjvBdxXnK1gzKB0",
+          "taskAttempt": null,
+          "taskId": null,
+          "teamId": "team_FctYIrOhdZtUjH9VQjq-YwiU",
+          "workId": null,
+          "workRevision": null
+        },
+        "updatedAt": "2026-09-27T19:07:49Z"
+      },
+      {
+        "createdAt": "2026-09-27T18:57:49Z",
+        "errorCode": null,
+        "findingId": "finding_insights0001",
+        "inputTokens": 16000,
+        "managerSession": {
+          "capability": "exact_session",
+          "reason": null
+        },
+        "manual": false,
+        "modelRequests": 2,
+        "outputTokens": 2000,
+        "rationaleCode": "unchanged_failure_repeated",
+        "recipeId": "inspect_first_failure@1",
+        "requestId": "req_managerreview0001",
+        "reservationId": "reservation_managerreview0001",
+        "ruleId": "repeated_identical_failure@1",
+        "runId": "run_3f217769541e8b91a82a786976baf5b9",
+        "source": {
+          "instructionRevision": 1,
+          "nativeSessionId": "ses_managerreview",
+          "profileRevision": 1,
+          "registeredSourceId": "source_managerreview",
+          "sandboxGeneration": 1,
+          "serviceGeneration": 3,
+          "serviceRegistrationId": "service_managerreview",
+          "workspaceEpoch": "epoch_managerreview"
+        },
+        "state": "recommended",
+        "target": {
+          "bindingId": null,
+          "bindingRevision": null,
+          "memberId": "tmem_CaAquDcA8fjvBdxXnK1gzKB0",
+          "taskAttempt": null,
+          "taskId": null,
+          "teamId": "team_FctYIrOhdZtUjH9VQjq-YwiU",
+          "workId": null,
+          "workRevision": null
+        },
+        "updatedAt": "2026-09-27T18:57:49Z"
+      }
+    ]
+  },
+  "appliedPolicy": {
+    "allowedRules": [
+      "repeated_identical_failure@1"
+    ],
+    "appliedRevision": null,
+    "authorizationExpiresAt": "2026-09-27T19:09:49Z",
+    "autoSteer": {
+      "available": false,
+      "reason": "native_guard_unqualified"
+    },
+    "dailyInputTokenLimit": 480000,
+    "dailyOutputTokenLimit": 60000,
+    "dailyRunLimit": 30,
+    "effectiveLimits": {
+      "perRunInputTokens": 16000,
+      "perRunModelRequests": 2,
+      "perRunOutputTokens": 2000,
+      "sandboxDailyRuns": 30,
+      "sandboxHourlyRuns": 10,
+      "serverConcurrentRuns": 2,
+      "serverHourlyStarts": 20,
+      "sessionCooldownSeconds": 300,
+      "sessionRuns24h": 3
+    },
+    "formatVersion": 1,
+    "mode": "recommend",
+    "modelRoutes": [
+      {
+        "available": false,
+        "modelId": "openai/gpt-5.6-sol",
+        "protocol": "opencode-supervisor/1",
+        "providerId": "openai",
+        "providerRouteDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "reason": "runtime_unavailable",
+        "recipeIds": [
+          "inspect_first_failure@1"
+        ],
+        "registeredSourceId": "source_managerreview"
+      }
+    ],
+    "recommend": {
+      "available": false,
+      "reason": "runtime_unavailable"
+    },
+    "revision": 3,
+    "sandboxId": "sbx_44701f63569482ba475bab49",
+    "status": "awaiting_runtime",
+    "updatedAt": "2026-09-27T19:07:49Z"
+  },
+  "automaticReport": {
+    "errorCode": null,
+    "formatVersion": 1,
+    "managerSession": {
+      "managerProfile": {
+        "profileDigest": "sha256:8001fcc942ee6c83c566e6befe47d1ff608084cc852fc2e6c926a607916e7358",
+        "profileId": "warpmetal-insights-manager",
+        "profileRevision": 1
+      },
+      "nativeLocationDigest": "sha256:675200ad1d6a28780efc7387494e6fe21b32997bd71e58047ebc3933f6115aa2",
+      "nativeProjectId": "b7c06149a32ae7b2633489eab7a6760d2f48a355",
+      "nativeSessionId": "ses_managerreview0001",
+      "providerRouteDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managerreview"
+    },
+    "manual": false,
+    "policyRevision": 2,
+    "proposal": {
+      "firstSequence": 1,
+      "guidanceDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "lastSequence": 8,
+      "outcome": "recommendation",
+      "rationaleCode": "unchanged_failure_repeated",
+      "recipeId": "inspect_first_failure@1"
+    },
+    "receiptDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "reservationId": "reservation_managerreview0001",
+    "runId": "run_3f217769541e8b91a82a786976baf5b9",
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managerreview",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managerreview",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managerreview",
+      "workspaceEpoch": "epoch_managerreview"
+    },
+    "state": "recommended",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_CaAquDcA8fjvBdxXnK1gzKB0",
+      "taskAttempt": null,
+      "taskId": null,
+      "teamId": "team_FctYIrOhdZtUjH9VQjq-YwiU",
+      "workId": null,
+      "workRevision": null
+    },
+    "usage": {
+      "inputTokens": 2200,
+      "modelRequests": 1,
+      "outputTokens": 240,
+      "unusedProof": "none",
+      "usageCertain": false
+    }
+  },
+  "automaticReportResponse": {
+    "createdAt": "2026-09-27T18:57:49Z",
+    "errorCode": null,
+    "findingId": "finding_insights0001",
+    "inputTokens": 16000,
+    "managerSession": {
+      "capability": "exact_session",
+      "reason": null
+    },
+    "manual": false,
+    "modelRequests": 2,
+    "outputTokens": 2000,
+    "rationaleCode": "unchanged_failure_repeated",
+    "recipeId": "inspect_first_failure@1",
+    "requestId": "req_managerreview0001",
+    "reservationId": "reservation_managerreview0001",
+    "ruleId": "repeated_identical_failure@1",
+    "runId": "run_3f217769541e8b91a82a786976baf5b9",
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managerreview",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managerreview",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managerreview",
+      "workspaceEpoch": "epoch_managerreview"
+    },
+    "state": "recommended",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_CaAquDcA8fjvBdxXnK1gzKB0",
+      "taskAttempt": null,
+      "taskId": null,
+      "teamId": "team_FctYIrOhdZtUjH9VQjq-YwiU",
+      "workId": null,
+      "workRevision": null
+    },
+    "updatedAt": "2026-09-27T18:57:49Z"
+  },
+  "automaticReservation": {
+    "execution": {
+      "managerProfile": {
+        "profileDigest": "sha256:8001fcc942ee6c83c566e6befe47d1ff608084cc852fc2e6c926a607916e7358",
+        "profileId": "warpmetal-insights-manager",
+        "profileRevision": 1
+      },
+      "providerRouteDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "expiresAt": "2026-09-27T18:59:49Z",
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "manual": false,
+    "policyRevision": 2,
+    "remaining": {
+      "sandboxDailyInputTokens": 464000,
+      "sandboxDailyOutputTokens": 58000,
+      "sandboxDailyRuns": 29,
+      "sandboxHourlyRuns": 9,
+      "serverConcurrentRuns": 1,
+      "serverHourlyStarts": 19,
+      "sessionCooldownSeconds": 300,
+      "sessionRuns24h": 2
+    },
+    "requestId": "req_managerreview0001",
+    "reservationId": "reservation_managerreview0001",
+    "reservedBudget": {
+      "inputTokens": 16000,
+      "modelRequests": 2,
+      "outputTokens": 2000
+    },
+    "runId": "run_3f217769541e8b91a82a786976baf5b9",
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managerreview",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managerreview",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managerreview",
+      "workspaceEpoch": "epoch_managerreview"
+    },
+    "state": "reserved",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_CaAquDcA8fjvBdxXnK1gzKB0",
+      "taskAttempt": null,
+      "taskId": null,
+      "teamId": "team_FctYIrOhdZtUjH9VQjq-YwiU",
+      "workId": null,
+      "workRevision": null
+    }
+  },
+  "automaticReservationRequest": {
+    "budget": {
+      "inputTokens": 16000,
+      "modelRequests": 2,
+      "outputTokens": 2000
+    },
+    "expiresInSeconds": 120,
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "manual": false,
+    "policyRevision": 2,
+    "providerRouteDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "recipeId": "inspect_first_failure@1",
+    "requestId": "req_managerreview0001",
+    "reservationId": "reservation_managerreview0001",
+    "ruleId": "repeated_identical_failure@1",
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managerreview",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managerreview",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managerreview",
+      "workspaceEpoch": "epoch_managerreview"
+    },
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_CaAquDcA8fjvBdxXnK1gzKB0",
+      "taskAttempt": null,
+      "taskId": null,
+      "teamId": "team_FctYIrOhdZtUjH9VQjq-YwiU",
+      "workId": null,
+      "workRevision": null
+    }
+  },
+  "defaultPolicy": {
+    "allowedRules": [],
+    "appliedRevision": null,
+    "authorizationExpiresAt": null,
+    "autoSteer": {
+      "available": false,
+      "reason": "native_guard_unqualified"
+    },
+    "dailyInputTokenLimit": 480000,
+    "dailyOutputTokenLimit": 60000,
+    "dailyRunLimit": 30,
+    "effectiveLimits": {
+      "perRunInputTokens": 16000,
+      "perRunModelRequests": 2,
+      "perRunOutputTokens": 2000,
+      "sandboxDailyRuns": 30,
+      "sandboxHourlyRuns": 10,
+      "serverConcurrentRuns": 2,
+      "serverHourlyStarts": 20,
+      "sessionCooldownSeconds": 300,
+      "sessionRuns24h": 3
+    },
+    "formatVersion": 1,
+    "mode": "off",
+    "modelRoutes": [],
+    "recommend": {
+      "available": false,
+      "reason": "policy_off"
+    },
+    "revision": 1,
+    "sandboxId": "sbx_68a9f7d539fc2594199e0cc3",
+    "status": "unavailable",
+    "updatedAt": "2026-09-27T18:32:08Z"
+  },
+  "managerPolicyManifest": {
+    "allowedRules": [
+      "repeated_identical_failure@1"
+    ],
+    "autoSteerAvailable": false,
+    "dailyInputTokenLimit": 480000,
+    "dailyOutputTokenLimit": 60000,
+    "dailyRunLimit": 30,
+    "effectiveLimits": {
+      "perRunInputTokens": 16000,
+      "perRunModelRequests": 2,
+      "perRunOutputTokens": 2000,
+      "sandboxDailyRuns": 30,
+      "sandboxHourlyRuns": 10,
+      "serverConcurrentRuns": 2,
+      "serverHourlyStarts": 20,
+      "sessionCooldownSeconds": 300,
+      "sessionRuns24h": 3
+    },
+    "formatVersion": 1,
+    "managerProfile": {
+      "profileDigest": "sha256:8001fcc942ee6c83c566e6befe47d1ff608084cc852fc2e6c926a607916e7358",
+      "profileId": "warpmetal-insights-manager",
+      "profileRevision": 1
+    },
+    "mode": "recommend",
+    "policyRevision": 3,
+    "runGeneration": 3,
+    "sandboxGeneration": 1,
+    "sandboxId": "sbx_44701f63569482ba475bab49",
+    "validUntil": "2026-09-27T19:09:49Z"
+  },
+  "managerSessionHandoff": {
+    "access": {
+      "requiresLocalOwnerCredential": true,
+      "requiresPinnedHostKey": true,
+      "requiresSandboxGrant": true,
+      "transport": "wm-team-control/1"
+    },
+    "capability": "exact_session",
+    "formatVersion": 1,
+    "handoff": {
+      "action": "open_session",
+      "expiresAt": "2026-09-27T19:09:49Z",
+      "formatVersion": 1,
+      "handoffId": "handoff_4a2cd139b7611edd519a0ed77ba65b62",
+      "identity": {
+        "instance": "default",
+        "instructionDigest": "sha256:42c18a4a1596bd55ccf12dd608b85c59487f357ab592203974d34a86721f0389",
+        "instructionRevision": 1,
+        "memberId": "tmem_CaAquDcA8fjvBdxXnK1gzKB0",
+        "profileDigest": "sha256:e01ba72760aae1f967ac5a9259951e808a9e9b0960a57f0860d7a2847c980b26",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "projectId": "project_managerreview",
+        "role": "manager",
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_44701f63569482ba475bab49",
+        "serverId": "srv_p2c_managerreview",
+        "serviceGeneration": 3,
+        "serviceRegistrationId": "service_managerreview",
+        "teamId": "team_FctYIrOhdZtUjH9VQjq-YwiU",
+        "workspaceEpoch": "epoch_managerreview"
+      },
+      "issuedAt": "2026-09-27T19:07:49Z",
+      "source": {
+        "nativeLocationDigest": "sha256:675200ad1d6a28780efc7387494e6fe21b32997bd71e58047ebc3933f6115aa2",
+        "nativeProjectId": "b7c06149a32ae7b2633489eab7a6760d2f48a355",
+        "nativeSessionId": "ses_managerreview0001",
+        "registeredSourceId": "manager_f71a39ba9a9e341186e855db"
+      },
+      "task": null,
+      "work": null
+    },
+    "reason": null
+  },
+  "managerTarget": {
+    "capabilities": {
+      "autoSteer": {
+        "available": false,
+        "reason": "native_guard_unqualified"
+      },
+      "recommend": {
+        "available": false,
+        "reason": "policy_off"
+      },
+      "takeover": {
+        "available": true,
+        "reason": null
+      }
+    },
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "remaining": {
+      "sandboxDailyInputTokens": 480000,
+      "sandboxDailyOutputTokens": 60000,
+      "sandboxDailyRuns": 30,
+      "sandboxHourlyRuns": 10,
+      "serverConcurrentRuns": 2,
+      "serverHourlyStarts": 20,
+      "sessionCooldownSeconds": 0,
+      "sessionRuns24h": 3
+    },
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managerpolicy",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managerpolicy",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managerpolicy",
+      "workspaceEpoch": "epoch_managerpolicy"
+    },
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_tJG280BpTHnz3OuhRHE_iBJU",
+      "taskAttempt": null,
+      "taskId": null,
+      "teamId": "team_Z79wND_ydj0dym1g9rN2_xjG",
+      "workId": null,
+      "workRevision": null
+    }
+  },
+  "manualReservation": {
+    "execution": {
+      "managerProfile": {
+        "profileDigest": "sha256:8001fcc942ee6c83c566e6befe47d1ff608084cc852fc2e6c926a607916e7358",
+        "profileId": "warpmetal-insights-manager",
+        "profileRevision": 1
+      },
+      "providerRouteDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "expiresAt": "2026-09-27T19:09:49Z",
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "manual": true,
+    "policyRevision": 3,
+    "remaining": {
+      "sandboxDailyInputTokens": 448000,
+      "sandboxDailyOutputTokens": 56000,
+      "sandboxDailyRuns": 28,
+      "sandboxHourlyRuns": 8,
+      "serverConcurrentRuns": 1,
+      "serverHourlyStarts": 18,
+      "sessionCooldownSeconds": 300,
+      "sessionRuns24h": 1
+    },
+    "requestId": "req_managerrecheck_test0001",
+    "reservationId": "reservation_ffcb5c125ff4705a0e503be0",
+    "reservedBudget": {
+      "inputTokens": 16000,
+      "modelRequests": 2,
+      "outputTokens": 2000
+    },
+    "runId": "run_e08a1d47ab3f7c77fa64096b9a1670aa",
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managerreview",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managerreview",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managerreview",
+      "workspaceEpoch": "epoch_managerreview"
+    },
+    "state": "reserved",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_CaAquDcA8fjvBdxXnK1gzKB0",
+      "taskAttempt": null,
+      "taskId": null,
+      "teamId": "team_FctYIrOhdZtUjH9VQjq-YwiU",
+      "workId": null,
+      "workRevision": null
+    }
+  },
+  "manualReviewManifest": {
+    "budget": {
+      "inputTokens": 16000,
+      "modelRequests": 2,
+      "outputTokens": 2000
+    },
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "managerProfile": {
+      "profileDigest": "sha256:8001fcc942ee6c83c566e6befe47d1ff608084cc852fc2e6c926a607916e7358",
+      "profileId": "warpmetal-insights-manager",
+      "profileRevision": 1
+    },
+    "manual": true,
+    "policyRevision": 3,
+    "providerRouteDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "recipeId": "inspect_first_failure@1",
+    "reservationId": "reservation_ffcb5c125ff4705a0e503be0",
+    "ruleId": "repeated_identical_failure@1",
+    "runId": "run_e08a1d47ab3f7c77fa64096b9a1670aa",
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managerreview",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managerreview",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managerreview",
+      "workspaceEpoch": "epoch_managerreview"
+    },
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_CaAquDcA8fjvBdxXnK1gzKB0",
+      "taskAttempt": null,
+      "taskId": null,
+      "teamId": "team_FctYIrOhdZtUjH9VQjq-YwiU",
+      "workId": null,
+      "workRevision": null
+    },
+    "validUntil": "2026-09-27T19:09:49Z"
+  },
+  "recommendResumeAwaiting": {
+    "action": "resume_manager_and_release_member",
+    "createdAt": "2026-09-27T19:35:38Z",
+    "findingId": "finding_insights0001",
+    "formatVersion": 1,
+    "handoff": {
+      "capability": "unavailable",
+      "reason": "takeover_pending"
+    },
+    "memberHold": {
+      "brokerApplied": true,
+      "desiredRevision": 2,
+      "desiredState": "released",
+      "holdId": "hold_1dc9d8f80a239b3ad1f92eeb53099836",
+      "nodeAppliedRevision": null
+    },
+    "monitorPolicy": {
+      "appliedRevision": null,
+      "desiredMode": "recommend",
+      "desiredRevision": 3
+    },
+    "operationId": "takeover_managerresume_test0001",
+    "pendingInput": {
+      "alreadyConsumed": false,
+      "state": "awaiting_runtime"
+    },
+    "predecessorOperationId": "takeover_managertest0001",
+    "requestId": "req_managerresume_test0001",
+    "revision": 1,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "state": "awaiting_runtime",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_o1NPLPyq-BexuQuAhsB1ljiw",
+      "taskAttempt": null,
+      "taskId": null,
+      "teamId": "team_H65y-czC1gPlq90hGXOXj6kE",
+      "workId": null,
+      "workRevision": null
+    },
+    "updatedAt": "2026-09-27T19:35:38Z"
+  },
+  "recommendResumeManifest": {
+    "action": "resume_manager_and_release_member",
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "holdId": "hold_1dc9d8f80a239b3ad1f92eeb53099836",
+    "holdRevision": 2,
+    "holdState": "released",
+    "operationId": "takeover_managerresume_test0001",
+    "policyRevision": 3,
+    "predecessorOperationId": "takeover_managertest0001",
+    "runGeneration": 3,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_o1NPLPyq-BexuQuAhsB1ljiw",
+      "taskAttempt": null,
+      "taskId": null,
+      "teamId": "team_H65y-czC1gPlq90hGXOXj6kE",
+      "workId": null,
+      "workRevision": null
+    },
+    "validUntil": "2026-09-27T19:37:38Z"
+  },
+  "recommendResumePolicy": {
+    "allowedRules": [],
+    "autoSteerAvailable": false,
+    "dailyInputTokenLimit": 480000,
+    "dailyOutputTokenLimit": 60000,
+    "dailyRunLimit": 30,
+    "effectiveLimits": {
+      "perRunInputTokens": 16000,
+      "perRunModelRequests": 2,
+      "perRunOutputTokens": 2000,
+      "sandboxDailyRuns": 30,
+      "sandboxHourlyRuns": 10,
+      "serverConcurrentRuns": 2,
+      "serverHourlyStarts": 20,
+      "sessionCooldownSeconds": 300,
+      "sessionRuns24h": 3
+    },
+    "formatVersion": 1,
+    "managerProfile": {
+      "profileDigest": "sha256:8001fcc942ee6c83c566e6befe47d1ff608084cc852fc2e6c926a607916e7358",
+      "profileId": "warpmetal-insights-manager",
+      "profileRevision": 1
+    },
+    "mode": "recommend",
+    "policyRevision": 3,
+    "runGeneration": 3,
+    "sandboxGeneration": 1,
+    "sandboxId": "sbx_af4155ae0918af1aa153165f",
+    "validUntil": "2026-09-27T19:37:38Z"
+  },
+  "recommendTakeoverAwaiting": {
+    "action": "pause_manager_and_hold_member",
+    "createdAt": "2026-09-27T19:34:38Z",
+    "findingId": "finding_insights0001",
+    "formatVersion": 1,
+    "handoff": {
+      "capability": "unavailable",
+      "reason": "takeover_pending"
+    },
+    "memberHold": {
+      "brokerApplied": true,
+      "desiredRevision": 1,
+      "desiredState": "active",
+      "holdId": "hold_1dc9d8f80a239b3ad1f92eeb53099836",
+      "nodeAppliedRevision": null
+    },
+    "monitorPolicy": {
+      "appliedRevision": null,
+      "desiredMode": "off",
+      "desiredRevision": 2
+    },
+    "operationId": "takeover_managertest0001",
+    "pendingInput": {
+      "alreadyConsumed": false,
+      "state": "awaiting_runtime"
+    },
+    "predecessorOperationId": null,
+    "requestId": "req_takeover_managertest0001",
+    "revision": 1,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "state": "awaiting_runtime",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_o1NPLPyq-BexuQuAhsB1ljiw",
+      "taskAttempt": 1,
+      "taskId": "task__XemOCmKOItNKMXUGd0nSypj",
+      "teamId": "team_H65y-czC1gPlq90hGXOXj6kE",
+      "workId": null,
+      "workRevision": null
+    },
+    "updatedAt": "2026-09-27T19:34:38Z"
+  },
+  "recommendTakeoverManifest": {
+    "action": "pause_manager_and_hold_member",
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "holdId": "hold_1dc9d8f80a239b3ad1f92eeb53099836",
+    "holdRevision": 1,
+    "holdState": "active",
+    "operationId": "takeover_managertest0001",
+    "policyRevision": 2,
+    "predecessorOperationId": null,
+    "runGeneration": 2,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_o1NPLPyq-BexuQuAhsB1ljiw",
+      "taskAttempt": 1,
+      "taskId": "task__XemOCmKOItNKMXUGd0nSypj",
+      "teamId": "team_H65y-czC1gPlq90hGXOXj6kE",
+      "workId": null,
+      "workRevision": null
+    },
+    "validUntil": "2026-09-27T19:36:38Z"
+  },
+  "recommendTakeoverPolicy": {
+    "allowedRules": [],
+    "autoSteerAvailable": false,
+    "dailyInputTokenLimit": 480000,
+    "dailyOutputTokenLimit": 60000,
+    "dailyRunLimit": 30,
+    "effectiveLimits": {
+      "perRunInputTokens": 16000,
+      "perRunModelRequests": 2,
+      "perRunOutputTokens": 2000,
+      "sandboxDailyRuns": 30,
+      "sandboxHourlyRuns": 10,
+      "serverConcurrentRuns": 2,
+      "serverHourlyStarts": 20,
+      "sessionCooldownSeconds": 300,
+      "sessionRuns24h": 3
+    },
+    "formatVersion": 1,
+    "managerProfile": {
+      "profileDigest": "sha256:8001fcc942ee6c83c566e6befe47d1ff608084cc852fc2e6c926a607916e7358",
+      "profileId": "warpmetal-insights-manager",
+      "profileRevision": 1
+    },
+    "mode": "off",
+    "policyRevision": 2,
+    "runGeneration": 2,
+    "sandboxGeneration": 1,
+    "sandboxId": "sbx_af4155ae0918af1aa153165f",
+    "validUntil": "2026-09-27T19:36:38Z"
+  },
+  "recommendTakeoverReady": {
+    "action": "pause_manager_and_hold_member",
+    "createdAt": "2026-09-27T19:34:38Z",
+    "findingId": "finding_insights0001",
+    "formatVersion": 1,
+    "handoff": {
+      "capability": "exact_session",
+      "reason": null
+    },
+    "memberHold": {
+      "brokerApplied": true,
+      "desiredRevision": 1,
+      "desiredState": "active",
+      "holdId": "hold_1dc9d8f80a239b3ad1f92eeb53099836",
+      "nodeAppliedRevision": 1
+    },
+    "monitorPolicy": {
+      "appliedRevision": 2,
+      "desiredMode": "off",
+      "desiredRevision": 2
+    },
+    "operationId": "takeover_managertest0001",
+    "pendingInput": {
+      "alreadyConsumed": false,
+      "state": "none_pending"
+    },
+    "predecessorOperationId": null,
+    "requestId": "req_takeover_managertest0001",
+    "revision": 1,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "state": "ready",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_o1NPLPyq-BexuQuAhsB1ljiw",
+      "taskAttempt": 1,
+      "taskId": "task__XemOCmKOItNKMXUGd0nSypj",
+      "teamId": "team_H65y-czC1gPlq90hGXOXj6kE",
+      "workId": null,
+      "workRevision": null
+    },
+    "updatedAt": "2026-09-27T19:35:38Z"
+  },
+  "recommendTakeoverReadyReport": {
+    "action": "pause_manager_and_hold_member",
+    "errorCode": null,
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "holdId": "hold_1dc9d8f80a239b3ad1f92eeb53099836",
+    "holdRevision": 1,
+    "holdState": "active",
+    "operationId": "takeover_managertest0001",
+    "pendingInput": {
+      "alreadyConsumed": false,
+      "state": "none_pending"
+    },
+    "policyRevision": 2,
+    "predecessorOperationId": null,
+    "receiptDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "runGeneration": 2,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "status": "ready",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_o1NPLPyq-BexuQuAhsB1ljiw",
+      "taskAttempt": 1,
+      "taskId": "task__XemOCmKOItNKMXUGd0nSypj",
+      "teamId": "team_H65y-czC1gPlq90hGXOXj6kE",
+      "workId": null,
+      "workRevision": null
+    }
+  },
+  "recommendTakeoverUnsettled": {
+    "action": "pause_manager_and_hold_member",
+    "createdAt": "2026-09-27T19:34:38Z",
+    "findingId": "finding_insights0001",
+    "formatVersion": 1,
+    "handoff": {
+      "capability": "exact_session",
+      "reason": "takeover_pending"
+    },
+    "memberHold": {
+      "brokerApplied": true,
+      "desiredRevision": 1,
+      "desiredState": "active",
+      "holdId": "hold_1dc9d8f80a239b3ad1f92eeb53099836",
+      "nodeAppliedRevision": null
+    },
+    "monitorPolicy": {
+      "appliedRevision": null,
+      "desiredMode": "off",
+      "desiredRevision": 2
+    },
+    "operationId": "takeover_managertest0001",
+    "pendingInput": {
+      "alreadyConsumed": false,
+      "state": "unknown"
+    },
+    "predecessorOperationId": null,
+    "requestId": "req_takeover_managertest0001",
+    "revision": 1,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "state": "unsettled",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_o1NPLPyq-BexuQuAhsB1ljiw",
+      "taskAttempt": 1,
+      "taskId": "task__XemOCmKOItNKMXUGd0nSypj",
+      "teamId": "team_H65y-czC1gPlq90hGXOXj6kE",
+      "workId": null,
+      "workRevision": null
+    },
+    "updatedAt": "2026-09-27T19:34:38Z"
+  },
+  "recommendTakeoverUnsettledManifest": {
+    "action": "pause_manager_and_hold_member",
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "holdId": "hold_1dc9d8f80a239b3ad1f92eeb53099836",
+    "holdRevision": 1,
+    "holdState": "active",
+    "operationId": "takeover_managertest0001",
+    "policyRevision": 2,
+    "predecessorOperationId": null,
+    "runGeneration": 2,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_o1NPLPyq-BexuQuAhsB1ljiw",
+      "taskAttempt": 1,
+      "taskId": "task__XemOCmKOItNKMXUGd0nSypj",
+      "teamId": "team_H65y-czC1gPlq90hGXOXj6kE",
+      "workId": null,
+      "workRevision": null
+    },
+    "validUntil": "2026-09-27T19:37:38Z"
+  },
+  "resumeAwaiting": {
+    "action": "resume_manager_and_release_member",
+    "createdAt": "2026-09-27T19:35:37Z",
+    "findingId": "finding_insights0001",
+    "formatVersion": 1,
+    "handoff": {
+      "capability": "unavailable",
+      "reason": "takeover_pending"
+    },
+    "memberHold": {
+      "brokerApplied": true,
+      "desiredRevision": 2,
+      "desiredState": "released",
+      "holdId": "hold_cdd23fa72bdac65c464c6ca10a36afe1",
+      "nodeAppliedRevision": null
+    },
+    "monitorPolicy": {
+      "appliedRevision": null,
+      "desiredMode": "off",
+      "desiredRevision": 3
+    },
+    "operationId": "takeover_managerresume_test0001",
+    "pendingInput": {
+      "alreadyConsumed": false,
+      "state": "awaiting_runtime"
+    },
+    "predecessorOperationId": "takeover_managertest0001",
+    "requestId": "req_managerresume_test0001",
+    "revision": 1,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "state": "awaiting_runtime",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_8C9YrzdiJd5qddefyMiMgoXd",
+      "taskAttempt": null,
+      "taskId": null,
+      "teamId": "team_YIIlTKgeSFJta1bbW2aBWDoh",
+      "workId": null,
+      "workRevision": null
+    },
+    "updatedAt": "2026-09-27T19:35:37Z"
+  },
+  "resumeManifest": {
+    "action": "resume_manager_and_release_member",
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "holdId": "hold_cdd23fa72bdac65c464c6ca10a36afe1",
+    "holdRevision": 2,
+    "holdState": "released",
+    "operationId": "takeover_managerresume_test0001",
+    "policyRevision": 3,
+    "predecessorOperationId": "takeover_managertest0001",
+    "runGeneration": 3,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_8C9YrzdiJd5qddefyMiMgoXd",
+      "taskAttempt": null,
+      "taskId": null,
+      "teamId": "team_YIIlTKgeSFJta1bbW2aBWDoh",
+      "workId": null,
+      "workRevision": null
+    },
+    "validUntil": "2026-09-27T19:37:37Z"
+  },
+  "resumePolicy": {
+    "allowedRules": [],
+    "autoSteerAvailable": false,
+    "dailyInputTokenLimit": 480000,
+    "dailyOutputTokenLimit": 60000,
+    "dailyRunLimit": 30,
+    "effectiveLimits": {
+      "perRunInputTokens": 16000,
+      "perRunModelRequests": 2,
+      "perRunOutputTokens": 2000,
+      "sandboxDailyRuns": 30,
+      "sandboxHourlyRuns": 10,
+      "serverConcurrentRuns": 2,
+      "serverHourlyStarts": 20,
+      "sessionCooldownSeconds": 300,
+      "sessionRuns24h": 3
+    },
+    "formatVersion": 1,
+    "managerProfile": {
+      "profileDigest": "sha256:8001fcc942ee6c83c566e6befe47d1ff608084cc852fc2e6c926a607916e7358",
+      "profileId": "warpmetal-insights-manager",
+      "profileRevision": 1
+    },
+    "mode": "off",
+    "policyRevision": 3,
+    "runGeneration": 3,
+    "sandboxGeneration": 1,
+    "sandboxId": "sbx_af4155ae0918af1aa153165f",
+    "validUntil": "2026-09-27T19:37:37Z"
+  },
+  "takeoverAwaiting": {
+    "action": "pause_manager_and_hold_member",
+    "createdAt": "2026-09-27T19:34:36Z",
+    "findingId": "finding_insights0001",
+    "formatVersion": 1,
+    "handoff": {
+      "capability": "unavailable",
+      "reason": "takeover_pending"
+    },
+    "memberHold": {
+      "brokerApplied": true,
+      "desiredRevision": 1,
+      "desiredState": "active",
+      "holdId": "hold_cdd23fa72bdac65c464c6ca10a36afe1",
+      "nodeAppliedRevision": null
+    },
+    "monitorPolicy": {
+      "appliedRevision": null,
+      "desiredMode": "off",
+      "desiredRevision": 2
+    },
+    "operationId": "takeover_managertest0001",
+    "pendingInput": {
+      "alreadyConsumed": false,
+      "state": "awaiting_runtime"
+    },
+    "predecessorOperationId": null,
+    "requestId": "req_takeover_managertest0001",
+    "revision": 1,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "state": "awaiting_runtime",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_8C9YrzdiJd5qddefyMiMgoXd",
+      "taskAttempt": 1,
+      "taskId": "task_Em0D0G7b9LUg6_F6Wsy92hjc",
+      "teamId": "team_YIIlTKgeSFJta1bbW2aBWDoh",
+      "workId": null,
+      "workRevision": null
+    },
+    "updatedAt": "2026-09-27T19:34:36Z"
+  },
+  "takeoverManifest": {
+    "action": "pause_manager_and_hold_member",
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "holdId": "hold_cdd23fa72bdac65c464c6ca10a36afe1",
+    "holdRevision": 1,
+    "holdState": "active",
+    "operationId": "takeover_managertest0001",
+    "policyRevision": 2,
+    "predecessorOperationId": null,
+    "runGeneration": 2,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_8C9YrzdiJd5qddefyMiMgoXd",
+      "taskAttempt": 1,
+      "taskId": "task_Em0D0G7b9LUg6_F6Wsy92hjc",
+      "teamId": "team_YIIlTKgeSFJta1bbW2aBWDoh",
+      "workId": null,
+      "workRevision": null
+    },
+    "validUntil": "2026-09-27T19:36:37Z"
+  },
+  "takeoverPolicy": {
+    "allowedRules": [],
+    "autoSteerAvailable": false,
+    "dailyInputTokenLimit": 480000,
+    "dailyOutputTokenLimit": 60000,
+    "dailyRunLimit": 30,
+    "effectiveLimits": {
+      "perRunInputTokens": 16000,
+      "perRunModelRequests": 2,
+      "perRunOutputTokens": 2000,
+      "sandboxDailyRuns": 30,
+      "sandboxHourlyRuns": 10,
+      "serverConcurrentRuns": 2,
+      "serverHourlyStarts": 20,
+      "sessionCooldownSeconds": 300,
+      "sessionRuns24h": 3
+    },
+    "formatVersion": 1,
+    "managerProfile": {
+      "profileDigest": "sha256:8001fcc942ee6c83c566e6befe47d1ff608084cc852fc2e6c926a607916e7358",
+      "profileId": "warpmetal-insights-manager",
+      "profileRevision": 1
+    },
+    "mode": "off",
+    "policyRevision": 2,
+    "runGeneration": 2,
+    "sandboxGeneration": 1,
+    "sandboxId": "sbx_af4155ae0918af1aa153165f",
+    "validUntil": "2026-09-27T19:36:37Z"
+  },
+  "takeoverReady": {
+    "action": "pause_manager_and_hold_member",
+    "createdAt": "2026-09-27T19:34:36Z",
+    "findingId": "finding_insights0001",
+    "formatVersion": 1,
+    "handoff": {
+      "capability": "exact_session",
+      "reason": null
+    },
+    "memberHold": {
+      "brokerApplied": true,
+      "desiredRevision": 1,
+      "desiredState": "active",
+      "holdId": "hold_cdd23fa72bdac65c464c6ca10a36afe1",
+      "nodeAppliedRevision": 1
+    },
+    "monitorPolicy": {
+      "appliedRevision": 2,
+      "desiredMode": "off",
+      "desiredRevision": 2
+    },
+    "operationId": "takeover_managertest0001",
+    "pendingInput": {
+      "alreadyConsumed": false,
+      "state": "none_pending"
+    },
+    "predecessorOperationId": null,
+    "requestId": "req_takeover_managertest0001",
+    "revision": 1,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "state": "ready",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_8C9YrzdiJd5qddefyMiMgoXd",
+      "taskAttempt": 1,
+      "taskId": "task_Em0D0G7b9LUg6_F6Wsy92hjc",
+      "teamId": "team_YIIlTKgeSFJta1bbW2aBWDoh",
+      "workId": null,
+      "workRevision": null
+    },
+    "updatedAt": "2026-09-27T19:35:37Z"
+  },
+  "takeoverReadyReport": {
+    "action": "pause_manager_and_hold_member",
+    "errorCode": null,
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "holdId": "hold_cdd23fa72bdac65c464c6ca10a36afe1",
+    "holdRevision": 1,
+    "holdState": "active",
+    "operationId": "takeover_managertest0001",
+    "pendingInput": {
+      "alreadyConsumed": false,
+      "state": "none_pending"
+    },
+    "policyRevision": 2,
+    "predecessorOperationId": null,
+    "receiptDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "runGeneration": 2,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "status": "ready",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_8C9YrzdiJd5qddefyMiMgoXd",
+      "taskAttempt": 1,
+      "taskId": "task_Em0D0G7b9LUg6_F6Wsy92hjc",
+      "teamId": "team_YIIlTKgeSFJta1bbW2aBWDoh",
+      "workId": null,
+      "workRevision": null
+    }
+  },
+  "takeoverUnsettled": {
+    "action": "pause_manager_and_hold_member",
+    "createdAt": "2026-09-27T19:34:36Z",
+    "findingId": "finding_insights0001",
+    "formatVersion": 1,
+    "handoff": {
+      "capability": "exact_session",
+      "reason": "takeover_pending"
+    },
+    "memberHold": {
+      "brokerApplied": true,
+      "desiredRevision": 1,
+      "desiredState": "active",
+      "holdId": "hold_cdd23fa72bdac65c464c6ca10a36afe1",
+      "nodeAppliedRevision": null
+    },
+    "monitorPolicy": {
+      "appliedRevision": null,
+      "desiredMode": "off",
+      "desiredRevision": 2
+    },
+    "operationId": "takeover_managertest0001",
+    "pendingInput": {
+      "alreadyConsumed": false,
+      "state": "unknown"
+    },
+    "predecessorOperationId": null,
+    "requestId": "req_takeover_managertest0001",
+    "revision": 1,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "state": "unsettled",
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_8C9YrzdiJd5qddefyMiMgoXd",
+      "taskAttempt": 1,
+      "taskId": "task_Em0D0G7b9LUg6_F6Wsy92hjc",
+      "teamId": "team_YIIlTKgeSFJta1bbW2aBWDoh",
+      "workId": null,
+      "workRevision": null
+    },
+    "updatedAt": "2026-09-27T19:34:37Z"
+  },
+  "takeoverUnsettledManifest": {
+    "action": "pause_manager_and_hold_member",
+    "findingId": "finding_insights0001",
+    "findingRevision": 1,
+    "formatVersion": 1,
+    "holdId": "hold_cdd23fa72bdac65c464c6ca10a36afe1",
+    "holdRevision": 1,
+    "holdState": "active",
+    "operationId": "takeover_managertest0001",
+    "policyRevision": 2,
+    "predecessorOperationId": null,
+    "runGeneration": 2,
+    "source": {
+      "instructionRevision": 1,
+      "nativeSessionId": "ses_managertakeover",
+      "profileRevision": 1,
+      "registeredSourceId": "source_managertakeover",
+      "sandboxGeneration": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_managertakeover",
+      "workspaceEpoch": "epoch_managertakeover"
+    },
+    "target": {
+      "bindingId": null,
+      "bindingRevision": null,
+      "memberId": "tmem_8C9YrzdiJd5qddefyMiMgoXd",
+      "taskAttempt": 1,
+      "taskId": "task_Em0D0G7b9LUg6_F6Wsy92hjc",
+      "teamId": "team_YIIlTKgeSFJta1bbW2aBWDoh",
+      "workId": null,
+      "workRevision": null
+    },
+    "validUntil": "2026-09-27T19:37:37Z"
+  }
+}

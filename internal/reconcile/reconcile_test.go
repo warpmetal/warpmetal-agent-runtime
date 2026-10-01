@@ -369,6 +369,70 @@ func TestExplicitSandboxImageRefreshPreservesWorkspaceAndLifetime(t *testing.T) 
 	}
 }
 
+func TestSameGenerationExplicitSandboxImagePatchIsAllowed(t *testing.T) {
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	engine := &fakeEngine{}
+	workspaces := &fakeWorkspaces{}
+	sessions := &fakeSessions{}
+	reconciler := &Reconciler{
+		Store: store, Engine: engine, Workspaces: workspaces, Sessions: sessions,
+		Access:       access.Renderer{Path: filepath.Join(t.TempDir(), "authorized_keys")},
+		HostCapacity: model.Resources{CPUMillicores: 4000, MemoryMiB: 8192, WorkspaceDiskGiB: 80},
+		ServerID:     "srv_test12345",
+	}
+	originalImage := "registry.example/sandbox@sha256:" + strings.Repeat("a", 64)
+	newImage := "registry.example/sandbox@sha256:" + strings.Repeat("b", 64)
+	manifest := model.Manifest{
+		ServerID: "srv_test12345", DesiredRevision: 1, ImageDigest: originalImage,
+		Capacity: model.Resources{CPUMillicores: 1500, MemoryMiB: 3072, WorkspaceDiskGiB: 30},
+		Sandboxes: []model.Sandbox{{
+			ID: "sbx_test12345", Name: "reviewer", Size: "small",
+			Resources: model.Resources{CPUMillicores: 500, MemoryMiB: 1024, WorkspaceDiskGiB: 10, PIDs: 256},
+			Lifetime:  "persistent", DesiredState: "running", Generation: 1,
+		}},
+	}
+	if err := reconciler.Reconcile(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+	if debug, err := store.Sandbox(context.Background(), "sbx_test12345"); err != nil || debug == nil {
+		t.Fatalf("debug state missing: %#v %v", debug, err)
+	} else {
+		t.Logf("after first reconcile: image=%s observedGeneration=%d observedState=%s generation=%d", debug.ImageDigest, debug.ObservedGeneration, debug.ObservedState, debug.Generation)
+	}
+	// A global default change alone never touches a pinned sandbox.
+	manifest.DesiredRevision = 2
+	manifest.ImageDigest = newImage
+	if err := reconciler.Reconcile(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+	if pinned, err := store.Sandbox(context.Background(), "sbx_test12345"); err != nil || pinned == nil || pinned.ImageDigest != originalImage {
+		t.Fatalf("a default image change repinned an existing sandbox: %#v %v", pinned, err)
+	}
+	manifest.ImageDigest = originalImage
+
+	// A same-generation explicit per-sandbox digest patches the image in place
+	// without moving the incarnation generation.
+	manifest.DesiredRevision = 3
+	manifest.Sandboxes[0].ImageDigest = newImage
+	if err := reconciler.Reconcile(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+	after, err := store.Sandbox(context.Background(), "sbx_test12345")
+	if err != nil || after == nil {
+		t.Fatalf("patched sandbox missing: %#v %v", after, err)
+	}
+	if after.ImageDigest != newImage || after.ObservedGeneration != 1 || after.ObservedState != "running" {
+		t.Fatalf("same-generation patch did not converge: %#v", after)
+	}
+	if engine.replaced != 1 || !engine.replaceRunning || sessions.terminated != 1 || workspaces.destroyed != 0 {
+		t.Fatalf("patch boundaries were not honored: %#v %#v %#v", engine, sessions, workspaces)
+	}
+}
+
 func TestSandboxImageRefreshFailureKeepsPinnedDigest(t *testing.T) {
 	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
 	if err != nil {

@@ -34,7 +34,10 @@ warpmetal_detect_apparmor_policy_requirement() {
     warpmetal_apparmor_policy_error=runtime_apparmor_state_unverifiable
     return 2
   fi
-  if ! IFS= read -r apparmor_enabled < "$enabled_file"; then
+  # Kernel pseudo-files may return the complete value together with EOF rather
+  # than a newline. POSIX read reports that as failure even though it populated
+  # the variable, so capture the complete file and validate the closed value.
+  if ! apparmor_enabled=$(cat -- "$enabled_file"); then
     warpmetal_apparmor_policy_error=runtime_apparmor_state_unverifiable
     return 2
   fi
@@ -54,7 +57,7 @@ warpmetal_detect_apparmor_policy_requirement() {
     warpmetal_apparmor_policy_error=runtime_apparmor_state_unverifiable
     return 2
   fi
-  if ! IFS= read -r apparmor_restricted_userns < "$restriction_file"; then
+  if ! apparmor_restricted_userns=$(cat -- "$restriction_file"); then
     warpmetal_apparmor_policy_error=runtime_apparmor_state_unverifiable
     return 2
   fi
@@ -575,6 +578,161 @@ warpmetal_candidate_apparmor_policy_active() {
   [ "$candidate_loaded_status" -eq 0 ] && \
     [ "$warpmetal_apparmor_setup_loaded" -eq 1 ] && \
     [ "$warpmetal_apparmor_child_loaded" -eq 1 ]
+}
+
+warpmetal_apparmor_directory_has_entry_count() {
+  entry_directory=$1
+  entry_expected_count=$2
+  entry_marks=$(find "$entry_directory" -mindepth 1 -maxdepth 1 -printf . 2>/dev/null) || \
+    return 1
+  [ "${#entry_marks}" -eq "$entry_expected_count" ]
+}
+
+warpmetal_validate_legacy_empty_apparmor_state() {
+  legacy_root=$1
+  legacy_zero=$2
+  legacy_operation=$3
+  legacy_metadata_helper=$4
+  legacy_baseline=$legacy_root/baseline
+
+  [ -d "$legacy_root" ] && [ ! -L "$legacy_root" ] || return 1
+  legacy_root_identity=$(stat -c '%u:%a' "$legacy_root" 2>/dev/null) || return 1
+  [ "$legacy_root_identity" = 0:700 ] || return 1
+  warpmetal_apparmor_directory_has_entry_count "$legacy_root" 1 || return 1
+  [ -d "$legacy_baseline" ] && [ ! -L "$legacy_baseline" ] || return 1
+  legacy_baseline_identity=$(stat -c '%u:%a' "$legacy_baseline" 2>/dev/null) || return 1
+  [ "$legacy_baseline_identity" = 0:700 ] || return 1
+  warpmetal_apparmor_directory_has_entry_count "$legacy_baseline" 4 || return 1
+
+  for legacy_field in had-policy setup-loaded child-loaded; do
+    legacy_field_path=$legacy_baseline/$legacy_field
+    [ -f "$legacy_field_path" ] && [ ! -L "$legacy_field_path" ] || return 1
+    legacy_field_identity=$(stat -c '%u:%a' "$legacy_field_path" 2>/dev/null) || return 1
+    [ "$legacy_field_identity" = 0:600 ] || return 1
+    "$legacy_metadata_helper" content-equal \
+      "$legacy_field_path" "$legacy_zero" >/dev/null 2>&1 || return 1
+  done
+  legacy_operation_path=$legacy_baseline/operation
+  [ -f "$legacy_operation_path" ] && [ ! -L "$legacy_operation_path" ] || return 1
+  legacy_operation_identity=$(stat -c '%u:%a' "$legacy_operation_path" 2>/dev/null) || return 1
+  [ "$legacy_operation_identity" = 0:600 ] || return 1
+  "$legacy_metadata_helper" content-equal \
+    "$legacy_operation_path" "$legacy_operation" >/dev/null 2>&1
+}
+
+warpmetal_validate_apparmor_adoption_marker() {
+  marker_root=$1
+  marker_expected=$2
+  marker_metadata_helper=$3
+  marker_path=$marker_root/adopted-legacy-empty-baseline-v1
+
+  [ -d "$marker_root" ] && [ ! -L "$marker_root" ] || return 1
+  marker_root_identity=$(stat -c '%u:%g:%a' "$marker_root" 2>/dev/null) || return 1
+  [ "$marker_root_identity" = 0:0:700 ] || return 1
+  [ -f "$marker_path" ] && [ ! -L "$marker_path" ] || return 1
+  marker_identity=$(stat -c '%u:%g:%a' "$marker_path" 2>/dev/null) || return 1
+  [ "$marker_identity" = 0:0:600 ] || return 1
+  "$marker_metadata_helper" content-equal \
+    "$marker_path" "$marker_expected" >/dev/null 2>&1
+}
+
+# Migrate only the lossless legacy state produced by a committed first enable
+# with no pre-existing policy. systemd may have normalized its group because it
+# lived below StateDirectory=warpmetal; ownership of a nonempty backup cannot
+# be reconstructed and is therefore never accepted. The complete new tree is
+# published by one rename while the legacy tree remains untouched as evidence.
+warpmetal_adopt_legacy_apparmor_policy_state() {
+  adoption_legacy_root=$1
+  adoption_new_root=$2
+  adoption_source=$3
+  adoption_destination=$4
+  adoption_parser=$5
+  adoption_state=$6
+  adoption_metadata_helper=$7
+  adoption_new_parent=${adoption_new_root%/*}
+  adoption_validation=
+  adoption_staged=
+
+  if [ ! -e "$adoption_legacy_root" ] && [ ! -L "$adoption_legacy_root" ]; then
+    return 0
+  fi
+  if [ ! -d "$adoption_new_parent" ] || [ -L "$adoption_new_parent" ]; then
+    warpmetal_apparmor_policy_error=runtime_apparmor_policy_recovery_failed
+    return 1
+  fi
+  adoption_validation=$(mktemp -d \
+    "$adoption_new_parent/.warpmetal-apparmor-policy-state.validate.XXXXXX") || {
+      warpmetal_apparmor_policy_error=runtime_apparmor_policy_recovery_failed
+      return 1
+    }
+  if ! warpmetal_write_apparmor_state_value "$adoption_validation/zero" 0 || \
+     ! warpmetal_write_apparmor_state_value \
+       "$adoption_validation/operation" enable-first || \
+     ! warpmetal_write_apparmor_state_value "$adoption_validation/marker" 1 || \
+     ! warpmetal_validate_legacy_empty_apparmor_state \
+       "$adoption_legacy_root" "$adoption_validation/zero" \
+       "$adoption_validation/operation" "$adoption_metadata_helper"; then
+    rm -rf -- "$adoption_validation" >/dev/null 2>&1 || true
+    warpmetal_apparmor_policy_error=runtime_apparmor_policy_recovery_failed
+    return 1
+  fi
+
+  if [ -e "$adoption_new_root" ] || [ -L "$adoption_new_root" ]; then
+    if warpmetal_validate_apparmor_adoption_marker \
+      "$adoption_new_root" "$adoption_validation/marker" \
+      "$adoption_metadata_helper"; then
+      rm -rf -- "$adoption_validation" >/dev/null 2>&1 || {
+        warpmetal_apparmor_policy_error=runtime_apparmor_policy_recovery_failed
+        return 1
+      }
+      return 0
+    fi
+    rm -rf -- "$adoption_validation" >/dev/null 2>&1 || true
+    warpmetal_apparmor_policy_error=runtime_apparmor_policy_recovery_failed
+    return 1
+  fi
+
+  if ! warpmetal_candidate_apparmor_policy_active \
+    "$adoption_source" "$adoption_destination" "$adoption_state" \
+    "$adoption_metadata_helper"; then
+    rm -rf -- "$adoption_validation" >/dev/null 2>&1 || true
+    warpmetal_apparmor_policy_error=runtime_apparmor_policy_recovery_failed
+    return 1
+  fi
+  adoption_staged=$(mktemp -d \
+    "$adoption_new_parent/.warpmetal-apparmor-policy-state.adopt.XXXXXX") || {
+      rm -rf -- "$adoption_validation" >/dev/null 2>&1 || true
+      warpmetal_apparmor_policy_error=runtime_apparmor_policy_recovery_failed
+      return 1
+    }
+  if ! warpmetal_create_empty_apparmor_baseline "$adoption_staged" || \
+     ! warpmetal_write_apparmor_state_value \
+       "$adoption_staged/adopted-legacy-empty-baseline-v1" 1 || \
+     ! warpmetal_apparmor_directory_has_entry_count "$adoption_staged" 2 || \
+     ! warpmetal_apparmor_directory_has_entry_count \
+       "$adoption_staged/baseline" 3 || \
+     ! warpmetal_validate_apparmor_adoption_marker \
+       "$adoption_staged" "$adoption_validation/marker" \
+       "$adoption_metadata_helper" || \
+     ! warpmetal_sync_apparmor_path "$adoption_staged"; then
+    rm -rf -- "$adoption_staged" "$adoption_validation" >/dev/null 2>&1 || true
+    warpmetal_apparmor_policy_error=runtime_apparmor_policy_recovery_failed
+    return 1
+  fi
+  if ! mv -- "$adoption_staged" "$adoption_new_root"; then
+    rm -rf -- "$adoption_staged" "$adoption_validation" >/dev/null 2>&1 || true
+    warpmetal_apparmor_policy_error=runtime_apparmor_policy_recovery_failed
+    return 1
+  fi
+  if ! warpmetal_sync_apparmor_path "$adoption_new_parent"; then
+    rm -rf -- "$adoption_validation" >/dev/null 2>&1 || true
+    warpmetal_apparmor_policy_error=runtime_apparmor_policy_recovery_failed
+    return 1
+  fi
+  rm -rf -- "$adoption_validation" >/dev/null 2>&1 || {
+    warpmetal_apparmor_policy_error=runtime_apparmor_policy_recovery_failed
+    return 1
+  }
 }
 
 warpmetal_configure_apparmor_policy() {

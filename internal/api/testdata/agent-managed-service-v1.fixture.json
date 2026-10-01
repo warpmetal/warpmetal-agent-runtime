@@ -1,0 +1,174 @@
+{
+  "setupManifest": {
+    "id": "setup-managed-service-0001",
+    "schemaVersion": 1,
+    "sandboxId": "sbx_managedservice00000001",
+    "sandboxGeneration": 4,
+    "profileId": "opencode",
+    "profileRevision": 1,
+    "profileDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "materializer": {
+      "kind": "archive-binary",
+      "platform": "linux/amd64",
+      "artifact": {
+        "id": "opencode-cli-linux-x64",
+        "source": "https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.14.tgz",
+        "sha256": "sha256:a3824cc0d080fd69e95c47ae751a8ba49b668f6492fcfe377f5c941c337e53a9",
+        "integrity": "sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==",
+        "format": "tar-gz",
+        "sizeBytes": 88757774
+      },
+      "bin": {
+        "name": "opencode",
+        "member": "package/bin/opencode",
+        "sha256": "sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb",
+        "version": "2.0.14",
+        "environment": {"OPENCODE_DISABLE_AUTOUPDATE": "1"}
+      }
+    }
+  },
+  "workspaceRequestManifest": {
+    "formatVersion": 1,
+    "operationId": "op_managed_start_0001",
+    "actionRevision": 2,
+    "desiredRevision": 1,
+    "allocationDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    "request": "create_default",
+    "serverId": "srv_managedservice0001",
+    "teamId": "team_managedservice0001",
+    "memberId": "tmem_managedservice0001",
+    "sandboxId": "sbx_managedservice00000001",
+    "sandboxGeneration": 4,
+    "serviceRegistrationId": "service_managedservice0001"
+  },
+  "workspaceCatalogReport": {
+    "formatVersion": 1,
+    "sandboxId": "sbx_managedservice00000001",
+    "sandboxGeneration": 4,
+    "workspaceEpoch": "epoch_managedservice0001",
+    "selectionId": "selection_managedservice0001",
+    "projectId": "project_managedservice0001",
+    "serviceRegistrationId": "service_managedservice0001",
+    "designation": "team_project",
+    "label": "Team project",
+    "availability": "available",
+    "reason": null,
+    "rootAttestation": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "lastObservedAt": "2026-09-27T17:00:00Z"
+  },
+  "serviceManifest": {
+    "formatVersion": 1,
+    "operationId": "op_managed_start_0001",
+    "actionRevision": 2,
+    "desiredRevision": 1,
+    "configDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "desiredState": "active",
+    "sessionMode": "create_initial",
+    "authority": {
+      "teamRevision": 17,
+      "providerId": "openai",
+      "modelId": "openai/gpt-6-astra",
+      "authMode": "api_key"
+    },
+    "identity": {
+      "serverId": "srv_managedservice0001",
+      "teamId": "team_managedservice0001",
+      "memberId": "tmem_managedservice0001",
+      "sandboxId": "sbx_managedservice00000001",
+      "sandboxGeneration": 4,
+      "serviceRegistrationId": "service_managedservice0001",
+      "expectedServiceGeneration": 1,
+      "instance": "default",
+      "role": "worker"
+    },
+    "profile": {
+      "setupOperationId": "setup-managed-service-0001",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "profileDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "instructions": {
+      "instructionRevision": 1,
+      "instructionDigest": "sha256:6e34aff211c44e39471ab70b678cfec006c4a84dc39a43910d54072b12da032e"
+    },
+    "workspace": {
+      "selectionId": "selection_managedservice0001",
+      "projectId": "project_managedservice0001",
+      "workspaceEpoch": "epoch_managedservice0001",
+      "scopeRevision": 2,
+      "designation": "team_project",
+      "rootAttestation": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    }
+  },
+  "serviceReport": {
+    "formatVersion": 1,
+    "operationId": "op_managed_start_0001",
+    "actionRevision": 2,
+    "observedDesiredRevision": 1,
+    "configDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "observedState": "ready",
+    "identity": {
+      "serverId": "srv_managedservice0001",
+      "teamId": "team_managedservice0001",
+      "memberId": "tmem_managedservice0001",
+      "sandboxId": "sbx_managedservice00000001",
+      "sandboxGeneration": 4,
+      "serviceRegistrationId": "service_managedservice0001",
+      "expectedServiceGeneration": 1,
+      "instance": "default",
+      "role": "worker"
+    },
+    "serviceGeneration": 1,
+    "profileStatus": "ready",
+    "workspaceStatus": "ready",
+    "enrollmentStatus": "ready",
+    "workerStatus": "ready",
+    "instructionApplied": true,
+    "instructionRevision": 1,
+    "instructionDigest": "sha256:6e34aff211c44e39471ab70b678cfec006c4a84dc39a43910d54072b12da032e",
+    "nativeRegistration": {
+      "registeredSourceId": "source_managedservice0001",
+      "workspaceEpoch": "epoch_managedservice0001",
+      "nativeSessionId": "ses_managedservice0001",
+      "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+      "nativeLocationDigest": "sha256:d9cf96858af585c5acc19643dfba975c35894edd0b85f88e96e82f88988beab6"
+    },
+    "receiptDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "enrollmentRequest": {
+    "formatVersion": 1,
+    "operationId": "op_managed_start_0001",
+    "actionRevision": 2,
+    "desiredRevision": 1,
+    "configDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "serviceRegistrationId": "service_managedservice0001",
+    "serviceGeneration": 1,
+    "sandboxId": "sbx_managedservice00000001",
+    "sandboxGeneration": 4,
+    "processInstance": "wmsup-default-0001"
+  },
+  "enrollmentResponse": {
+    "enrollmentId": "tel_managedservice0001",
+    "enrollmentToken": "ten_example_managed_service_token_0001",
+    "enrollmentExpiresAt": "2026-09-27T17:01:00Z",
+    "exchangePath": "/internal/runtime/agent-teams/enrollments/exchange"
+  },
+  "instructionRequest": {
+    "formatVersion": 1,
+    "operationId": "op_managed_start_0001",
+    "actionRevision": 2,
+    "desiredRevision": 1,
+    "configDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "serviceRegistrationId": "service_managedservice0001",
+    "serviceGeneration": 1,
+    "sandboxId": "sbx_managedservice00000001",
+    "sandboxGeneration": 4,
+    "processInstance": "wmsup-default-0001"
+  },
+  "instructionResponse": {
+    "instructionRevision": 1,
+    "instructionDigest": "sha256:6e34aff211c44e39471ab70b678cfec006c4a84dc39a43910d54072b12da032e",
+    "content": "You are the worker for this Agent Team.",
+    "expiresAt": "2026-09-27T17:05:00Z"
+  }
+}

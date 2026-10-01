@@ -1,0 +1,767 @@
+{
+  "handoffReleaseManifest": {
+    "action": "release_handoff",
+    "binding": {
+      "bindingId": "binding_statehandoffrestore0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:10b5bcc1b14ebdc48de704b15ef227b3ff5193cbb67cf1fb9a72b16de0ce0745",
+      "nativeProjectId": "5e210487f49f6aa7ae92417f8eee82cdeb5d7fa5",
+      "nativeSessionId": "ses_statehandoffrestore0001",
+      "registeredSourceId": "source_statehandoffrestore0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffrestore0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_statehandoffrestore0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_statehandoffrestore0001"
+    },
+    "context": {
+      "bytes": 538,
+      "digest": "sha256:0fef760a8f807be94fa2942f036e294fd278312a346c7410907be528112348ce",
+      "tokenUpperBound": 538
+    },
+    "desiredRevision": 10,
+    "formatVersion": 1,
+    "handoffKind": "restored_target",
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_statehandoffrestore0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_00163f13b93487323042deb3",
+      "workId": "work_statehandoffrestore0001",
+      "workspaceEpoch": "epoch_statehandoffrestore0001"
+    },
+    "lineage": {
+      "checkpointOperationId": "op_capture_statehandoffrestore0001",
+      "restoreOperationId": "op_restore_statehandoffrestore0001",
+      "sourceRevision": 1,
+      "sourceTaskId": "task_XiR1hcu0xBrTGVBkIccKdDLt",
+      "sourceWorkId": "work_statehandoffrestore0001"
+    },
+    "mappingId": "mapping_f6814ec7d37e47a3f105a2b9d1b18bf4",
+    "operationId": "op_handoff_restored_release0001",
+    "prepareDesiredRevision": 8,
+    "reason": "superseded",
+    "sessionMode": "create_separate",
+    "targetPolicy": {
+      "instructionDigest": "sha256:f013eb576a16df408c38fdb03b1dc29c38c88110357ffa836ffe0ebb1d283fcf",
+      "instructionRevision": 1,
+      "memberId": "tmem_OWi77bBeacEyffd44cOodHNp",
+      "policyRevision": 1,
+      "profileDigest": "sha256:86ceaa1ad8d110c0f066a5e38de7797937368111deffc22cddafcd17d14eb812",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "role": "worker",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_00163f13b93487323042deb3",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffrestore0001",
+      "teamId": "team_zXiKv0Q4_6_3hNJRG0ResGvR",
+      "teamRevision": 1
+    },
+    "targetWorkId": "work_handoff_f6814ec7d37e47a3f105a2b9d1b18bf4",
+    "workspace": {
+      "mode": "accepted_restore",
+      "projectId": "project_restored_statehandoffrestore0001",
+      "restoreOperationId": "op_restore_statehandoffrestore0001",
+      "rootAttestation": "sha256:133184838d0c9faf9f4a55693d3e53e1652681a62231913dec1148f7da097867",
+      "scopeRevision": 3,
+      "selectionId": "selection_restored_statehandoffrestore0001",
+      "workspaceEpoch": "epoch_restored_statehandoffrestore0001"
+    }
+  },
+  "handoffReleaseReport": {
+    "action": "release_handoff",
+    "binding": {
+      "bindingId": "binding_statehandoffrestore0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:10b5bcc1b14ebdc48de704b15ef227b3ff5193cbb67cf1fb9a72b16de0ce0745",
+      "nativeProjectId": "5e210487f49f6aa7ae92417f8eee82cdeb5d7fa5",
+      "nativeSessionId": "ses_statehandoffrestore0001",
+      "registeredSourceId": "source_statehandoffrestore0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffrestore0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_statehandoffrestore0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_statehandoffrestore0001"
+    },
+    "context": {
+      "bytes": 538,
+      "digest": "sha256:0fef760a8f807be94fa2942f036e294fd278312a346c7410907be528112348ce",
+      "tokenUpperBound": 538
+    },
+    "desiredRevision": 10,
+    "errorCode": null,
+    "formatVersion": 1,
+    "handoffKind": "restored_target",
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_statehandoffrestore0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_00163f13b93487323042deb3",
+      "workId": "work_statehandoffrestore0001",
+      "workspaceEpoch": "epoch_statehandoffrestore0001"
+    },
+    "lineage": {
+      "checkpointOperationId": "op_capture_statehandoffrestore0001",
+      "restoreOperationId": "op_restore_statehandoffrestore0001",
+      "sourceRevision": 1,
+      "sourceTaskId": "task_XiR1hcu0xBrTGVBkIccKdDLt",
+      "sourceWorkId": "work_statehandoffrestore0001"
+    },
+    "mappingId": "mapping_f6814ec7d37e47a3f105a2b9d1b18bf4",
+    "operationId": "op_handoff_restored_release0001",
+    "prepareDesiredRevision": 8,
+    "reason": "superseded",
+    "receiptDigest": "sha256:13af0ed0bfadde616879e50a88a98aa457425dd097142b535ec769f9fa9cb478",
+    "sessionMode": "create_separate",
+    "status": "released",
+    "targetPolicy": {
+      "instructionDigest": "sha256:f013eb576a16df408c38fdb03b1dc29c38c88110357ffa836ffe0ebb1d283fcf",
+      "instructionRevision": 1,
+      "memberId": "tmem_OWi77bBeacEyffd44cOodHNp",
+      "policyRevision": 1,
+      "profileDigest": "sha256:86ceaa1ad8d110c0f066a5e38de7797937368111deffc22cddafcd17d14eb812",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "role": "worker",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_00163f13b93487323042deb3",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffrestore0001",
+      "teamId": "team_zXiKv0Q4_6_3hNJRG0ResGvR",
+      "teamRevision": 1
+    },
+    "targetWorkId": "work_handoff_f6814ec7d37e47a3f105a2b9d1b18bf4",
+    "workspace": {
+      "mode": "accepted_restore",
+      "projectId": "project_restored_statehandoffrestore0001",
+      "restoreOperationId": "op_restore_statehandoffrestore0001",
+      "rootAttestation": "sha256:133184838d0c9faf9f4a55693d3e53e1652681a62231913dec1148f7da097867",
+      "scopeRevision": 3,
+      "selectionId": "selection_restored_statehandoffrestore0001",
+      "workspaceEpoch": "epoch_restored_statehandoffrestore0001"
+    }
+  },
+  "handoffTargets": {
+    "nextCursor": null,
+    "restores": [],
+    "restoresTruncated": false,
+    "targets": [
+      {
+        "label": "builder",
+        "memberId": "tmem_kWwErrWMXCvYGb3YaSImJn21",
+        "role": "worker",
+        "sandboxId": "sbx_ffe9de93742295291ae673d7"
+      },
+      {
+        "label": "tester",
+        "memberId": "tmem_ISvJ4WXxJYguFevMy31xhSOF",
+        "role": "reviewer",
+        "sandboxId": "sbx_4fe7a7251c8a747a0da963f7"
+      }
+    ]
+  },
+  "restoredTargetCatalog": {
+    "nextCursor": null,
+    "restores": [
+      {
+        "operationId": "op_restore_statehandoffrestore0001",
+        "projectId": "project_restored_statehandoffrestore0001",
+        "sandboxId": "sbx_00163f13b93487323042deb3",
+        "workspaceEpoch": "epoch_restored_statehandoffrestore0001"
+      }
+    ],
+    "restoresTruncated": false,
+    "targets": [
+      {
+        "label": "builder",
+        "memberId": "tmem_OWi77bBeacEyffd44cOodHNp",
+        "role": "worker",
+        "sandboxId": "sbx_00163f13b93487323042deb3"
+      }
+    ]
+  },
+  "restoredTargetManifest": {
+    "action": "prepare_handoff",
+    "binding": {
+      "bindingId": "binding_statehandoffrestore0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:10b5bcc1b14ebdc48de704b15ef227b3ff5193cbb67cf1fb9a72b16de0ce0745",
+      "nativeProjectId": "5e210487f49f6aa7ae92417f8eee82cdeb5d7fa5",
+      "nativeSessionId": "ses_statehandoffrestore0001",
+      "registeredSourceId": "source_statehandoffrestore0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffrestore0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_statehandoffrestore0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_statehandoffrestore0001"
+    },
+    "context": {
+      "bytes": 526,
+      "digest": "sha256:e2887b66ee32cfaf8834350f1a193a86cf61bae163668641dddb6b86abce9de9",
+      "tokenUpperBound": 526
+    },
+    "desiredRevision": 6,
+    "formatVersion": 1,
+    "handoffKind": "restored_target",
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_statehandoffrestore0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_00163f13b93487323042deb3",
+      "workId": "work_statehandoffrestore0001",
+      "workspaceEpoch": "epoch_statehandoffrestore0001"
+    },
+    "lineage": {
+      "checkpointOperationId": "op_capture_statehandoffrestore0001",
+      "restoreOperationId": "op_restore_statehandoffrestore0001",
+      "sourceRevision": 1,
+      "sourceTaskId": "task_XiR1hcu0xBrTGVBkIccKdDLt",
+      "sourceWorkId": "work_statehandoffrestore0001"
+    },
+    "mappingId": "mapping_1c646acfb28872c8264b0c940c33ed7c",
+    "operationId": "op_handoff_restored_state0001",
+    "sessionMode": "create_separate",
+    "targetPolicy": {
+      "instructionDigest": "sha256:f013eb576a16df408c38fdb03b1dc29c38c88110357ffa836ffe0ebb1d283fcf",
+      "instructionRevision": 1,
+      "memberId": "tmem_OWi77bBeacEyffd44cOodHNp",
+      "policyRevision": 1,
+      "profileDigest": "sha256:86ceaa1ad8d110c0f066a5e38de7797937368111deffc22cddafcd17d14eb812",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "role": "worker",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_00163f13b93487323042deb3",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffrestore0001",
+      "teamId": "team_zXiKv0Q4_6_3hNJRG0ResGvR",
+      "teamRevision": 1
+    },
+    "targetWorkId": "work_handoff_1c646acfb28872c8264b0c940c33ed7c",
+    "workspace": {
+      "mode": "accepted_restore",
+      "projectId": "project_restored_statehandoffrestore0001",
+      "restoreOperationId": "op_restore_statehandoffrestore0001",
+      "rootAttestation": "sha256:133184838d0c9faf9f4a55693d3e53e1652681a62231913dec1148f7da097867",
+      "scopeRevision": 3,
+      "selectionId": "selection_restored_statehandoffrestore0001",
+      "workspaceEpoch": "epoch_restored_statehandoffrestore0001"
+    }
+  },
+  "restoredTargetOwnerAccepted": {
+    "action": "prepare_handoff",
+    "baselineId": "baseline_statehandoffrestoredsession0001",
+    "checkpointOperationId": "op_capture_statehandoffrestore0001",
+    "createdAt": "2026-09-27T17:21:07Z",
+    "errorCode": null,
+    "handoffKind": "restored_target",
+    "operationId": "op_handoff_restored_state0001",
+    "parentTaskId": "task_XiR1hcu0xBrTGVBkIccKdDLt",
+    "requestId": "req_handoff_restored_state0001",
+    "restoreOperationId": "op_restore_statehandoffrestore0001",
+    "session": {
+      "mappingId": "mapping_1c646acfb28872c8264b0c940c33ed7c",
+      "nativeLocationDigest": "sha256:ca648432dccfbcf7ce6d3859cd7051998d087ee3cfc24c85dc844733efb3fc4b",
+      "nativeProjectId": "5b2d8202fa6e7240237b24ccbfce9b6ba55d4e1e",
+      "nativeSessionId": "ses_statehandoffrestoredsession0001",
+      "registeredSourceId": "source_statehandoffrestoredsession0001"
+    },
+    "sessionChoice": "create_separate",
+    "sourceRevision": 1,
+    "sourceWorkId": "work_statehandoffrestore0001",
+    "state": "accepted",
+    "targetMember": {
+      "label": "builder",
+      "memberId": "tmem_OWi77bBeacEyffd44cOodHNp",
+      "role": "worker",
+      "sandboxId": "sbx_00163f13b93487323042deb3"
+    },
+    "targetWorkId": "work_handoff_1c646acfb28872c8264b0c940c33ed7c",
+    "targetWorkspace": {
+      "projectId": "project_restored_statehandoffrestore0001",
+      "rootAttestation": "sha256:133184838d0c9faf9f4a55693d3e53e1652681a62231913dec1148f7da097867",
+      "scopeRevision": 3,
+      "selectionId": "selection_restored_statehandoffrestore0001",
+      "workspaceEpoch": "epoch_restored_statehandoffrestore0001"
+    },
+    "taskId": "task_x6d9PuH2IUfFo5U_36gYnwQo",
+    "updatedAt": "2026-09-27T17:21:07Z"
+  },
+  "restoredTargetReport": {
+    "action": "prepare_handoff",
+    "baseline": {
+      "baselineDigest": "sha256:3c19893b22324c58119a4c6bdb82c87cca795a4a55c4619ced552a4137255cb4",
+      "baselineId": "baseline_statehandoffrestoredsession0001",
+      "nativeSessionId": "ses_statehandoffrestoredsession0001",
+      "readyAt": "2026-09-27T17:21:07Z",
+      "serviceGeneration": 3
+    },
+    "binding": {
+      "bindingId": "binding_statehandoffrestore0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:10b5bcc1b14ebdc48de704b15ef227b3ff5193cbb67cf1fb9a72b16de0ce0745",
+      "nativeProjectId": "5e210487f49f6aa7ae92417f8eee82cdeb5d7fa5",
+      "nativeSessionId": "ses_statehandoffrestore0001",
+      "registeredSourceId": "source_statehandoffrestore0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffrestore0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_statehandoffrestore0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_statehandoffrestore0001"
+    },
+    "contextDigest": "sha256:e2887b66ee32cfaf8834350f1a193a86cf61bae163668641dddb6b86abce9de9",
+    "desiredRevision": 6,
+    "errorCode": null,
+    "formatVersion": 1,
+    "handoffKind": "restored_target",
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_statehandoffrestore0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_00163f13b93487323042deb3",
+      "workId": "work_statehandoffrestore0001",
+      "workspaceEpoch": "epoch_statehandoffrestore0001"
+    },
+    "lineage": {
+      "checkpointOperationId": "op_capture_statehandoffrestore0001",
+      "restoreOperationId": "op_restore_statehandoffrestore0001",
+      "sourceRevision": 1,
+      "sourceTaskId": "task_XiR1hcu0xBrTGVBkIccKdDLt",
+      "sourceWorkId": "work_statehandoffrestore0001"
+    },
+    "mappingId": "mapping_1c646acfb28872c8264b0c940c33ed7c",
+    "operationId": "op_handoff_restored_state0001",
+    "receiptDigest": "sha256:a5cba4dc4eeacf614afe4c4749cceb3511890120fa9a30a92e9544e186df9bd5",
+    "session": {
+      "instructionApplied": true,
+      "instructionDigest": "sha256:f013eb576a16df408c38fdb03b1dc29c38c88110357ffa836ffe0ebb1d283fcf",
+      "instructionRevision": 1,
+      "mappingId": "mapping_1c646acfb28872c8264b0c940c33ed7c",
+      "nativeLocationDigest": "sha256:ca648432dccfbcf7ce6d3859cd7051998d087ee3cfc24c85dc844733efb3fc4b",
+      "nativeProjectId": "5b2d8202fa6e7240237b24ccbfce9b6ba55d4e1e",
+      "nativeSessionId": "ses_statehandoffrestoredsession0001",
+      "registeredSourceId": "source_statehandoffrestoredsession0001"
+    },
+    "sessionMode": "create_separate",
+    "status": "ready",
+    "targetPolicy": {
+      "instructionDigest": "sha256:f013eb576a16df408c38fdb03b1dc29c38c88110357ffa836ffe0ebb1d283fcf",
+      "instructionRevision": 1,
+      "memberId": "tmem_OWi77bBeacEyffd44cOodHNp",
+      "policyRevision": 1,
+      "profileDigest": "sha256:86ceaa1ad8d110c0f066a5e38de7797937368111deffc22cddafcd17d14eb812",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "role": "worker",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_00163f13b93487323042deb3",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffrestore0001",
+      "teamId": "team_zXiKv0Q4_6_3hNJRG0ResGvR",
+      "teamRevision": 1
+    },
+    "targetWorkId": "work_handoff_1c646acfb28872c8264b0c940c33ed7c",
+    "targetWorkspace": {
+      "projectId": "project_restored_statehandoffrestore0001",
+      "rootAttestation": "sha256:133184838d0c9faf9f4a55693d3e53e1652681a62231913dec1148f7da097867",
+      "scopeRevision": 3,
+      "selectionId": "selection_restored_statehandoffrestore0001",
+      "workspaceEpoch": "epoch_restored_statehandoffrestore0001"
+    },
+    "workspaceRequest": {
+      "mode": "accepted_restore",
+      "projectId": "project_restored_statehandoffrestore0001",
+      "restoreOperationId": "op_restore_statehandoffrestore0001",
+      "rootAttestation": "sha256:133184838d0c9faf9f4a55693d3e53e1652681a62231913dec1148f7da097867",
+      "scopeRevision": 3,
+      "selectionId": "selection_restored_statehandoffrestore0001",
+      "workspaceEpoch": "epoch_restored_statehandoffrestore0001"
+    }
+  },
+  "reviewerClaimedTask": {
+    "continuationBaseline": {
+      "baselineDigest": "sha256:180d8a65d8608377a20ca37ddc72a3a3e9c7900dcef3dd92d782551313a2a0c2",
+      "baselineId": "baseline_statehandoffreviewersession0001",
+      "contextDigest": "sha256:d28ed58d9868cb5c87e32170e280db5d30ab0346b0c38e1b9a0108a7e7b2080d",
+      "desiredRevision": 5,
+      "nativeSessionId": "ses_statehandoffreviewersession0001",
+      "operationId": "op_handoff_reviewer_state0001",
+      "receiptDigest": "sha256:ae2384b1697bbaf58b63f5c3d06d28bd2a25958bee1eebc32449e3220831563a",
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffreviewertarget0001"
+    },
+    "parentTaskId": "task_CTWr8thVz1oX4pq3JbWVetpT",
+    "targetMemberId": "tmem_ISvJ4WXxJYguFevMy31xhSOF",
+    "taskId": "task_Tx-xFKqRa24rdPWzNz92gD1w"
+  },
+  "reviewerManifest": {
+    "action": "prepare_handoff",
+    "binding": {
+      "bindingId": "binding_statehandoffreviewer0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:6d97cf91b058c324e3b67df6a2ae09d75e9e8632d5beaba469eefe6d9671d7c7",
+      "nativeProjectId": "0d68ed38d9b2ae03560c2d7d53e2d26a7172e51b",
+      "nativeSessionId": "ses_statehandoffreviewer0001",
+      "registeredSourceId": "source_statehandoffreviewer0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffreviewer0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_statehandoffreviewer0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_statehandoffreviewer0001"
+    },
+    "context": {
+      "bytes": 546,
+      "digest": "sha256:d28ed58d9868cb5c87e32170e280db5d30ab0346b0c38e1b9a0108a7e7b2080d",
+      "tokenUpperBound": 546
+    },
+    "desiredRevision": 5,
+    "formatVersion": 1,
+    "handoffKind": "reviewer",
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_statehandoffreviewer0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_ffe9de93742295291ae673d7",
+      "workId": "work_statehandoffreviewer0001",
+      "workspaceEpoch": "epoch_statehandoffreviewer0001"
+    },
+    "lineage": {
+      "checkpointOperationId": "op_capture_statehandoffreviewer0001",
+      "restoreOperationId": null,
+      "sourceRevision": 1,
+      "sourceTaskId": "task_CTWr8thVz1oX4pq3JbWVetpT",
+      "sourceWorkId": "work_statehandoffreviewer0001"
+    },
+    "mappingId": "mapping_8e624a09fd40105ad417ea5716bd7c4f",
+    "operationId": "op_handoff_reviewer_state0001",
+    "sessionMode": "create_separate",
+    "targetPolicy": {
+      "instructionDigest": "sha256:fa7bfd1ace54627d63a7e0d0eee7052f48b83e770065dc6ebc840cd61c9588de",
+      "instructionRevision": 1,
+      "memberId": "tmem_ISvJ4WXxJYguFevMy31xhSOF",
+      "policyRevision": 1,
+      "profileDigest": "sha256:d4daedad643b24f98e07d2186b813ade5f18186e7a90a05ace64a560e802ffbc",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "role": "reviewer",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_4fe7a7251c8a747a0da963f7",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffreviewertarget0001",
+      "teamId": "team_Ub2YHXdJJz-s3pS0LMiyDrfX",
+      "teamRevision": 1
+    },
+    "targetWorkId": "work_handoff_8e624a09fd40105ad417ea5716bd7c4f",
+    "workspace": {
+      "mode": "allocate_and_materialize",
+      "projectId": null,
+      "restoreOperationId": null,
+      "rootAttestation": null,
+      "scopeRevision": null,
+      "selectionId": null,
+      "workspaceEpoch": null
+    }
+  },
+  "reviewerOwnerAccepted": {
+    "action": "prepare_handoff",
+    "baselineId": "baseline_statehandoffreviewersession0001",
+    "checkpointOperationId": "op_capture_statehandoffreviewer0001",
+    "createdAt": "2026-09-27T17:21:06Z",
+    "errorCode": null,
+    "handoffKind": "reviewer",
+    "operationId": "op_handoff_reviewer_state0001",
+    "parentTaskId": "task_CTWr8thVz1oX4pq3JbWVetpT",
+    "requestId": "req_handoff_reviewer_state0001",
+    "restoreOperationId": null,
+    "session": {
+      "mappingId": "mapping_8e624a09fd40105ad417ea5716bd7c4f",
+      "nativeLocationDigest": "sha256:6b3e2a7c5eef4a06ff478c56bb6587edf34d7b4ec52c416e51800dffaf71b3d6",
+      "nativeProjectId": "7bf53e4f8d1ac3661a69ea20183408a8a508823b",
+      "nativeSessionId": "ses_statehandoffreviewersession0001",
+      "registeredSourceId": "source_statehandoffreviewersession0001"
+    },
+    "sessionChoice": "create_separate",
+    "sourceRevision": 1,
+    "sourceWorkId": "work_statehandoffreviewer0001",
+    "state": "accepted",
+    "targetMember": {
+      "label": "tester",
+      "memberId": "tmem_ISvJ4WXxJYguFevMy31xhSOF",
+      "role": "reviewer",
+      "sandboxId": "sbx_4fe7a7251c8a747a0da963f7"
+    },
+    "targetWorkId": "work_handoff_8e624a09fd40105ad417ea5716bd7c4f",
+    "targetWorkspace": {
+      "projectId": "project_statehandoffreviewersession0001",
+      "rootAttestation": "sha256:1529b36ee5b4011093c89b2dda171d816d09178430ec064786f2b30a53ab41c6",
+      "scopeRevision": 1,
+      "selectionId": "selection_statehandoffreviewersession0001",
+      "workspaceEpoch": "epoch_statehandoffreviewersession0001"
+    },
+    "taskId": "task_Tx-xFKqRa24rdPWzNz92gD1w",
+    "updatedAt": "2026-09-27T17:21:06Z"
+  },
+  "reviewerOwnerPending": {
+    "action": "prepare_handoff",
+    "baselineId": null,
+    "checkpointOperationId": "op_capture_statehandoffreviewer0001",
+    "createdAt": "2026-09-27T17:21:06Z",
+    "errorCode": null,
+    "handoffKind": "reviewer",
+    "operationId": "op_handoff_reviewer_state0001",
+    "parentTaskId": "task_CTWr8thVz1oX4pq3JbWVetpT",
+    "requestId": "req_handoff_reviewer_state0001",
+    "restoreOperationId": null,
+    "session": null,
+    "sessionChoice": "create_separate",
+    "sourceRevision": 1,
+    "sourceWorkId": "work_statehandoffreviewer0001",
+    "state": "pending",
+    "targetMember": {
+      "label": "tester",
+      "memberId": "tmem_ISvJ4WXxJYguFevMy31xhSOF",
+      "role": "reviewer",
+      "sandboxId": "sbx_4fe7a7251c8a747a0da963f7"
+    },
+    "targetWorkId": "work_handoff_8e624a09fd40105ad417ea5716bd7c4f",
+    "targetWorkspace": null,
+    "taskId": null,
+    "updatedAt": "2026-09-27T17:21:06Z"
+  },
+  "reviewerPayload": {
+    "continuationBaseline": {
+      "baselineDigest": "sha256:180d8a65d8608377a20ca37ddc72a3a3e9c7900dcef3dd92d782551313a2a0c2",
+      "baselineId": "baseline_statehandoffreviewersession0001",
+      "contextDigest": "sha256:d28ed58d9868cb5c87e32170e280db5d30ab0346b0c38e1b9a0108a7e7b2080d",
+      "desiredRevision": 5,
+      "nativeSessionId": "ses_statehandoffreviewersession0001",
+      "operationId": "op_handoff_reviewer_state0001",
+      "receiptDigest": "sha256:ae2384b1697bbaf58b63f5c3d06d28bd2a25958bee1eebc32449e3220831563a",
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffreviewertarget0001"
+    },
+    "fence": "fnc_MTpdvjqvKXkP_xLDDC135dzbafQtaYyd",
+    "messageId": "tmsg_G_hyoIm1miTnlcw63IX5L9XY",
+    "taskId": "task_Tx-xFKqRa24rdPWzNz92gD1w"
+  },
+  "reviewerReport": {
+    "action": "prepare_handoff",
+    "baseline": {
+      "baselineDigest": "sha256:180d8a65d8608377a20ca37ddc72a3a3e9c7900dcef3dd92d782551313a2a0c2",
+      "baselineId": "baseline_statehandoffreviewersession0001",
+      "nativeSessionId": "ses_statehandoffreviewersession0001",
+      "readyAt": "2026-09-27T17:21:06Z",
+      "serviceGeneration": 3
+    },
+    "binding": {
+      "bindingId": "binding_statehandoffreviewer0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:6d97cf91b058c324e3b67df6a2ae09d75e9e8632d5beaba469eefe6d9671d7c7",
+      "nativeProjectId": "0d68ed38d9b2ae03560c2d7d53e2d26a7172e51b",
+      "nativeSessionId": "ses_statehandoffreviewer0001",
+      "registeredSourceId": "source_statehandoffreviewer0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffreviewer0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_statehandoffreviewer0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_statehandoffreviewer0001"
+    },
+    "contextDigest": "sha256:d28ed58d9868cb5c87e32170e280db5d30ab0346b0c38e1b9a0108a7e7b2080d",
+    "desiredRevision": 5,
+    "errorCode": null,
+    "formatVersion": 1,
+    "handoffKind": "reviewer",
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_statehandoffreviewer0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_ffe9de93742295291ae673d7",
+      "workId": "work_statehandoffreviewer0001",
+      "workspaceEpoch": "epoch_statehandoffreviewer0001"
+    },
+    "lineage": {
+      "checkpointOperationId": "op_capture_statehandoffreviewer0001",
+      "restoreOperationId": null,
+      "sourceRevision": 1,
+      "sourceTaskId": "task_CTWr8thVz1oX4pq3JbWVetpT",
+      "sourceWorkId": "work_statehandoffreviewer0001"
+    },
+    "mappingId": "mapping_8e624a09fd40105ad417ea5716bd7c4f",
+    "operationId": "op_handoff_reviewer_state0001",
+    "receiptDigest": "sha256:ae2384b1697bbaf58b63f5c3d06d28bd2a25958bee1eebc32449e3220831563a",
+    "session": {
+      "instructionApplied": true,
+      "instructionDigest": "sha256:fa7bfd1ace54627d63a7e0d0eee7052f48b83e770065dc6ebc840cd61c9588de",
+      "instructionRevision": 1,
+      "mappingId": "mapping_8e624a09fd40105ad417ea5716bd7c4f",
+      "nativeLocationDigest": "sha256:6b3e2a7c5eef4a06ff478c56bb6587edf34d7b4ec52c416e51800dffaf71b3d6",
+      "nativeProjectId": "7bf53e4f8d1ac3661a69ea20183408a8a508823b",
+      "nativeSessionId": "ses_statehandoffreviewersession0001",
+      "registeredSourceId": "source_statehandoffreviewersession0001"
+    },
+    "sessionMode": "create_separate",
+    "status": "ready",
+    "targetPolicy": {
+      "instructionDigest": "sha256:fa7bfd1ace54627d63a7e0d0eee7052f48b83e770065dc6ebc840cd61c9588de",
+      "instructionRevision": 1,
+      "memberId": "tmem_ISvJ4WXxJYguFevMy31xhSOF",
+      "policyRevision": 1,
+      "profileDigest": "sha256:d4daedad643b24f98e07d2186b813ade5f18186e7a90a05ace64a560e802ffbc",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "role": "reviewer",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_4fe7a7251c8a747a0da963f7",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_statehandoffreviewertarget0001",
+      "teamId": "team_Ub2YHXdJJz-s3pS0LMiyDrfX",
+      "teamRevision": 1
+    },
+    "targetWorkId": "work_handoff_8e624a09fd40105ad417ea5716bd7c4f",
+    "targetWorkspace": {
+      "projectId": "project_statehandoffreviewersession0001",
+      "rootAttestation": "sha256:1529b36ee5b4011093c89b2dda171d816d09178430ec064786f2b30a53ab41c6",
+      "scopeRevision": 1,
+      "selectionId": "selection_statehandoffreviewersession0001",
+      "workspaceEpoch": "epoch_statehandoffreviewersession0001"
+    },
+    "workspaceRequest": {
+      "mode": "allocate_and_materialize",
+      "projectId": null,
+      "restoreOperationId": null,
+      "rootAttestation": null,
+      "scopeRevision": null,
+      "selectionId": null,
+      "workspaceEpoch": null
+    }
+  },
+  "reviewerSessionHandoffAfterRegistration": {
+    "access": {
+      "requiresLocalOwnerCredential": true,
+      "requiresPinnedHostKey": true,
+      "requiresSandboxGrant": true,
+      "transport": "wm-team-control/1"
+    },
+    "capability": "exact_session",
+    "formatVersion": 1,
+    "handoff": {
+      "action": "open_session",
+      "expiresAt": "2026-09-27T17:23:06Z",
+      "formatVersion": 1,
+      "handoffId": "handoff_132420463bec48ceaa125fc97cc0fd54",
+      "identity": {
+        "instance": "default",
+        "instructionDigest": "sha256:fa7bfd1ace54627d63a7e0d0eee7052f48b83e770065dc6ebc840cd61c9588de",
+        "instructionRevision": 1,
+        "memberId": "tmem_ISvJ4WXxJYguFevMy31xhSOF",
+        "profileDigest": "sha256:d4daedad643b24f98e07d2186b813ade5f18186e7a90a05ace64a560e802ffbc",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "projectId": "project_statehandoffreviewersession0001",
+        "role": "reviewer",
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_4fe7a7251c8a747a0da963f7",
+        "serverId": "srv_p2c_statehandoffreviewer",
+        "serviceGeneration": 3,
+        "serviceRegistrationId": "service_statehandoffreviewertarget0001",
+        "teamId": "team_Ub2YHXdJJz-s3pS0LMiyDrfX",
+        "workspaceEpoch": "epoch_statehandoffreviewersession0001"
+      },
+      "issuedAt": "2026-09-27T17:21:06Z",
+      "source": {
+        "nativeLocationDigest": "sha256:6b3e2a7c5eef4a06ff478c56bb6587edf34d7b4ec52c416e51800dffaf71b3d6",
+        "nativeProjectId": "7bf53e4f8d1ac3661a69ea20183408a8a508823b",
+        "nativeSessionId": "ses_statehandoffreviewersession0001",
+        "registeredSourceId": "source_statehandoffreviewersession0001"
+      },
+      "task": null,
+      "work": {
+        "bindingId": "binding_b03ace702541dcca2b927f7ab7ee3159",
+        "bindingRevision": 1,
+        "expectedRevision": 1,
+        "workId": "work_handoff_8e624a09fd40105ad417ea5716bd7c4f"
+      }
+    },
+    "reason": null
+  },
+  "reviewerSessionHandoffBeforeRegistration": {
+    "access": {
+      "requiresLocalOwnerCredential": true,
+      "requiresPinnedHostKey": true,
+      "requiresSandboxGrant": true,
+      "transport": "wm-team-control/1"
+    },
+    "capability": "unavailable",
+    "formatVersion": 1,
+    "handoff": null,
+    "reason": "binding_not_verified"
+  },
+  "reviewerTargetRegistration": {
+    "binding": {
+      "bindingId": "binding_b03ace702541dcca2b927f7ab7ee3159",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:6b3e2a7c5eef4a06ff478c56bb6587edf34d7b4ec52c416e51800dffaf71b3d6",
+      "nativeProjectId": "7bf53e4f8d1ac3661a69ea20183408a8a508823b",
+      "nativeSessionId": "ses_statehandoffreviewersession0001",
+      "registeredSourceId": "source_statehandoffreviewersession0001",
+      "serviceRegistrationId": "service_statehandoffreviewertarget0001"
+    },
+    "continuityEnabled": true,
+    "desiredState": "active",
+    "formatVersion": 1,
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_statehandoffreviewersession0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_4fe7a7251c8a747a0da963f7",
+      "taskAttempt": null,
+      "taskId": null,
+      "workId": "work_handoff_8e624a09fd40105ad417ea5716bd7c4f",
+      "workspaceEpoch": "epoch_statehandoffreviewersession0001"
+    },
+    "scopeRevision": 1
+  }
+}

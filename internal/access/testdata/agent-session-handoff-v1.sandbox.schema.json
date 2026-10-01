@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.invalid/contracts/agent-session-handoff-v1.schema.json",
+  "title": "WarpMetal exact managed-session handoff v1",
+  "oneOf": [
+    {"$ref": "#/$defs/handoffTarget"},
+    {"$ref": "#/$defs/handoffReceipt"},
+    {"$ref": "#/$defs/registerSourceRequest"},
+    {"$ref": "#/$defs/registerSourceReceipt"}
+  ],
+  "$defs": {
+    "opaqueId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{3,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "positiveRevision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serverId", "teamId", "memberId", "sandboxId", "sandboxGeneration", "serviceRegistrationId", "serviceGeneration", "instance", "role", "projectId", "workspaceEpoch", "profileId", "profileRevision", "profileDigest", "instructionRevision", "instructionDigest"],
+      "properties": {
+        "serverId": {"$ref": "#/$defs/opaqueId"},
+        "teamId": {"$ref": "#/$defs/opaqueId"},
+        "memberId": {"$ref": "#/$defs/opaqueId"},
+        "sandboxId": {"$ref": "#/$defs/opaqueId"},
+        "sandboxGeneration": {"$ref": "#/$defs/positiveRevision"},
+        "serviceRegistrationId": {"$ref": "#/$defs/opaqueId"},
+        "serviceGeneration": {"$ref": "#/$defs/positiveRevision"},
+        "instance": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "role": {"enum": ["worker", "manager", "reviewer"]},
+        "projectId": {"$ref": "#/$defs/opaqueId"},
+        "workspaceEpoch": {"$ref": "#/$defs/opaqueId"},
+        "profileId": {"const": "opencode"},
+        "profileRevision": {"$ref": "#/$defs/positiveRevision"},
+        "profileDigest": {"$ref": "#/$defs/digest"},
+        "instructionRevision": {"$ref": "#/$defs/positiveRevision"},
+        "instructionDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registeredSourceId", "nativeSessionId", "nativeProjectId", "nativeLocationDigest"],
+      "properties": {
+        "registeredSourceId": {"$ref": "#/$defs/opaqueId"},
+        "nativeSessionId": {"type": "string", "pattern": "^ses_[A-Za-z0-9_-]{4,64}$"},
+        "nativeProjectId": {"type": "string", "pattern": "^(global|[a-f0-9]{40})$"},
+        "nativeLocationDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "taskAttempt"],
+      "properties": {
+        "taskId": {"type": "string", "pattern": "^task_[A-Za-z0-9_-]{4,72}$"},
+        "taskAttempt": {"$ref": "#/$defs/positiveRevision"}
+      }
+    },
+    "work": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workId", "expectedRevision", "bindingId", "bindingRevision"],
+      "properties": {
+        "workId": {"$ref": "#/$defs/opaqueId"},
+        "expectedRevision": {"$ref": "#/$defs/positiveRevision"},
+        "bindingId": {"$ref": "#/$defs/opaqueId"},
+        "bindingRevision": {"$ref": "#/$defs/positiveRevision"}
+      }
+    },
+    "sourceRegistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formatVersion", "identity", "source"],
+      "properties": {
+        "formatVersion": {"const": 1},
+        "identity": {"$ref": "#/$defs/identity"},
+        "source": {"$ref": "#/$defs/source"}
+      }
+    },
+    "handoffTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formatVersion", "action", "handoffId", "issuedAt", "expiresAt", "identity", "source", "task", "work"],
+      "properties": {
+        "formatVersion": {"const": 1},
+        "action": {"const": "open_session"},
+        "handoffId": {"$ref": "#/$defs/opaqueId"},
+        "issuedAt": {"type": "string", "format": "date-time"},
+        "expiresAt": {"type": "string", "format": "date-time"},
+        "identity": {"$ref": "#/$defs/identity"},
+        "source": {"$ref": "#/$defs/source"},
+        "task": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/task"}]},
+        "work": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/work"}]}
+      }
+    },
+    "handoffReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formatVersion", "action", "status", "capability", "handoffId", "target"],
+      "properties": {
+        "formatVersion": {"const": 1},
+        "action": {"const": "open_session"},
+        "status": {"const": "ready"},
+        "capability": {"const": "exact_session"},
+        "handoffId": {"$ref": "#/$defs/opaqueId"},
+        "target": {"$ref": "#/$defs/handoffTarget"}
+      }
+    },
+    "registerSourceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "sandboxId", "instance", "profileId", "registration"],
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "sandboxId": {"$ref": "#/$defs/opaqueId"},
+        "instance": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "profileId": {"const": "opencode"},
+        "registration": {"$ref": "#/$defs/sourceRegistration"}
+      }
+    },
+    "registerSourceReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "command", "status", "instance", "sandboxId", "profileId", "serviceRegistrationId", "serviceGeneration", "registeredSourceId", "workspaceEpoch", "nativeSessionId", "nativeProjectId", "nativeLocationDigest", "profileRevision", "profileDigest", "instructionRevision", "instructionDigest", "ready"],
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "command": {"const": "register-source"},
+        "status": {"enum": ["registered", "unchanged"]},
+        "instance": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "sandboxId": {"$ref": "#/$defs/opaqueId"},
+        "profileId": {"const": "opencode"},
+        "serviceRegistrationId": {"$ref": "#/$defs/opaqueId"},
+        "serviceGeneration": {"$ref": "#/$defs/positiveRevision"},
+        "registeredSourceId": {"$ref": "#/$defs/opaqueId"},
+        "workspaceEpoch": {"$ref": "#/$defs/opaqueId"},
+        "nativeSessionId": {"type": "string", "pattern": "^ses_[A-Za-z0-9_-]{4,64}$"},
+        "nativeProjectId": {"type": "string", "pattern": "^(global|[a-f0-9]{40})$"},
+        "nativeLocationDigest": {"$ref": "#/$defs/digest"},
+        "profileRevision": {"$ref": "#/$defs/positiveRevision"},
+        "profileDigest": {"$ref": "#/$defs/digest"},
+        "instructionRevision": {"$ref": "#/$defs/positiveRevision"},
+        "instructionDigest": {"$ref": "#/$defs/digest"},
+        "ready": {"const": false}
+      }
+    }
+  }
+}

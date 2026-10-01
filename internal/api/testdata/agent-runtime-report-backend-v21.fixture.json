@@ -1,0 +1,44 @@
+{
+  "note": "Frozen mirror of backend v21 continuity_node.py validate_registration_reports and apply_registration_reports semantics. Read-only reference: backend/warpmetal/continuity_node.py. Do not edit the backend; this fixture pins the exact closed field sets, patterns, statuses and refusal messages the Runtime report must satisfy.",
+  "source": "backend/warpmetal/continuity_node.py",
+  "formatVersion": 1,
+  "invalidReport": {
+    "status": 400,
+    "code": "invalid_runtime_report",
+    "message": "Runtime report is invalid."
+  },
+  "reportConflict": {
+    "status": 409,
+    "code": "runtime_report_conflict",
+    "message": "Continuity report tuple conflicts."
+  },
+  "terminalReceiptConflict": "Registration terminal receipt changed.",
+  "registrationNotCurrentConflict": "Registration is no longer current and admissible.",
+  "activeCannotReportRevokedConflict": "An active registration cannot report revoked.",
+  "sourceSandboxConflict": "Continuity source sandbox tuple conflicts.",
+  "sourceRevisionConflict": "Continuity source revision moved backwards or changed in place.",
+  "registration": {
+    "baseFields": ["formatVersion", "desiredState", "continuityEnabled", "scopeRevision", "identity", "binding"],
+    "observedFields": ["observedStatus", "serviceGeneration", "receiptDigest"],
+    "failedExtraFields": ["lastError"],
+    "desiredStates": ["active", "revoked"],
+    "observedStatuses": ["verified", "revoked", "failed"],
+    "positiveFields": ["scopeRevision", "serviceGeneration"],
+    "receiptDigestPattern": "^sha256:[a-f0-9]{64}$",
+    "safeIdentifierPattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    "safeCodePattern": "^[a-z][a-z0-9_]{0,79}$",
+    "sessionIdentifierPattern": "^ses_[A-Za-z0-9_-]{4,64}$",
+    "nativeProjectPattern": "^(?:global|[a-f0-9]{40})$",
+    "identityFields": ["workId", "projectId", "sandboxId", "workspaceEpoch", "sandboxGeneration", "taskId", "taskAttempt", "expectedRevision"],
+    "bindingFields": ["bindingId", "bindingRevision", "registeredSourceId", "serviceRegistrationId", "nativeSessionId", "nativeProjectId", "nativeLocationDigest"]
+  },
+  "continuitySource": {
+    "note": "validate_source_reports plus the _wire_source freshness/token derivation apply_sources commits before apply_registration_reports.",
+    "fields": ["formatVersion", "registeredSourceId", "serviceRegistrationId", "serviceGeneration", "projectId", "sandboxId", "sandboxGeneration", "workspaceEpoch", "nativeSessionId", "nativeProjectId", "nativeLocationDigest", "scopeRevision", "role", "profileRevision", "instructionRevision", "availability", "reason", "lastObservedAt"],
+    "positiveFields": ["serviceGeneration", "sandboxGeneration", "scopeRevision", "profileRevision", "instructionRevision"],
+    "roles": ["manager", "worker", "reviewer"],
+    "availabilities": ["available", "unavailable"],
+    "freshnessSeconds": 120,
+    "staleReason": "source_report_stale"
+  }
+}

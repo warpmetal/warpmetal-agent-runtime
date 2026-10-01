@@ -1,0 +1,276 @@
+{
+  "workspaceRegistrationRequest": {
+    "schemaVersion": 1,
+    "sandboxId": "sbx_p3baaa_Bbbbb_Ccccc_Dddd",
+    "instance": "worker-unit",
+    "profileId": "opencode",
+    "registration": {
+      "formatVersion": 1,
+      "operationId": "op_handoff_unit0001",
+      "desiredRevision": 21,
+      "mappingId": "mapping_handoffunit0001",
+      "targetWorkId": "work_handofftarget0001",
+      "targetWorkspace": {
+        "selectionId": "selection_handofftarget0001",
+        "projectId": "project_handofftarget0001",
+        "workspaceEpoch": "epoch_handofftarget0001",
+        "scopeRevision": 1,
+        "rootAttestation": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "projectRoot": "/home/agent/materialized-handoff-target"
+    }
+  },
+  "targetRegistrationRequest": {
+    "formatVersion": 1,
+    "action": "register_continuation_target",
+    "instance": "worker-unit",
+    "operationId": "op_handoff_unit0001",
+    "prepareDesiredRevision": 21,
+    "registration": {
+      "formatVersion": 1,
+      "workId": "work_handofftarget0001",
+      "projectId": "project_handofftarget0001",
+      "sandboxId": "sbx_p3baaa_Bbbbb_Ccccc_Dddd",
+      "workspaceEpoch": "epoch_handofftarget0001",
+      "sandboxGeneration": 1,
+      "taskId": null,
+      "taskAttempt": null,
+      "expectedRevision": 1,
+      "backgroundWriterState": "idle",
+      "lastAcceptedExecutionId": null,
+      "binding": {
+        "bindingId": "binding_handofftarget0001",
+        "bindingRevision": 1,
+        "registeredSourceId": "source_handoff_bf6a8d88d5483feee624d4a0",
+        "serviceRegistrationId": "service_continueunit0001",
+        "nativeSessionId": "ses_separate_unit_0001",
+        "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+        "nativeLocationDigest": "sha256:59ec8a81a68474115b470e3462b358562f92c914f6cf2d6e5e0eabcda47e943b"
+      }
+    }
+  },
+  "targetRegistrationReceipt": {
+    "formatVersion": 1,
+    "action": "register_continuation_target",
+    "status": "registered",
+    "operationId": "op_handoff_unit0001",
+    "workId": "work_handofftarget0001",
+    "expectedRevision": 1,
+    "binding": {
+      "bindingId": "binding_handofftarget0001",
+      "bindingRevision": 1,
+      "registeredSourceId": "source_handoff_bf6a8d88d5483feee624d4a0",
+      "serviceRegistrationId": "service_continueunit0001",
+      "nativeSessionId": "ses_separate_unit_0001",
+      "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+      "nativeLocationDigest": "sha256:59ec8a81a68474115b470e3462b358562f92c914f6cf2d6e5e0eabcda47e943b"
+    },
+    "receiptDigest": "sha256:72db6a009c3b27a5a7d26901da58cdfa94be4caa913b6ddc13b72a15fb4c5e17"
+  },
+  "targetRegistrationReplayReceipt": {
+    "formatVersion": 1,
+    "action": "register_continuation_target",
+    "status": "unchanged",
+    "operationId": "op_handoff_unit0001",
+    "workId": "work_handofftarget0001",
+    "expectedRevision": 1,
+    "binding": {
+      "bindingId": "binding_handofftarget0001",
+      "bindingRevision": 1,
+      "registeredSourceId": "source_handoff_bf6a8d88d5483feee624d4a0",
+      "serviceRegistrationId": "service_continueunit0001",
+      "nativeSessionId": "ses_separate_unit_0001",
+      "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+      "nativeLocationDigest": "sha256:59ec8a81a68474115b470e3462b358562f92c914f6cf2d6e5e0eabcda47e943b"
+    },
+    "receiptDigest": "sha256:72db6a009c3b27a5a7d26901da58cdfa94be4caa913b6ddc13b72a15fb4c5e17"
+  },
+  "prepareRequest": {
+    "formatVersion": 1,
+    "operationId": "op_handoff_unit0001",
+    "action": "prepare_handoff",
+    "desiredRevision": 21,
+    "handoffKind": "reviewer",
+    "sessionMode": "create_separate",
+    "targetWorkId": "work_handofftarget0001",
+    "mappingId": "mapping_handoffunit0001",
+    "identity": {
+      "workId": "work_continueunit0001",
+      "projectId": "project_continueunit0001",
+      "sandboxId": "sbx_p3baaa_Bbbbb_Ccccc_Dddd",
+      "workspaceEpoch": "epoch_continueunit0001",
+      "sandboxGeneration": 1,
+      "expectedRevision": 9
+    },
+    "binding": {
+      "bindingId": "binding_continueunit0001",
+      "bindingRevision": 7,
+      "scopeRevision": 3,
+      "serviceRegistrationId": "service_continueunit0001",
+      "serviceGeneration": 5,
+      "registeredSourceId": "source_continueunit0001",
+      "nativeSessionId": "ses_p3b_unit_session",
+      "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+      "nativeLocationDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "checkpoint": {
+      "operationId": "op_capture_unit0001",
+      "checkpointId": "checkpoint_continueunit0001",
+      "manifestDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "bytes": 4096,
+      "objectCount": 12
+    },
+    "lineage": {
+      "sourceWorkId": "work_continueunit0001",
+      "sourceRevision": 9,
+      "sourceTaskId": "task_p3b_unit_task",
+      "checkpointOperationId": "op_capture_unit0001",
+      "restoreOperationId": null
+    },
+    "targetPolicy": {
+      "teamId": "team_p3b_unit",
+      "teamRevision": 4,
+      "policyRevision": 1,
+      "memberId": "tmem_p3b_unit_member",
+      "role": "reviewer",
+      "sandboxId": "sbx_p3baaa_Bbbbb_Ccccc_Dddd",
+      "sandboxGeneration": 1,
+      "serviceRegistrationId": "service_continueunit0001",
+      "serviceGeneration": 5,
+      "serviceDesiredRevision": 11,
+      "serviceActionRevision": 17,
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "profileDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+      "instructionRevision": 9,
+      "instructionDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+    },
+    "workspace": {
+      "mode": "allocate_and_materialize",
+      "restoreOperationId": null,
+      "selectionId": null,
+      "projectId": null,
+      "workspaceEpoch": null,
+      "scopeRevision": null,
+      "rootAttestation": null
+    },
+    "context": {
+      "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "bytes": 128,
+      "tokenUpperBound": 128
+    },
+    "instance": "worker-unit",
+    "targetWorkspace": {
+      "selectionId": "selection_handofftarget0001",
+      "projectId": "project_handofftarget0001",
+      "workspaceEpoch": "epoch_handofftarget0001",
+      "scopeRevision": 1,
+      "rootAttestation": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "readyReport": {
+    "formatVersion": 1,
+    "operationId": "op_handoff_unit0001",
+    "action": "prepare_handoff",
+    "desiredRevision": 21,
+    "handoffKind": "reviewer",
+    "sessionMode": "create_separate",
+    "targetWorkId": "work_handofftarget0001",
+    "mappingId": "mapping_handoffunit0001",
+    "identity": {
+      "workId": "work_continueunit0001",
+      "projectId": "project_continueunit0001",
+      "sandboxId": "sbx_p3baaa_Bbbbb_Ccccc_Dddd",
+      "workspaceEpoch": "epoch_continueunit0001",
+      "sandboxGeneration": 1,
+      "expectedRevision": 9
+    },
+    "binding": {
+      "bindingId": "binding_continueunit0001",
+      "bindingRevision": 7,
+      "scopeRevision": 3,
+      "serviceRegistrationId": "service_continueunit0001",
+      "serviceGeneration": 5,
+      "registeredSourceId": "source_continueunit0001",
+      "nativeSessionId": "ses_p3b_unit_session",
+      "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+      "nativeLocationDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "checkpoint": {
+      "operationId": "op_capture_unit0001",
+      "checkpointId": "checkpoint_continueunit0001",
+      "manifestDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "bytes": 4096,
+      "objectCount": 12
+    },
+    "lineage": {
+      "sourceWorkId": "work_continueunit0001",
+      "sourceRevision": 9,
+      "sourceTaskId": "task_p3b_unit_task",
+      "checkpointOperationId": "op_capture_unit0001",
+      "restoreOperationId": null
+    },
+    "targetPolicy": {
+      "teamId": "team_p3b_unit",
+      "teamRevision": 4,
+      "policyRevision": 1,
+      "memberId": "tmem_p3b_unit_member",
+      "role": "reviewer",
+      "sandboxId": "sbx_p3baaa_Bbbbb_Ccccc_Dddd",
+      "sandboxGeneration": 1,
+      "serviceRegistrationId": "service_continueunit0001",
+      "serviceGeneration": 5,
+      "serviceDesiredRevision": 11,
+      "serviceActionRevision": 17,
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "profileDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+      "instructionRevision": 9,
+      "instructionDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+    },
+    "workspaceRequest": {
+      "mode": "allocate_and_materialize",
+      "restoreOperationId": null,
+      "selectionId": null,
+      "projectId": null,
+      "workspaceEpoch": null,
+      "scopeRevision": null,
+      "rootAttestation": null
+    },
+    "contextDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "status": "ready",
+    "targetWorkspace": {
+      "selectionId": "selection_handofftarget0001",
+      "projectId": "project_handofftarget0001",
+      "workspaceEpoch": "epoch_handofftarget0001",
+      "scopeRevision": 1,
+      "rootAttestation": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "session": {
+      "mappingId": "mapping_handoffunit0001",
+      "registeredSourceId": "source_handoff_0123456789abcdef01234567",
+      "nativeSessionId": "ses_separate_unit_0001",
+      "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+      "nativeLocationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "instructionRevision": 9,
+      "instructionDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "instructionApplied": true
+    },
+    "baseline": {
+      "baselineId": "baseline_handoff_0123456789abcdef",
+      "baselineDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "nativeSessionId": "ses_separate_unit_0001",
+      "serviceGeneration": 5,
+      "readyAt": "2026-09-27T22:00:00Z"
+    },
+    "receiptDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "errorCode": null
+  },
+  "workerClaimSelector": {
+    "schemaVersion": 1,
+    "continuationBaseline": {
+      "operationId": "op_handoff_unit0001",
+      "baselineId": "baseline_handoff_0123456789abcdef"
+    }
+  }
+}

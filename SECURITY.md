@@ -36,6 +36,21 @@ tools and provider credentials remain subject to that boundary. A compromised
 program can access the sandbox home, network, and user-owned credentials made
 available to other processes in the same sandbox.
 
+Continuity checkpoint objects, manifests, and registry mappings are stored in
+the root-only Runtime state boundary and are never mounted into a sandbox.
+Callers provide opaque identity fences and an acknowledged safe-boundary
+receipt; they cannot provide host paths or container IDs. Runtime resolves the
+workspace through its own registration, rejects unsafe Git layouts, traversal,
+escaping symlinks, hardlinks, devices, FIFOs, and tracked credential-exclusion
+paths, and never dereferences a captured symlink. Raw file content, Git index
+bytes, and symlink targets are not logged or returned in Runtime reports.
+
+A running capture may thaw only the pause durably owned by that exact
+operation, sandbox generation, and host lifecycle revision. Unknown pause
+state and restart races fail closed. Materialization is limited to a new
+registry-owned destination at the exact base commit; a partial or ambiguous
+attempt is not replayed over that destination.
+
 ## SSH alias and gateway boundary
 
 A standard OpenSSH alias created from a WarpMetal connection profile is a local
@@ -134,3 +149,23 @@ User-installed executables, configuration, and provider credentials belong
 beneath `/home/agent` and remain the owner's responsibility.
 They must not be copied into release bundles, desired state, host installer
 arguments, or Runtime logs and reports.
+
+## Insights metadata boundary
+
+The only monitor subprocess is the immutable `warpmetal-monitor` executable in
+the sandbox image. Runtime fixes its argv, uid, working directory, five-second
+deadline, and input/output ceilings. Policy and exporter identities are
+advisory until matched against current host SQLite authority. Disabled,
+expired, stale, foreign, or unavailable sources cannot cause an exporter read.
+
+The outbound schema has no fields for commands, arguments, results, prompts,
+URLs, filesystem paths, credentials, transcripts, fingerprints, or raw native
+events. SQLite retains at most 256 pending 64 KiB batches, with one pending
+batch per source. Lost acknowledgements replay the immutable batch; capacity or
+identity conflicts fail closed. Rotation never assigns an old-generation
+finding to the new journal sequence domain.
+
+Managed-source registration is a separate fixed supervisor action under the
+existing container boundary. Runtime validates the complete receipt before
+publishing host source authority, and never trusts a caller-selected root or
+native identifier.

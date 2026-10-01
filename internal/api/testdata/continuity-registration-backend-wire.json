@@ -1,0 +1,103 @@
+{
+  "accessGrants": [],
+  "capacity": {
+    "cpuMillicores": 3500,
+    "memoryMiB": 7168,
+    "workspaceDiskGiB": 70
+  },
+  "continuityContinuationReleases": [],
+  "continuityContinuations": [],
+  "continuityHandoffReleases": [],
+  "continuityHandoffs": [],
+  "continuityOperations": [],
+  "continuityRegistrations": [
+    {
+      "binding": {
+        "bindingId": "binding_revisionadvance0001",
+        "bindingRevision": 1,
+        "nativeLocationDigest": "sha256:6e906e1424b944831ec9232a13542bd0e02b4425fa8238b703d1d1ed438c89a4",
+        "nativeProjectId": "a1f3d1d36ce2b6d91b3aa30c0c51fb5bed790bc6",
+        "nativeSessionId": "ses_revisionadvance0001",
+        "registeredSourceId": "source_revisionadvance0001",
+        "serviceRegistrationId": "service_revisionadvance0001"
+      },
+      "continuityEnabled": true,
+      "desiredState": "active",
+      "formatVersion": 1,
+      "identity": {
+        "expectedRevision": 1,
+        "projectId": "project_revisionadvance0001",
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_66544ce97d31ed88d51e4434",
+        "taskAttempt": null,
+        "taskId": null,
+        "workId": "work_revisionadvance0001",
+        "workspaceEpoch": "epoch_revisionadvance0001"
+      },
+      "scopeRevision": 2
+    }
+  ],
+  "continuityRestores": [],
+  "desiredRevision": 3,
+  "imageDigest": "ghcr.io/warpmetal/test-sandbox@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "insightsManagerPolicies": [],
+  "insightsManagerReviews": [],
+  "insightsTakeovers": [],
+  "managedServices": [],
+  "managedWorkspaceRequests": [],
+  "sandboxes": [
+    {
+      "desiredState": "running",
+      "expiresAt": null,
+      "expiresInSeconds": null,
+      "generation": 1,
+      "id": "sbx_05cc95d8a7655fedf3571504",
+      "lifetime": "persistent",
+      "name": "manager",
+      "resources": {
+        "cpuMillicores": 1000,
+        "memoryMiB": 1024,
+        "pids": 256,
+        "workspaceDiskGiB": 10
+      },
+      "size": "small",
+      "startedAt": null
+    },
+    {
+      "desiredState": "running",
+      "expiresAt": null,
+      "expiresInSeconds": null,
+      "generation": 1,
+      "id": "sbx_66544ce97d31ed88d51e4434",
+      "lifetime": "persistent",
+      "name": "builder",
+      "resources": {
+        "cpuMillicores": 1000,
+        "memoryMiB": 1024,
+        "pids": 256,
+        "workspaceDiskGiB": 10
+      },
+      "size": "small",
+      "startedAt": null
+    },
+    {
+      "desiredState": "running",
+      "expiresAt": null,
+      "expiresInSeconds": null,
+      "generation": 1,
+      "id": "sbx_1c9c6008a2a161054a5af45e",
+      "lifetime": "persistent",
+      "name": "tester",
+      "resources": {
+        "cpuMillicores": 1000,
+        "memoryMiB": 1024,
+        "pids": 256,
+        "workspaceDiskGiB": 10
+      },
+      "size": "small",
+      "startedAt": null
+    }
+  ],
+  "serverId": "srv_p2c_revisionadvance",
+  "setupOperations": []
+}

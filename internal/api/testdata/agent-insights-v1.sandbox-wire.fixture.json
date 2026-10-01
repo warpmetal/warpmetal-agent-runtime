@@ -1,0 +1,160 @@
+{
+  "openRequest": {
+    "action": "report_incident_changes",
+    "afterChangeSequence": 0,
+    "expectedJournalGeneration": null,
+    "formatVersion": 1,
+    "healthSample": null,
+    "instance": "worker-monitor",
+    "limit": 64,
+    "nativeSessionId": "ses_monitor12345",
+    "sourceInstanceId": "source_monitor12345",
+    "workspaceEpoch": "epoch_monitor12345"
+  },
+  "openResponse": {
+    "action": "report_incident_changes",
+    "coverage": "complete",
+    "formatVersion": 1,
+    "fromChangeSequence": 0,
+    "gapReason": null,
+    "health": {
+      "clockGeneration": "clock_monitor_boot1",
+      "clockId": "host_monotonic_v1",
+      "enabled": true,
+      "journalGeneration": "journal_31adb73d38674b02ba330981df98bfae",
+      "requiresFreshWindow": false
+    },
+    "incidentChanges": [
+      {
+        "changeSequence": 1,
+        "finding": {
+          "count": 20,
+          "coverage": "complete",
+          "findingId": "finding_e184715fdfd5bace41a6a11e",
+          "firstObservedAt": "2026-09-27T18:00:01.010Z",
+          "firstSequence": 2,
+          "healthObservedAt": null,
+          "lastObservedAt": "2026-09-27T18:00:20.010Z",
+          "lastProgressAt": null,
+          "lastSequence": 40,
+          "matchedCallIds": [
+            "call_failure_1",
+            "call_failure_6",
+            "call_failure_7",
+            "call_failure_8",
+            "call_failure_9",
+            "call_failure_10",
+            "call_failure_11",
+            "call_failure_12",
+            "call_failure_13",
+            "call_failure_14",
+            "call_failure_15",
+            "call_failure_16",
+            "call_failure_17",
+            "call_failure_18",
+            "call_failure_19",
+            "call_failure_20"
+          ],
+          "phase": "running_model",
+          "phaseStartedAt": null,
+          "recovery": null,
+          "revision": 17,
+          "ruleId": "repeated_identical_failure@1",
+          "stallThresholdMs": null,
+          "state": "open",
+          "threshold": 4,
+          "toolCategory": "shell"
+        }
+      }
+    ],
+    "journalGeneration": "journal_31adb73d38674b02ba330981df98bfae",
+    "nativeSessionId": "ses_monitor12345",
+    "nextChangeSequence": 1,
+    "sourceInstanceId": "source_monitor12345",
+    "status": "ok",
+    "throughChangeSequence": 1,
+    "throughSequence": 40,
+    "workspaceEpoch": "epoch_monitor12345"
+  },
+  "recoveredRequest": {
+    "action": "report_incident_changes",
+    "afterChangeSequence": 1,
+    "expectedJournalGeneration": "journal_31adb73d38674b02ba330981df98bfae",
+    "formatVersion": 1,
+    "healthSample": null,
+    "instance": "worker-monitor",
+    "limit": 64,
+    "nativeSessionId": "ses_monitor12345",
+    "sourceInstanceId": "source_monitor12345",
+    "workspaceEpoch": "epoch_monitor12345"
+  },
+  "recoveredResponse": {
+    "action": "report_incident_changes",
+    "coverage": "complete",
+    "formatVersion": 1,
+    "fromChangeSequence": 1,
+    "gapReason": null,
+    "health": {
+      "clockGeneration": "clock_monitor_boot1",
+      "clockId": "host_monotonic_v1",
+      "enabled": true,
+      "journalGeneration": "journal_31adb73d38674b02ba330981df98bfae",
+      "requiresFreshWindow": false
+    },
+    "incidentChanges": [
+      {
+        "changeSequence": 2,
+        "finding": {
+          "count": 20,
+          "coverage": "complete",
+          "findingId": "finding_e184715fdfd5bace41a6a11e",
+          "firstObservedAt": "2026-09-27T18:00:01.010Z",
+          "firstSequence": 2,
+          "healthObservedAt": null,
+          "lastObservedAt": "2026-09-27T18:00:20.010Z",
+          "lastProgressAt": null,
+          "lastSequence": 40,
+          "matchedCallIds": [
+            "call_failure_1",
+            "call_failure_6",
+            "call_failure_7",
+            "call_failure_8",
+            "call_failure_9",
+            "call_failure_10",
+            "call_failure_11",
+            "call_failure_12",
+            "call_failure_13",
+            "call_failure_14",
+            "call_failure_15",
+            "call_failure_16",
+            "call_failure_17",
+            "call_failure_18",
+            "call_failure_19",
+            "call_failure_20"
+          ],
+          "phase": "running_model",
+          "phaseStartedAt": null,
+          "recovery": {
+            "predicate": "matching_operation_succeeded",
+            "referenceId": "call_failure_22",
+            "sequence": 44
+          },
+          "revision": 18,
+          "ruleId": "repeated_identical_failure@1",
+          "stallThresholdMs": null,
+          "state": "resolved",
+          "threshold": 4,
+          "toolCategory": "shell"
+        }
+      }
+    ],
+    "journalGeneration": "journal_31adb73d38674b02ba330981df98bfae",
+    "nativeSessionId": "ses_monitor12345",
+    "nextChangeSequence": 2,
+    "sourceInstanceId": "source_monitor12345",
+    "status": "ok",
+    "throughChangeSequence": 2,
+    "throughSequence": 44,
+    "workspaceEpoch": "epoch_monitor12345"
+  }
+}

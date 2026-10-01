@@ -1,0 +1,726 @@
+{
+  "claimRequest": {
+    "continuationBaseline": {
+      "baselineId": "baseline_s2wirefinal0001",
+      "operationId": "op_continue_s2wirefinal0001"
+    },
+    "schemaVersion": 1
+  },
+  "claimResponse": {
+    "message": {
+      "capability": "task.delegate",
+      "createdAt": "2026-09-27T16:33:47Z",
+      "expiresAt": "2026-09-28T16:33:47Z",
+      "messageId": "tmsg_j3q8ZtvaMV2bFAC3mzPuGPle",
+      "recipientMemberId": "tmem_eH6zW9IPtD5mhNhickLkeLLL",
+      "senderMemberId": "tmem_hXuDlm1hlsHpqBhKdro7lW8s",
+      "sequence": 1,
+      "status": "queued",
+      "taskId": "task_RW0w3HrmalM5AWOJ65nKsC8g"
+    },
+    "payloadAvailable": true,
+    "task": {
+      "attempts": 1,
+      "cancelRequested": false,
+      "claimExpiresAt": "2026-09-27T16:38:47Z",
+      "continuationBaseline": {
+        "baselineDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "baselineId": "baseline_s2wirefinal0001",
+        "contextDigest": "sha256:3100d1ec065696423a14c107dec253051f1a02025d86d95346a80999ec407bee",
+        "desiredRevision": 5,
+        "nativeSessionId": "ses_s2wirefinal0001",
+        "operationId": "op_continue_s2wirefinal0001",
+        "receiptDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "serviceGeneration": 3,
+        "serviceRegistrationId": "service_s2wirefinal0001"
+      },
+      "failureClass": null,
+      "fence": "fnc_RM_S8U-W-9mnucsnaCH0BKXm0kkbmJv0",
+      "queuedExpiresAt": "2026-09-28T16:33:47Z",
+      "remoteMessageId": null,
+      "remoteSessionId": null,
+      "replayed": false,
+      "requeueCount": 0,
+      "status": "claimed",
+      "statusReason": null,
+      "taskId": "task_RW0w3HrmalM5AWOJ65nKsC8g",
+      "terminalAt": null,
+      "timeoutSeconds": 900,
+      "turnLimit": 50
+    }
+  },
+  "continuationBaseline": {
+    "baselineDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "baselineId": "baseline_s2wirefinal0001",
+    "contextDigest": "sha256:3100d1ec065696423a14c107dec253051f1a02025d86d95346a80999ec407bee",
+    "desiredRevision": 5,
+    "nativeSessionId": "ses_s2wirefinal0001",
+    "operationId": "op_continue_s2wirefinal0001",
+    "receiptDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "serviceGeneration": 3,
+    "serviceRegistrationId": "service_s2wirefinal0001"
+  },
+  "continuationManifest": {
+    "action": "prepare_continuation",
+    "binding": {
+      "bindingId": "binding_s2wirefinal0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:94c6793b781683ff51c6c88c50596124fc67d5d8c5482bb7ca1dab9e4e4bf335",
+      "nativeProjectId": "7bd4a11f13fe65c98fd815e606d038fddc135f3b",
+      "nativeSessionId": "ses_s2wirefinal0001",
+      "registeredSourceId": "source_s2wirefinal0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirefinal0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_s2wirefinal0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_s2wirefinal0001"
+    },
+    "context": {
+      "bytes": 500,
+      "digest": "sha256:3100d1ec065696423a14c107dec253051f1a02025d86d95346a80999ec407bee",
+      "tokenUpperBound": 500
+    },
+    "desiredRevision": 5,
+    "formatVersion": 1,
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_s2wirefinal0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_fa329d974f9f7323825abb8c",
+      "workId": "work_s2wirefinal0001",
+      "workspaceEpoch": "epoch_s2wirefinal0001"
+    },
+    "operationId": "op_continue_s2wirefinal0001",
+    "target": {
+      "instructionDigest": "sha256:e20e297f79fef6ae3ac9a2c2bf13b215827b5828dcb9b7be7450e691b86fc523",
+      "instructionRevision": 1,
+      "memberId": "tmem_eH6zW9IPtD5mhNhickLkeLLL",
+      "policyRevision": 1,
+      "profileDigest": "sha256:633b8eee894d51059b66552796f5a56e345812d450202e4ca91a288caef58116",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "projectId": "project_s2wirefinal0001",
+      "role": "worker",
+      "rootAttestation": "sha256:053cca822cce00b2eaadbb74e6bb50896f0287544833376bf67abc13877e57c5",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_fa329d974f9f7323825abb8c",
+      "scopeRevision": 2,
+      "selectionId": "selection_s2wirefinal0001",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirefinal0001",
+      "teamId": "team_tfchGHt9rOcWJViXxEFrLR0M",
+      "teamRevision": 1,
+      "workspaceEpoch": "epoch_s2wirefinal0001"
+    }
+  },
+  "continuationOwnerResponse": {
+    "operation": {
+      "action": "prepare_continuation",
+      "admittedAt": "2026-09-27T16:33:47Z",
+      "baselineConsumedAt": "2026-09-27T16:33:47Z",
+      "baselineId": "baseline_s2wirefinal0001",
+      "checkpointOperationId": "op_capture_s2wirefinal0001",
+      "contextBytes": 500,
+      "contextDigest": "sha256:3100d1ec065696423a14c107dec253051f1a02025d86d95346a80999ec407bee",
+      "contextTokenUpperBound": 500,
+      "createdAt": "2026-09-27T16:33:47Z",
+      "errorCode": null,
+      "expectedBindingRevision": 1,
+      "expectedRevision": 1,
+      "operationId": "op_continue_s2wirefinal0001",
+      "parentTaskId": null,
+      "requestId": "req_continue_s2wirefinal0001",
+      "scopeRevision": 2,
+      "state": "accepted",
+      "taskId": "task_RW0w3HrmalM5AWOJ65nKsC8g",
+      "terminalAt": "2026-09-27T16:33:47Z",
+      "updatedAt": "2026-09-27T16:33:47Z",
+      "workId": "work_s2wirefinal0001"
+    }
+  },
+  "continuationReport": {
+    "action": "prepare_continuation",
+    "baseline": {
+      "baselineDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "baselineId": "baseline_s2wirefinal0001",
+      "nativeSessionId": "ses_s2wirefinal0001",
+      "readyAt": "2026-09-27T16:33:47Z",
+      "serviceGeneration": 3
+    },
+    "binding": {
+      "bindingId": "binding_s2wirefinal0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:94c6793b781683ff51c6c88c50596124fc67d5d8c5482bb7ca1dab9e4e4bf335",
+      "nativeProjectId": "7bd4a11f13fe65c98fd815e606d038fddc135f3b",
+      "nativeSessionId": "ses_s2wirefinal0001",
+      "registeredSourceId": "source_s2wirefinal0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirefinal0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_s2wirefinal0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_s2wirefinal0001"
+    },
+    "contextDigest": "sha256:3100d1ec065696423a14c107dec253051f1a02025d86d95346a80999ec407bee",
+    "desiredRevision": 5,
+    "errorCode": null,
+    "formatVersion": 1,
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_s2wirefinal0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_fa329d974f9f7323825abb8c",
+      "workId": "work_s2wirefinal0001",
+      "workspaceEpoch": "epoch_s2wirefinal0001"
+    },
+    "operationId": "op_continue_s2wirefinal0001",
+    "receiptDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "status": "ready",
+    "target": {
+      "instructionDigest": "sha256:e20e297f79fef6ae3ac9a2c2bf13b215827b5828dcb9b7be7450e691b86fc523",
+      "instructionRevision": 1,
+      "memberId": "tmem_eH6zW9IPtD5mhNhickLkeLLL",
+      "policyRevision": 1,
+      "profileDigest": "sha256:633b8eee894d51059b66552796f5a56e345812d450202e4ca91a288caef58116",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "projectId": "project_s2wirefinal0001",
+      "role": "worker",
+      "rootAttestation": "sha256:053cca822cce00b2eaadbb74e6bb50896f0287544833376bf67abc13877e57c5",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_fa329d974f9f7323825abb8c",
+      "scopeRevision": 2,
+      "selectionId": "selection_s2wirefinal0001",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirefinal0001",
+      "teamId": "team_tfchGHt9rOcWJViXxEFrLR0M",
+      "teamRevision": 1,
+      "workspaceEpoch": "epoch_s2wirefinal0001"
+    }
+  },
+  "continuationRequest": {
+    "checkpointOperationId": "op_capture_s2wirefinal0001",
+    "expectedBindingRevision": 1,
+    "expectedRevision": 1,
+    "instruction": "Continue from the accepted checkpoint and finish the requested implementation.",
+    "operationId": "op_continue_s2wirefinal0001",
+    "requestId": "req_continue_s2wirefinal0001",
+    "scopeRevision": 2,
+    "targetMemberId": "tmem_eH6zW9IPtD5mhNhickLkeLLL",
+    "timeoutSeconds": 900,
+    "turnLimit": 50,
+    "version": 1
+  },
+  "failedContinuationOwnerResponse": {
+    "operation": {
+      "action": "prepare_continuation",
+      "admittedAt": null,
+      "baselineConsumedAt": null,
+      "baselineId": null,
+      "checkpointOperationId": "op_capture_s2wireworkspacechanged0001",
+      "contextBytes": 555,
+      "contextDigest": "sha256:a79c48596d36eb840542e861b81a42a5c2edff30e78e44095db4aa8d54a8c89b",
+      "contextTokenUpperBound": 555,
+      "createdAt": "2026-09-27T16:33:48Z",
+      "errorCode": "workspace_changed",
+      "expectedBindingRevision": 1,
+      "expectedRevision": 1,
+      "operationId": "op_continue_s2wireworkspacechanged0001",
+      "parentTaskId": null,
+      "requestId": "req_continue_s2wireworkspacechanged0001",
+      "scopeRevision": 2,
+      "state": "failed",
+      "taskId": null,
+      "terminalAt": "2026-09-27T16:33:48Z",
+      "updatedAt": "2026-09-27T16:33:48Z",
+      "workId": "work_s2wireworkspacechanged0001"
+    }
+  },
+  "failedContinuationReleaseManifest": {
+    "action": "release_continuation",
+    "binding": {
+      "bindingId": "binding_s2wireworkspacechanged0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:6cb8d1208d5ac2f9e052eb547ee85de63885102a49a333c420039913cff8f5c0",
+      "nativeProjectId": "45d9f60f90be3034fed462834f75900426a80002",
+      "nativeSessionId": "ses_s2wireworkspacechanged0001",
+      "registeredSourceId": "source_s2wireworkspacechanged0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wireworkspacechanged0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_s2wireworkspacechanged0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_s2wireworkspacechanged0001"
+    },
+    "context": {
+      "bytes": 555,
+      "digest": "sha256:a79c48596d36eb840542e861b81a42a5c2edff30e78e44095db4aa8d54a8c89b",
+      "tokenUpperBound": 555
+    },
+    "desiredRevision": 6,
+    "formatVersion": 1,
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_s2wireworkspacechanged0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_e783dc9f5b3c81322546cdc4",
+      "workId": "work_s2wireworkspacechanged0001",
+      "workspaceEpoch": "epoch_s2wireworkspacechanged0001"
+    },
+    "operationId": "op_continue_s2wireworkspacechanged0001",
+    "reason": "failed",
+    "target": {
+      "instructionDigest": "sha256:531fa9a5c457c20fd244b81a394289dc8d0fff1a309cc6f3849c645d9aa8e7b2",
+      "instructionRevision": 1,
+      "memberId": "tmem_3q3-7o9uorO8lhM5dbAqp8VU",
+      "policyRevision": 1,
+      "profileDigest": "sha256:34b73aee4538a5bd094710b53c4af2ae721252a7c38a02d1418daaac2ad85495",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "projectId": "project_s2wireworkspacechanged0001",
+      "role": "worker",
+      "rootAttestation": "sha256:4a7303df4e027042d773736aecf56e82b73d9e3b1fd4f949f7f9506c9212097a",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_e783dc9f5b3c81322546cdc4",
+      "scopeRevision": 2,
+      "selectionId": "selection_s2wireworkspacechanged0001",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wireworkspacechanged0001",
+      "teamId": "team_3fTqGRnSNT6q8ah70YvJNsqd",
+      "teamRevision": 1,
+      "workspaceEpoch": "epoch_s2wireworkspacechanged0001"
+    }
+  },
+  "failedContinuationReport": {
+    "action": "prepare_continuation",
+    "baseline": null,
+    "binding": {
+      "bindingId": "binding_s2wireworkspacechanged0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:6cb8d1208d5ac2f9e052eb547ee85de63885102a49a333c420039913cff8f5c0",
+      "nativeProjectId": "45d9f60f90be3034fed462834f75900426a80002",
+      "nativeSessionId": "ses_s2wireworkspacechanged0001",
+      "registeredSourceId": "source_s2wireworkspacechanged0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wireworkspacechanged0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_s2wireworkspacechanged0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_s2wireworkspacechanged0001"
+    },
+    "contextDigest": "sha256:a79c48596d36eb840542e861b81a42a5c2edff30e78e44095db4aa8d54a8c89b",
+    "desiredRevision": 5,
+    "errorCode": "workspace_changed",
+    "formatVersion": 1,
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_s2wireworkspacechanged0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_e783dc9f5b3c81322546cdc4",
+      "workId": "work_s2wireworkspacechanged0001",
+      "workspaceEpoch": "epoch_s2wireworkspacechanged0001"
+    },
+    "operationId": "op_continue_s2wireworkspacechanged0001",
+    "receiptDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "status": "failed",
+    "target": {
+      "instructionDigest": "sha256:531fa9a5c457c20fd244b81a394289dc8d0fff1a309cc6f3849c645d9aa8e7b2",
+      "instructionRevision": 1,
+      "memberId": "tmem_3q3-7o9uorO8lhM5dbAqp8VU",
+      "policyRevision": 1,
+      "profileDigest": "sha256:34b73aee4538a5bd094710b53c4af2ae721252a7c38a02d1418daaac2ad85495",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "projectId": "project_s2wireworkspacechanged0001",
+      "role": "worker",
+      "rootAttestation": "sha256:4a7303df4e027042d773736aecf56e82b73d9e3b1fd4f949f7f9506c9212097a",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_e783dc9f5b3c81322546cdc4",
+      "scopeRevision": 2,
+      "selectionId": "selection_s2wireworkspacechanged0001",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wireworkspacechanged0001",
+      "teamId": "team_3fTqGRnSNT6q8ah70YvJNsqd",
+      "teamRevision": 1,
+      "workspaceEpoch": "epoch_s2wireworkspacechanged0001"
+    }
+  },
+  "formatVersion": 1,
+  "payloadSafeProjection": {
+    "continuationBaseline": {
+      "baselineDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "baselineId": "baseline_s2wirefinal0001",
+      "contextDigest": "sha256:3100d1ec065696423a14c107dec253051f1a02025d86d95346a80999ec407bee",
+      "desiredRevision": 5,
+      "nativeSessionId": "ses_s2wirefinal0001",
+      "operationId": "op_continue_s2wirefinal0001",
+      "receiptDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirefinal0001"
+    },
+    "messageId": "tmsg_j3q8ZtvaMV2bFAC3mzPuGPle",
+    "payloadBytes": 500,
+    "policyRevision": 1,
+    "recipientMemberId": "tmem_eH6zW9IPtD5mhNhickLkeLLL",
+    "senderMemberId": "tmem_hXuDlm1hlsHpqBhKdro7lW8s",
+    "sequence": 1,
+    "taskId": "task_RW0w3HrmalM5AWOJ65nKsC8g",
+    "teamRevision": 1
+  },
+  "releaseManifest": {
+    "action": "release_continuation",
+    "binding": {
+      "bindingId": "binding_s2wirerelease0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:4bb8e2963a034ab5b7b90624e5492bb94ea835cbd1db254d63fdba278786c990",
+      "nativeProjectId": "6669af46b5580b2bf66a638b03723f19d085a19d",
+      "nativeSessionId": "ses_s2wirerelease0001",
+      "registeredSourceId": "source_s2wirerelease0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirerelease0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_s2wirerelease0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_s2wirerelease0001"
+    },
+    "context": {
+      "bytes": 510,
+      "digest": "sha256:676483b457926e93f87f6b65a8d719afbd0ecd47898c6156c32261778c3c6069",
+      "tokenUpperBound": 510
+    },
+    "desiredRevision": 7,
+    "formatVersion": 1,
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_s2wirerelease0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_d8b689731f2c8dae34cb48ac",
+      "workId": "work_s2wirerelease0001",
+      "workspaceEpoch": "epoch_s2wirerelease0001"
+    },
+    "operationId": "op_continue_s2wirerelease0001",
+    "reason": "superseded",
+    "target": {
+      "instructionDigest": "sha256:6e745ca610ae6ea344bc25b269e13089a1662091bd2559a5dcf7e30b544c2ec8",
+      "instructionRevision": 1,
+      "memberId": "tmem_qC0cZ3FFmNJGPHI3m4gIsBmc",
+      "policyRevision": 1,
+      "profileDigest": "sha256:5e36c0eeb8ba72d2ba382f73264c351a0470da34cc5dfc1321a6376aeb066a0c",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "projectId": "project_s2wirerelease0001",
+      "role": "worker",
+      "rootAttestation": "sha256:eead1dc234b09ac51fe833987021dc66890eee50cd47f7b3b4d62b84601914ff",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_d8b689731f2c8dae34cb48ac",
+      "scopeRevision": 2,
+      "selectionId": "selection_s2wirerelease0001",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirerelease0001",
+      "teamId": "team_LFKU9Q-LsJz2MLGxGflWiqRs",
+      "teamRevision": 1,
+      "workspaceEpoch": "epoch_s2wirerelease0001"
+    }
+  },
+  "releaseOwnerResponse": {
+    "operation": {
+      "action": "prepare_continuation",
+      "admittedAt": null,
+      "baselineConsumedAt": null,
+      "baselineId": null,
+      "checkpointOperationId": "op_capture_s2wirerelease0001",
+      "contextBytes": 510,
+      "contextDigest": "sha256:676483b457926e93f87f6b65a8d719afbd0ecd47898c6156c32261778c3c6069",
+      "contextTokenUpperBound": 510,
+      "createdAt": "2026-09-27T16:33:47Z",
+      "errorCode": null,
+      "expectedBindingRevision": 1,
+      "expectedRevision": 1,
+      "operationId": "op_continue_s2wirerelease0001",
+      "parentTaskId": null,
+      "requestId": "req_continue_s2wirerelease0001",
+      "scopeRevision": 2,
+      "state": "superseded",
+      "taskId": null,
+      "terminalAt": "2026-09-27T16:33:47Z",
+      "updatedAt": "2026-09-27T16:33:47Z",
+      "workId": "work_s2wirerelease0001"
+    }
+  },
+  "releasePreparationManifest": {
+    "action": "prepare_continuation",
+    "binding": {
+      "bindingId": "binding_s2wirerelease0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:4bb8e2963a034ab5b7b90624e5492bb94ea835cbd1db254d63fdba278786c990",
+      "nativeProjectId": "6669af46b5580b2bf66a638b03723f19d085a19d",
+      "nativeSessionId": "ses_s2wirerelease0001",
+      "registeredSourceId": "source_s2wirerelease0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirerelease0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_s2wirerelease0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_s2wirerelease0001"
+    },
+    "context": {
+      "bytes": 510,
+      "digest": "sha256:676483b457926e93f87f6b65a8d719afbd0ecd47898c6156c32261778c3c6069",
+      "tokenUpperBound": 510
+    },
+    "desiredRevision": 5,
+    "formatVersion": 1,
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_s2wirerelease0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_d8b689731f2c8dae34cb48ac",
+      "workId": "work_s2wirerelease0001",
+      "workspaceEpoch": "epoch_s2wirerelease0001"
+    },
+    "operationId": "op_continue_s2wirerelease0001",
+    "target": {
+      "instructionDigest": "sha256:6e745ca610ae6ea344bc25b269e13089a1662091bd2559a5dcf7e30b544c2ec8",
+      "instructionRevision": 1,
+      "memberId": "tmem_qC0cZ3FFmNJGPHI3m4gIsBmc",
+      "policyRevision": 1,
+      "profileDigest": "sha256:5e36c0eeb8ba72d2ba382f73264c351a0470da34cc5dfc1321a6376aeb066a0c",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "projectId": "project_s2wirerelease0001",
+      "role": "worker",
+      "rootAttestation": "sha256:eead1dc234b09ac51fe833987021dc66890eee50cd47f7b3b4d62b84601914ff",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_d8b689731f2c8dae34cb48ac",
+      "scopeRevision": 2,
+      "selectionId": "selection_s2wirerelease0001",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirerelease0001",
+      "teamId": "team_LFKU9Q-LsJz2MLGxGflWiqRs",
+      "teamRevision": 1,
+      "workspaceEpoch": "epoch_s2wirerelease0001"
+    }
+  },
+  "releaseReport": {
+    "action": "release_continuation",
+    "binding": {
+      "bindingId": "binding_s2wirerelease0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:4bb8e2963a034ab5b7b90624e5492bb94ea835cbd1db254d63fdba278786c990",
+      "nativeProjectId": "6669af46b5580b2bf66a638b03723f19d085a19d",
+      "nativeSessionId": "ses_s2wirerelease0001",
+      "registeredSourceId": "source_s2wirerelease0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirerelease0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_s2wirerelease0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_s2wirerelease0001"
+    },
+    "context": {
+      "bytes": 510,
+      "digest": "sha256:676483b457926e93f87f6b65a8d719afbd0ecd47898c6156c32261778c3c6069",
+      "tokenUpperBound": 510
+    },
+    "desiredRevision": 7,
+    "errorCode": null,
+    "formatVersion": 1,
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_s2wirerelease0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_d8b689731f2c8dae34cb48ac",
+      "workId": "work_s2wirerelease0001",
+      "workspaceEpoch": "epoch_s2wirerelease0001"
+    },
+    "operationId": "op_continue_s2wirerelease0001",
+    "reason": "superseded",
+    "receiptDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "status": "released",
+    "target": {
+      "instructionDigest": "sha256:6e745ca610ae6ea344bc25b269e13089a1662091bd2559a5dcf7e30b544c2ec8",
+      "instructionRevision": 1,
+      "memberId": "tmem_qC0cZ3FFmNJGPHI3m4gIsBmc",
+      "policyRevision": 1,
+      "profileDigest": "sha256:5e36c0eeb8ba72d2ba382f73264c351a0470da34cc5dfc1321a6376aeb066a0c",
+      "profileId": "opencode",
+      "profileRevision": 1,
+      "projectId": "project_s2wirerelease0001",
+      "role": "worker",
+      "rootAttestation": "sha256:eead1dc234b09ac51fe833987021dc66890eee50cd47f7b3b4d62b84601914ff",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_d8b689731f2c8dae34cb48ac",
+      "scopeRevision": 2,
+      "selectionId": "selection_s2wirerelease0001",
+      "serviceActionRevision": 1,
+      "serviceDesiredRevision": 1,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirerelease0001",
+      "teamId": "team_LFKU9Q-LsJz2MLGxGflWiqRs",
+      "teamRevision": 1,
+      "workspaceEpoch": "epoch_s2wirerelease0001"
+    }
+  },
+  "restoreManifest": {
+    "action": "restore_checkpoint",
+    "binding": {
+      "bindingId": "binding_s2wirefinal0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:94c6793b781683ff51c6c88c50596124fc67d5d8c5482bb7ca1dab9e4e4bf335",
+      "nativeProjectId": "7bd4a11f13fe65c98fd815e606d038fddc135f3b",
+      "nativeSessionId": "ses_s2wirefinal0001",
+      "registeredSourceId": "source_s2wirefinal0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirefinal0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_s2wirefinal0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_s2wirefinal0001"
+    },
+    "desiredRevision": 6,
+    "formatVersion": 1,
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_s2wirefinal0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_fa329d974f9f7323825abb8c",
+      "workId": "work_s2wirefinal0001",
+      "workspaceEpoch": "epoch_s2wirefinal0001"
+    },
+    "operationId": "op_restore_s2wirefinal0001",
+    "target": {
+      "mode": "create_new",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_fa329d974f9f7323825abb8c"
+    }
+  },
+  "restoreOwnerResponse": {
+    "operation": {
+      "action": "restore_checkpoint",
+      "checkpointOperationId": "op_capture_s2wirefinal0001",
+      "createdAt": "2026-09-27T16:33:47Z",
+      "errorCode": null,
+      "expectedBindingRevision": 1,
+      "expectedRevision": 1,
+      "operationId": "op_restore_s2wirefinal0001",
+      "requestId": "req_restore_s2wirefinal0001",
+      "scopeRevision": 2,
+      "state": "accepted",
+      "target": {
+        "projectId": "project_restored_s2wirefinal0001",
+        "rootAttestation": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "scopeRevision": 3,
+        "selectionId": "selection_restored_s2wirefinal0001",
+        "workspaceEpoch": "epoch_restored_s2wirefinal0001"
+      },
+      "taskId": null,
+      "terminalAt": "2026-09-27T16:33:47Z",
+      "updatedAt": "2026-09-27T16:33:47Z",
+      "workId": "work_s2wirefinal0001"
+    }
+  },
+  "restoreReport": {
+    "action": "restore_checkpoint",
+    "binding": {
+      "bindingId": "binding_s2wirefinal0001",
+      "bindingRevision": 1,
+      "nativeLocationDigest": "sha256:94c6793b781683ff51c6c88c50596124fc67d5d8c5482bb7ca1dab9e4e4bf335",
+      "nativeProjectId": "7bd4a11f13fe65c98fd815e606d038fddc135f3b",
+      "nativeSessionId": "ses_s2wirefinal0001",
+      "registeredSourceId": "source_s2wirefinal0001",
+      "scopeRevision": 2,
+      "serviceGeneration": 3,
+      "serviceRegistrationId": "service_s2wirefinal0001"
+    },
+    "checkpoint": {
+      "bytes": 4096,
+      "checkpointId": "checkpoint_s2wirefinal0001",
+      "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "objectCount": 12,
+      "operationId": "op_capture_s2wirefinal0001"
+    },
+    "dependencyStatus": "ready",
+    "desiredRevision": 6,
+    "errorCode": null,
+    "exclusions": [
+      "native_history",
+      "credentials",
+      "runtime_state",
+      "external_side_effects"
+    ],
+    "formatVersion": 1,
+    "identity": {
+      "expectedRevision": 1,
+      "projectId": "project_s2wirefinal0001",
+      "sandboxGeneration": 1,
+      "sandboxId": "sbx_fa329d974f9f7323825abb8c",
+      "workId": "work_s2wirefinal0001",
+      "workspaceEpoch": "epoch_s2wirefinal0001"
+    },
+    "operationId": "op_restore_s2wirefinal0001",
+    "receiptDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "status": "accepted",
+    "target": {
+      "projectId": "project_restored_s2wirefinal0001",
+      "rootAttestation": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "scopeRevision": 3,
+      "selectionId": "selection_restored_s2wirefinal0001",
+      "workspaceEpoch": "epoch_restored_s2wirefinal0001"
+    }
+  },
+  "restoreRequest": {
+    "checkpointOperationId": "op_capture_s2wirefinal0001",
+    "expectedBindingRevision": 1,
+    "expectedRevision": 1,
+    "operationId": "op_restore_s2wirefinal0001",
+    "requestId": "req_restore_s2wirefinal0001",
+    "scopeRevision": 2,
+    "targetMode": "create_new",
+    "version": 1
+  }
+}

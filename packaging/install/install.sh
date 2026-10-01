@@ -13,6 +13,87 @@ fail_install() {
 # Preserve mode never sources or invokes the optional AppArmor policy helper.
 warpmetal_apparmor_policy_initialized=0
 
+process_start_ticks() {
+  process_id=$1
+  [ -r "/proc/$process_id/stat" ] || return 1
+  process_stat=$(cat "/proc/$process_id/stat") || return 1
+  case "$process_stat" in *') '*) ;; *) return 1 ;; esac
+  process_fields=${process_stat##*) }
+  # Fields after comm begin at proc stat field 3; starttime is field 22.
+  set -- $process_fields
+  [ "$#" -ge 20 ] || return 1
+  process_start=${20}
+  case "$process_start" in ''|*[!0-9]*) return 1 ;; esac
+  printf '%s\n' "$process_start"
+}
+
+process_in_cgroup() {
+  process_id=$1
+  cgroup_pattern=$2
+  [ -r "/proc/$process_id/cgroup" ] || return 1
+  grep -Eq "$cgroup_pattern" "/proc/$process_id/cgroup"
+}
+
+private_podman() {
+  (
+    cd /
+    runuser -u warpmetal-runtime -- env \
+      HOME=/var/lib/warpmetal-runtime \
+      XDG_RUNTIME_DIR=/run/warpmetal-podman \
+      podman --remote --url unix:///run/warpmetal-podman/podman.sock "$@"
+  )
+}
+
+snapshot_private_podman_containers() {
+  destination=$1
+  private_snapshot_error=${2:-runtime_workload_state_unverifiable}
+  ids="$install_state_dir/private-podman.ids"
+  raw="$install_state_dir/private-podman.raw"
+  : > "$destination"
+  : > "$ids"
+  : > "$raw"
+  private_podman ps --quiet --no-trunc > "$ids" || \
+    fail_install "$private_snapshot_error"
+  if grep -Ev '^[a-f0-9]{64}$' "$ids" >/dev/null; then
+    fail_install "$private_snapshot_error"
+  fi
+  sort -u "$ids" -o "$ids"
+  [ -s "$ids" ] || return 0
+  set --
+  while IFS= read -r container_id; do
+    [ -n "$container_id" ] || continue
+    set -- "$@" "$container_id"
+  done < "$ids"
+  private_podman inspect \
+    --format '{{.ID}}|{{.State.Pid}}|{{.State.ConmonPid}}|{{.State.StartedAt}}|{{.State.Running}}' \
+    "$@" > "$raw" || fail_install "$private_snapshot_error"
+  while IFS='|' read -r container_id init_pid conmon_pid started_at running extra; do
+    [ -z "$extra" ] && [ -n "$container_id" ] && [ -n "$started_at" ] || \
+      fail_install "$private_snapshot_error"
+    case "$container_id" in
+      *[!a-f0-9]*|'') fail_install "$private_snapshot_error" ;;
+    esac
+    [ "${#container_id}" -eq 64 ] || fail_install "$private_snapshot_error"
+    case "$init_pid" in ''|0|*[!0-9]*) fail_install "$private_snapshot_error" ;; esac
+    case "$conmon_pid" in ''|0|*[!0-9]*) fail_install "$private_snapshot_error" ;; esac
+    [ "$running" = true ] || fail_install "$private_snapshot_error"
+    init_start=$(process_start_ticks "$init_pid") || \
+      fail_install "$private_snapshot_error"
+    conmon_start=$(process_start_ticks "$conmon_pid") || \
+      fail_install "$private_snapshot_error"
+    [ -r "/proc/$conmon_pid/comm" ] || fail_install "$private_snapshot_error"
+    IFS= read -r conmon_name < "/proc/$conmon_pid/comm" || \
+      fail_install "$private_snapshot_error"
+    [ "$conmon_name" = conmon ] || fail_install "$private_snapshot_error"
+    printf '%s|%s|%s|%s|%s|%s|%s\n' \
+      "$container_id" "$init_pid" "$init_start" "$conmon_pid" \
+      "$conmon_start" "$started_at" "$running" >> "$destination"
+  done < "$raw"
+  [ "$(wc -l < "$destination")" -eq "$(wc -l < "$ids")" ] || \
+    fail_install "$private_snapshot_error"
+  sort -o "$destination" "$destination"
+}
+
 is_warpmetal_podman_service_process() {
   process_id=$1
   [ -n "$warpmetal_podman_pid" ] || return 1
@@ -22,16 +103,43 @@ is_warpmetal_podman_service_process() {
     "/proc/$process_id/cgroup"
 }
 
+is_warpmetal_runtime_service_process() {
+  process_in_cgroup "$1" '^0::/system[.]slice/warpmetald[.]service(/|$)'
+}
+
+is_persistent_private_conmon() {
+  process_id=$1
+  [ -s "$install_state_dir/private-podman.before" ] || return 1
+  awk -F '|' -v pid="$process_id" '$4 == pid { found = 1 } END { exit found ? 0 : 1 }' \
+    "$install_state_dir/private-podman.before"
+}
+
 snapshot_host_workloads() {
   process_snapshot_unsorted="$install_state_dir/processes.unsorted"
   process_snapshot="$install_state_dir/processes.before"
   : > "$process_snapshot_unsorted"
   docker_process_present=0
+  warpmetal_podman_active=0
+  warpmetal_podman_state=$(
+    systemctl show --property ActiveState --value warpmetal-podman.service 2>/dev/null || true
+  )
   warpmetal_podman_pid=$(
     systemctl show --property MainPID --value warpmetal-podman.service 2>/dev/null || true
   )
   case "$warpmetal_podman_pid" in
     ''|0|*[!0-9]*) warpmetal_podman_pid= ;;
+  esac
+  : > "$install_state_dir/private-podman.before"
+  case "$warpmetal_podman_state" in
+    active)
+      [ -n "$warpmetal_podman_pid" ] || fail_install runtime_workload_state_unverifiable
+      warpmetal_podman_start=$(process_start_ticks "$warpmetal_podman_pid") || \
+        fail_install runtime_workload_state_unverifiable
+      snapshot_private_podman_containers "$install_state_dir/private-podman.before"
+      warpmetal_podman_active=1
+      ;;
+    ''|inactive|failed) warpmetal_podman_pid= ;;
+    *) fail_install runtime_workload_state_unverifiable ;;
   esac
   for process_dir in /proc/[0-9]*; do
     [ -r "$process_dir/comm" ] && [ -r "$process_dir/stat" ] || continue
@@ -41,20 +149,28 @@ snapshot_host_workloads() {
       dockerd)
         docker_process_present=1
         ;;
-      containerd|containerd-shim*|conmon|crio|kubelet|lxc-start|lxd|incusd)
+      containerd|containerd-shim*|crio|kubelet|lxc-start|lxd|incusd)
+        ;;
+      conmon)
+        if is_warpmetal_podman_service_process "$process_id" && \
+           ! is_persistent_private_conmon "$process_id"; then
+          continue
+        fi
         ;;
       podman)
-        # Restarting WarpMetal's own API service is an allowed installer action.
-        # Podman may fork a child inside the same service cgroup. Exempt only
-        # those Podman processes; sandbox processes remain protected through
-        # their separately inventoried conmon processes.
-        is_warpmetal_podman_service_process "$process_id" && continue
+        # Exempt only command-scoped Podman helpers inside WarpMetal's service
+        # cgroups. The private API service MainPID/start time and every running
+        # container's init/conmon identity are frozen by the private inventory.
+        if is_warpmetal_podman_service_process "$process_id" || \
+           is_warpmetal_runtime_service_process "$process_id"; then
+          continue
+        fi
         ;;
       *)
         continue
         ;;
     esac
-    process_start=$(awk '{print $22}' "$process_dir/stat" 2>/dev/null) || continue
+    process_start=$(process_start_ticks "$process_id") || continue
     [ -n "$process_start" ] || continue
     printf '%s %s %s\n' "$process_id" "$process_start" "$process_name" >> "$process_snapshot_unsorted"
   done
@@ -99,13 +215,34 @@ snapshot_host_workloads() {
 }
 
 assert_host_workloads_unchanged() {
+  if [ "$warpmetal_podman_active" -eq 1 ]; then
+    current_podman_state=$(
+      systemctl show --property ActiveState --value warpmetal-podman.service 2>/dev/null || true
+    )
+    current_podman_pid=$(
+      systemctl show --property MainPID --value warpmetal-podman.service 2>/dev/null || true
+    )
+    [ "$current_podman_state" = active ] && \
+      [ "$current_podman_pid" = "$warpmetal_podman_pid" ] || \
+      fail_install runtime_workload_drift_detected
+    current_podman_start=$(process_start_ticks "$current_podman_pid") || \
+      fail_install runtime_workload_drift_detected
+    [ "$current_podman_start" = "$warpmetal_podman_start" ] || \
+      fail_install runtime_workload_drift_detected
+    snapshot_private_podman_containers \
+      "$install_state_dir/private-podman.after" \
+      runtime_workload_drift_detected
+    cmp -s "$install_state_dir/private-podman.before" \
+      "$install_state_dir/private-podman.after" || \
+      fail_install runtime_workload_drift_detected
+  fi
   while read -r process_id process_start process_name; do
     [ -n "$process_id" ] || continue
     [ -r "/proc/$process_id/comm" ] && [ -r "/proc/$process_id/stat" ] || \
       fail_install runtime_workload_drift_detected
     IFS= read -r current_name < "/proc/$process_id/comm" || \
       fail_install runtime_workload_drift_detected
-    current_start=$(awk '{print $22}' "/proc/$process_id/stat" 2>/dev/null) || \
+    current_start=$(process_start_ticks "$process_id") || \
       fail_install runtime_workload_drift_detected
     [ "$current_name" = "$process_name" ] && [ "$current_start" = "$process_start" ] || \
       fail_install runtime_workload_drift_detected
@@ -384,11 +521,22 @@ if [ "$nested_private_procfs" != preserve ]; then
       apparmor_parser_path=$(command -v apparmor_parser 2>/dev/null || true)
       [ -n "$apparmor_parser_path" ] || fail_install runtime_apparmor_policy_unsupported
       apparmor_policy_destination=/etc/apparmor.d/warpmetal-agent-runtime-bwrap
-      apparmor_policy_durable_state=/var/lib/warpmetal/apparmor-policy-state
+      apparmor_policy_legacy_state=/var/lib/warpmetal/apparmor-policy-state
+      apparmor_policy_durable_state=/var/lib/warpmetal-apparmor-policy-state
       apparmor_metadata_helper=$bundle_dir/warpmetal-policy-metadata
       [ -f "$apparmor_metadata_helper" ] && [ ! -L "$apparmor_metadata_helper" ] && \
         [ -x "$apparmor_metadata_helper" ] || \
         fail_install runtime_apparmor_policy_bundle_invalid
+      if ! warpmetal_adopt_legacy_apparmor_policy_state \
+        "$apparmor_policy_legacy_state" \
+        "$apparmor_policy_durable_state" \
+        "$apparmor_policy_source" \
+        "$apparmor_policy_destination" \
+        "$apparmor_parser_path" \
+        /sys/kernel/security/apparmor/profiles \
+        "$apparmor_metadata_helper"; then
+        fail_install runtime_apparmor_policy_recovery_failed
+      fi
       if ! warpmetal_configure_apparmor_policy \
         "$nested_private_procfs" \
         "$(uname -m)" \
