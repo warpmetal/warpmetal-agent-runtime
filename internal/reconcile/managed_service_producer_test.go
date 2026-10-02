@@ -952,7 +952,10 @@ func TestManagedWorkerExecutionOutlivesPollDeadlineAndPolicyCancelsIt(t *testing
 	reconciler := &Reconciler{Store: store, ManagedCatalog: catalog, ManagedControl: control, ManagedRuntime: runtime, ManagedExecutionContext: lifecycle, Now: fixedNow}
 	manifest := model.Manifest{ServerID: fixture.ServiceManifest.Identity.ServerID, DesiredRevision: fixture.ServiceManifest.DesiredRevision, ManagedServices: []model.ManagedServiceV1{fixture.ServiceManifest}}
 
-	pollContext, cancelPoll := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	// Normal bounded reconciliation backstop (CI-appropriate seconds, not a
+	// wall-clock proxy): the controlled worker blocks the INDEPENDENT lifecycle
+	// context, so a successful start proves the launch mechanism.
+	pollContext, cancelPoll := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelPoll()
 	if _, err := reconciler.reconcileManagedServices(pollContext, manifest); err != nil {
 		t.Fatalf("bounded worker execution incorrectly consumed the poll deadline: %v", err)
@@ -967,10 +970,35 @@ func TestManagedWorkerExecutionOutlivesPollDeadlineAndPolicyCancelsIt(t *testing
 		t.Fatalf("running worker source authority = %#v %v", sources, err)
 	}
 
-	secondContext, cancelSecond := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	// Explicit deliberate poll-context cancellation after a successful start:
+	// the independent worker lifecycle must remain active because the worker
+	// blocks the lifecycle context, never the control-plane poll.
+	cancelPoll()
+	select {
+	case <-lifecycle.Done():
+		t.Fatal("independent worker lifecycle was canceled by the poll context")
+	default:
+	}
+
+	// A second ordinary reconciliation must return without waiting for the
+	// blocked worker or launching a replacement. The bounded channel proves the
+	// non-waiting property deterministically; the 30s context only prevents a
+	// hang in case of a construction bug.
+	secondContext, cancelSecond := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelSecond()
-	if _, err := reconciler.reconcileManagedServices(secondContext, manifest); err != nil {
-		t.Fatalf("active worker blocked regular reconciliation: %v", err)
+	secondResult := make(chan error, 1)
+	go func() {
+		_, err := reconciler.reconcileManagedServices(secondContext, manifest)
+		secondResult <- err
+	}()
+	select {
+	case err := <-secondResult:
+		if err != nil {
+			t.Fatalf("active worker blocked regular reconciliation: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		cancelSecond()
+		t.Fatal("ordinary reconciliation waited on the independent worker lifecycle")
 	}
 	if runtime.calls() != 1 {
 		t.Fatalf("duplicate worker execution launched for one member: %d", runtime.calls())
