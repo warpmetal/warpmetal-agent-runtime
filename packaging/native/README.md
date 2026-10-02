@@ -63,9 +63,12 @@ and never uses upstream/npm identities.
   smoke, then retain the assembled candidate artifact
   (`native-linux-x64-candidate`, 7 days, upload only
   `RUNNER_TEMP/native-package/artifacts/*`) for root inspection; the exact
-  custom tag publishes from main ancestry with the same route plus smoke,
-  checksums, keyless cosign OIDC `sign-blob` bundle and `attest-blob` SLSA
-  provenance, then `gh release create --verify-tag --latest=false`.
+  custom tag (or the bounded recovery dispatch described below) publishes from
+  main ancestry with the same route plus smoke, checksums, keyless cosign OIDC
+  `sign-blob` bundle and `attest-blob` SLSA provenance, retains the signed
+  assets (`native-signed-linux-x64`) before publication, and creates the
+  release with an explicit `--repo`, an explicit asset list and
+  `--verify-tag --latest=false`.
 
 ## Root seal and build sequence
 
@@ -99,6 +102,38 @@ The workflow asserts the exact tag, main ancestry, and custom identity before
 building; it never touches `v*` Runtime releases, npm, or official upstream
 repositories, and it requires no private credentials. The Runtime and sandbox
 images stay separately signed and are not modified here.
+
+## Bounded original-tag recovery (publication failure)
+
+If the normal tag run builds, smokes and signs successfully but publication
+fails (for example the original `gh release create` ran from the artifact
+directory, which is not a git repository), the same immutable tag is recovered
+without moving it:
+
+- `workflow_dispatch` on this workflow offers exactly one closed choice,
+  `release_tag = opencode-v2.0.14-wm.1`; there is no arbitrary ref, free-form
+  input or admin override.
+- The publish job derives a job-local `RELEASE_TAG` from that input on dispatch
+  and from `github.ref_name` on tag push, checks out that immutable tag with
+  `fetch-depth: 0`, and asserts the exact tag, `HEAD == tag commit` and main
+  ancestry. The corrected workflow runs from main, so the keyless cosign OIDC
+  signer identity for a recovery run is `@refs/heads/main`, while the normal
+  tag run signs as `@refs/tags/opencode-v2.0.14-wm.1`; the checked-out source
+  is always the immutable original tag.
+- Upstream `08462140...` and the canonical patch digest
+  `sha256:5bcf0104...` are unchanged.
+- An existing release is refused (`gh release view` guard plus no
+  `--clobber`); publication never overwrites a mutable asset, never moves
+  `--latest`, and never creates a second tag or version.
+- The signed archive, checksums, bare SLSA predicate and cosign bundles are
+  retained as `native-signed-linux-x64` (7 days) after signing and before
+  publication, so the exact signed artifact can be recovered if the upload
+  result is unknown.
+- The artifacts are keyless-signed; this does not claim Git tag PGP signing.
+  The existing Runtime `0.1.31` latest release is retained.
+- The failed original tag build's archive/binary digests are preserved as
+  history only and are not pinned for any installed tuple; builds are not
+  reproducible (`reproducible: false`).
 
 ## Fail-closed rules
 
