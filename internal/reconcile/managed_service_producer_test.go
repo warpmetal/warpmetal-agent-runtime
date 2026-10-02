@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -49,6 +50,9 @@ type sandboxSupervisorReceiptFixture struct {
 	BoundStart      json.RawMessage `json:"boundStart"`
 	BoundStatus     json.RawMessage `json:"boundStatus"`
 	Admit           json.RawMessage `json:"admit"`
+	// NegotiatedStatus is an actual packaged-Sandbox producer status receipt
+	// captured with runtimeContractVersion 0.1.32 negotiation (nativeGuard).
+	NegotiatedStatus json.RawMessage `json:"negotiatedStatus"`
 }
 
 type fakeManagedControl struct {
@@ -1051,6 +1055,55 @@ func TestManagedWorkerExecutionOutlivesPollDeadlineAndPolicyCancelsIt(t *testing
 	case <-runtime.executeCanceled:
 	case <-time.After(time.Second):
 		t.Fatal("pause policy did not cancel the independent worker execution")
+	}
+}
+
+func TestManagedServiceDecodesActualNegotiatedSandboxSupervisorReceipts(t *testing.T) {
+	receipts, err := loadSandboxSupervisorReceiptFixture()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The packaged Sandbox producer negotiates nativeGuard on every receipt when
+	// the request carries runtimeContractVersion 0.1.32. The before-start
+	// observation carries the closed six-field guard with no facts yet; the
+	// strict Runtime decoder must accept it and keep the guard semantics.
+	var negotiated managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(receipts.NegotiatedStatus, &negotiated); err != nil {
+		t.Fatalf("actual negotiated Sandbox status receipt rejected: %v", err)
+	}
+	if negotiated.Command != "status" || negotiated.NativeGuard == nil {
+		t.Fatalf("actual negotiated Sandbox status receipt lost its closed guard: %#v", negotiated)
+	}
+	guard := negotiated.NativeGuard
+	if guard.GuardVersion != "" || guard.CustomVersion != "" || guard.SourceRevision != "" ||
+		guard.PatchDigest != "" || guard.ArtifactSHA256 != "" || guard.BinarySHA256 != "" {
+		t.Fatalf("pre-start negotiated guard carried invented facts: %#v", *guard)
+	}
+	// Legacy receipts that never negotiated must keep decoding without a guard.
+	var legacy managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(receipts.UnboundStatus, &legacy); err != nil || legacy.NativeGuard != nil {
+		t.Fatalf("legacy Sandbox status receipt = %#v %v", legacy, err)
+	}
+	// A negotiated-but-incomplete guard can never satisfy ready capability.
+	producer := loadProducerFixture(t)
+	var boundStart, boundStatus managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(receipts.BoundStart, &boundStart); err != nil {
+		t.Fatal(err)
+	}
+	if err := decodeManagedSupervisorReceipt(receipts.BoundStatus, &boundStatus); err != nil {
+		t.Fatal(err)
+	}
+	boundStart.NativeGuard = negotiated.NativeGuard
+	if _, err := managedManagerCapability(producer.ServiceManifest, "source_actual_fixture", boundStart, boundStatus); err == nil ||
+		!strings.Contains(err.Error(), "invalid native guard") {
+		t.Fatalf("incomplete negotiated guard capability = %v", err)
+	}
+	// Every other unknown receipt field stays rejected by the closed decoder.
+	renamed := bytes.Replace(receipts.NegotiatedStatus, []byte(`"nativeGuard"`), []byte(`"nativeGuardX"`), 1)
+	var rejected managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(renamed, &rejected); err == nil ||
+		!strings.Contains(err.Error(), `unknown field "nativeGuardX"`) {
+		t.Fatalf("unknown negotiated receipt field was not rejected: %v", err)
 	}
 }
 

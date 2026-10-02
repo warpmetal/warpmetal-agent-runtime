@@ -1144,6 +1144,7 @@ var managedSupervisorReceiptFields = func() map[string]bool {
 		"instructionRevision", "instructionDigest", "instructionApplied", "receiptDigest",
 		"managerPluginDigest", "managerPluginLoaded", "managerProfile", "managerProviderId", "managerModelId",
 		"managerNativeProtocol", "managerProviderRouteDigest", "managerRecommendAvailable", "managerCapabilityReason", "managerRecipeIds",
+		"nativeGuard",
 		"mappingId", "operationId", "registeredSourceId", "serviceGeneration", "serviceRegistrationId",
 		"targetWorkId", "targetWorkspace", "workspaceEpoch",
 	}
