@@ -35,55 +35,56 @@ var managedWorkerSettledPhases = map[string]bool{
 }
 
 type managedSupervisorReceipt struct {
-	SchemaVersion              int                            `json:"schemaVersion"`
-	Command                    string                         `json:"command"`
-	Status                     string                         `json:"status"`
-	Phase                      string                         `json:"phase"`
-	Reason                     string                         `json:"reason"`
-	Instance                   string                         `json:"instance"`
-	SandboxID                  string                         `json:"sandboxId"`
-	ProfileID                  string                         `json:"profileId"`
-	ProfileDigest              string                         `json:"profileDigest"`
-	ProfileRevision            int64                          `json:"profileRevision"`
-	Version                    string                         `json:"version"`
-	Hostname                   string                         `json:"hostname"`
-	Port                       int                            `json:"port"`
-	PID                        int                            `json:"pid"`
-	Ready                      bool                           `json:"ready"`
-	StartCount                 int                            `json:"startCount"`
-	SessionID                  string                         `json:"sessionId"`
-	SessionCreated             bool                           `json:"sessionCreated"`
-	SessionReused              bool                           `json:"sessionReused"`
-	SessionCreatedCount        int                            `json:"sessionCreatedCount"`
-	ConversationCount          int                            `json:"conversationCount"`
-	SessionMode                string                         `json:"sessionMode"`
-	NativeProjectID            string                         `json:"nativeProjectId"`
-	NativeLocationDigest       string                         `json:"nativeLocationDigest"`
-	InstructionRevision        int64                          `json:"instructionRevision"`
-	InstructionDigest          string                         `json:"instructionDigest"`
-	InstructionApplied         bool                           `json:"instructionApplied"`
-	ManagerPluginDigest        string                         `json:"managerPluginDigest"`
-	ManagerPluginLoaded        bool                           `json:"managerPluginLoaded"`
-	ManagerProfile             model.InsightsManagerProfileV1 `json:"managerProfile"`
-	ManagerProviderID          string                         `json:"managerProviderId"`
-	ManagerModelID             string                         `json:"managerModelId"`
-	ManagerNativeProtocol      string                         `json:"managerNativeProtocol"`
-	ManagerProviderRouteDigest string                         `json:"managerProviderRouteDigest"`
-	ManagerRecommendAvailable  bool                           `json:"managerRecommendAvailable"`
-	ManagerCapabilityReason    *string                        `json:"managerCapabilityReason"`
-	ManagerRecipeIDs           []string                       `json:"managerRecipeIds"`
-	Applied                    bool                           `json:"applied"`
-	Restarted                  bool                           `json:"restarted"`
-	BindingRevision            int64                          `json:"bindingRevision"`
-	Binding                    json.RawMessage                `json:"binding"`
-	Stored                     bool                           `json:"stored"`
-	EnrollmentID               string                         `json:"enrollmentId"`
-	Drained                    bool                           `json:"drained"`
-	ReceiptDigest              string                         `json:"receiptDigest"`
-	LeaseTokenPresent          bool                           `json:"leaseTokenPresent"`
-	LeaseRole                  string                         `json:"leaseRole"`
-	LeaseExpired               bool                           `json:"leaseExpired"`
-	Generation                 int64                          `json:"generation"`
+	SchemaVersion              int                             `json:"schemaVersion"`
+	Command                    string                          `json:"command"`
+	Status                     string                          `json:"status"`
+	Phase                      string                          `json:"phase"`
+	Reason                     string                          `json:"reason"`
+	Instance                   string                          `json:"instance"`
+	SandboxID                  string                          `json:"sandboxId"`
+	ProfileID                  string                          `json:"profileId"`
+	ProfileDigest              string                          `json:"profileDigest"`
+	ProfileRevision            int64                           `json:"profileRevision"`
+	Version                    string                          `json:"version"`
+	Hostname                   string                          `json:"hostname"`
+	Port                       int                             `json:"port"`
+	PID                        int                             `json:"pid"`
+	Ready                      bool                            `json:"ready"`
+	StartCount                 int                             `json:"startCount"`
+	SessionID                  string                          `json:"sessionId"`
+	SessionCreated             bool                            `json:"sessionCreated"`
+	SessionReused              bool                            `json:"sessionReused"`
+	SessionCreatedCount        int                             `json:"sessionCreatedCount"`
+	ConversationCount          int                             `json:"conversationCount"`
+	SessionMode                string                          `json:"sessionMode"`
+	NativeProjectID            string                          `json:"nativeProjectId"`
+	NativeLocationDigest       string                          `json:"nativeLocationDigest"`
+	InstructionRevision        int64                           `json:"instructionRevision"`
+	InstructionDigest          string                          `json:"instructionDigest"`
+	InstructionApplied         bool                            `json:"instructionApplied"`
+	ManagerPluginDigest        string                          `json:"managerPluginDigest"`
+	ManagerPluginLoaded        bool                            `json:"managerPluginLoaded"`
+	ManagerProfile             model.InsightsManagerProfileV1  `json:"managerProfile"`
+	ManagerProviderID          string                          `json:"managerProviderId"`
+	ManagerModelID             string                          `json:"managerModelId"`
+	ManagerNativeProtocol      string                          `json:"managerNativeProtocol"`
+	ManagerProviderRouteDigest string                          `json:"managerProviderRouteDigest"`
+	ManagerRecommendAvailable  bool                            `json:"managerRecommendAvailable"`
+	ManagerCapabilityReason    *string                         `json:"managerCapabilityReason"`
+	ManagerRecipeIDs           []string                        `json:"managerRecipeIds"`
+	NativeGuard                *model.NativeGuardObservationV1 `json:"nativeGuard,omitempty"`
+	Applied                    bool                            `json:"applied"`
+	Restarted                  bool                            `json:"restarted"`
+	BindingRevision            int64                           `json:"bindingRevision"`
+	Binding                    json.RawMessage                 `json:"binding"`
+	Stored                     bool                            `json:"stored"`
+	EnrollmentID               string                          `json:"enrollmentId"`
+	Drained                    bool                            `json:"drained"`
+	ReceiptDigest              string                          `json:"receiptDigest"`
+	LeaseTokenPresent          bool                            `json:"leaseTokenPresent"`
+	LeaseRole                  string                          `json:"leaseRole"`
+	LeaseExpired               bool                            `json:"leaseExpired"`
+	Generation                 int64                           `json:"generation"`
 }
 
 type managedWorkerReceipt struct {
@@ -317,6 +318,9 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 		"instructionText": instruction.Content, "instructionDigest": instruction.InstructionDigest,
 		"instructionRevision": instruction.InstructionRevision,
 	}
+	if version := desired.RuntimeContractVersion; version != "" {
+		startRequest["runtimeContractVersion"] = version
+	}
 	startPayload, _ := json.Marshal(startRequest)
 	startReceiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, desired.Identity.SandboxID, containers.ManagedSupervisorStart, startPayload)
 	if err != nil {
@@ -447,6 +451,9 @@ func (r *Reconciler) rebindManagedServiceAuthority(ctx context.Context, desired 
 		"provider": authority.ProviderID, "model": modelID, "authMode": authMode,
 		"bindingRevision": authority.TeamRevision, "restart": false,
 	}
+	if version := desired.RuntimeContractVersion; version != "" {
+		request["runtimeContractVersion"] = version
+	}
 	payload, _ := json.Marshal(request)
 	receiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, desired.Identity.SandboxID, containers.ManagedSupervisorRebind, payload)
 	if err != nil {
@@ -519,6 +526,9 @@ func (r *Reconciler) registerManagedSource(ctx context.Context, desired model.Ma
 				"nativeProjectId": native.NativeProjectID, "nativeLocationDigest": native.NativeLocationDigest,
 			},
 		},
+	}
+	if version := desired.RuntimeContractVersion; version != "" {
+		request["runtimeContractVersion"] = version
 	}
 	payload, err := json.Marshal(request)
 	if err != nil {
@@ -670,6 +680,9 @@ func (r *Reconciler) runManagedWorkerBoundary(ctx context.Context, desired model
 		request := map[string]any{
 			"schemaVersion": 1, "command": string(action), "instance": desired.Identity.Instance,
 			"root": "/home/agent", "allowInsecureLoopback": false, "requestTimeoutSeconds": 30,
+		}
+		if version := desired.RuntimeContractVersion; version != "" {
+			request["runtimeContractVersion"] = version
 		}
 		payload, _ := json.Marshal(request)
 		receiptJSON, _, err := r.ManagedRuntime.ExecManagedWorker(ctx, desired.Identity.SandboxID, action, payload)
@@ -1157,6 +1170,13 @@ func managedManagerCapability(desired model.ManagedServiceV1, sourceID string, s
 		(start.ManagerProviderID == "" || start.ManagerModelID == "" || start.ManagerNativeProtocol == "") {
 		return state.LocalManagerCapability{}, errors.New("managed supervisor reported invalid manager route capability")
 	}
+	if start.NativeGuard != nil {
+		guard := start.NativeGuard
+		if guard.GuardVersion != "warpmetal.atomic-input.v1" || guard.CustomVersion == "" || guard.SourceRevision == "" ||
+			guard.PatchDigest == "" || guard.ArtifactSHA256 == "" || guard.BinarySHA256 == "" {
+			return state.LocalManagerCapability{}, errors.New("managed supervisor reported invalid native guard")
+		}
+	}
 	if authority, modelID, _, ok := completeManagedServiceAuthority(desired); ok &&
 		(start.ManagerProviderID != authority.ProviderID || start.ManagerModelID != normalizedManagedModelID(authority.ProviderID, modelID)) {
 		return state.LocalManagerCapability{}, errors.New("managed supervisor manager route changed the requested authority")
@@ -1169,9 +1189,10 @@ func managedManagerCapability(desired model.ManagedServiceV1, sourceID string, s
 		Available                                        bool
 		Reason                                           *string
 		Recipes                                          string
+		Guard                                            *model.NativeGuardObservationV1
 	}{start.ManagerPluginDigest, start.ManagerPluginLoaded, start.ManagerProfile, start.ManagerProviderID, start.ManagerModelID,
 		start.ManagerNativeProtocol, start.ManagerProviderRouteDigest, start.ManagerRecommendAvailable, start.ManagerCapabilityReason,
-		strings.Join(start.ManagerRecipeIDs, "\x00")}
+		strings.Join(start.ManagerRecipeIDs, "\x00"), start.NativeGuard}
 	statusCapability := struct {
 		PluginDigest                                     string
 		PluginLoaded                                     bool
@@ -1180,9 +1201,10 @@ func managedManagerCapability(desired model.ManagedServiceV1, sourceID string, s
 		Available                                        bool
 		Reason                                           *string
 		Recipes                                          string
+		Guard                                            *model.NativeGuardObservationV1
 	}{status.ManagerPluginDigest, status.ManagerPluginLoaded, status.ManagerProfile, status.ManagerProviderID, status.ManagerModelID,
 		status.ManagerNativeProtocol, status.ManagerProviderRouteDigest, status.ManagerRecommendAvailable, status.ManagerCapabilityReason,
-		strings.Join(status.ManagerRecipeIDs, "\x00")}
+		strings.Join(status.ManagerRecipeIDs, "\x00"), status.NativeGuard}
 	if !reflect.DeepEqual(startCapability, statusCapability) {
 		return state.LocalManagerCapability{}, errors.New("managed supervisor manager capability changed between ready probes")
 	}
@@ -1209,7 +1231,7 @@ func managedManagerCapability(desired model.ManagedServiceV1, sourceID string, s
 		NativeVersion: start.Version, NativeSourceRevision: "08462140ec0de1e4b17d4a353d8d5827f53cf7b0", Protocol: "opencode-supervisor/1",
 		NativeProtocol: start.ManagerNativeProtocol, ProviderID: start.ManagerProviderID, ModelID: start.ManagerModelID,
 		ProviderRouteDigest: start.ManagerProviderRouteDigest, RecipeIDs: append([]string(nil), start.ManagerRecipeIDs...),
-		ManagerPluginDigest: start.ManagerPluginDigest, ManagerProfile: start.ManagerProfile,
+		ManagerPluginDigest: start.ManagerPluginDigest, ManagerProfile: start.ManagerProfile, NativeGuard: start.NativeGuard,
 		MaxInputTokens: 8000, MaxOutputTokens: 1000, FinalRequestMaxBytes: 7000,
 		ToolsAllowed: false, MediaAllowed: false, HardOutputTokenLimit: true,
 		Available: start.ManagerRecommendAvailable, Reason: reason,

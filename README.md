@@ -404,5 +404,5 @@ a canonical `ready` report.
 Protocol compatibility: the managed control protocol is planned to be required by
 the backend at admission from Runtime 0.1.31 or newer. The paired backend compatibility gate must deliver only the legacy seven-field
 manifest shape to nodes on the older strict 0.1.30 decoder; that gate is still
-pending. A signed 0.1.31 candidate remains qualification-pending; this
+pending. A signed 0.1.32 candidate remains qualification-pending; this
 section does not claim a released, deployed or live-verified state.

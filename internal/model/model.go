@@ -373,18 +373,20 @@ type ManagedServiceAuthorityV1 struct {
 }
 
 type ManagedServiceV1 struct {
-	FormatVersion   int                          `json:"formatVersion"`
-	OperationID     string                       `json:"operationId"`
-	ActionRevision  int64                        `json:"actionRevision"`
-	DesiredRevision int64                        `json:"desiredRevision"`
-	ConfigDigest    string                       `json:"configDigest"`
-	DesiredState    string                       `json:"desiredState"`
-	SessionMode     string                       `json:"sessionMode"`
-	Authority       *ManagedServiceAuthorityV1   `json:"authority,omitempty"`
-	Identity        ManagedServiceIdentityV1     `json:"identity"`
-	Profile         ManagedServiceProfileV1      `json:"profile"`
-	Instructions    ManagedServiceInstructionsV1 `json:"instructions"`
-	Workspace       ManagedServiceWorkspaceV1    `json:"workspace"`
+	FormatVersion          int                          `json:"formatVersion"`
+	OperationID            string                       `json:"operationId"`
+	ActionRevision         int64                        `json:"actionRevision"`
+	DesiredRevision        int64                        `json:"desiredRevision"`
+	ConfigDigest           string                       `json:"configDigest"`
+	DesiredState           string                       `json:"desiredState"`
+	SessionMode            string                       `json:"sessionMode"`
+	Authority              *ManagedServiceAuthorityV1   `json:"authority,omitempty"`
+	Identity               ManagedServiceIdentityV1     `json:"identity"`
+	Profile                ManagedServiceProfileV1      `json:"profile"`
+	Instructions           ManagedServiceInstructionsV1 `json:"instructions"`
+	Workspace              ManagedServiceWorkspaceV1    `json:"workspace"`
+	RuntimeContractVersion string                       `json:"runtimeContractVersion,omitempty"`
+	Image                  *ManagedServiceImageV1       `json:"image,omitempty"`
 }
 
 type ManagedNativeRegistrationV1 struct {
@@ -574,20 +576,21 @@ type InsightsManagerEffectiveLimitsV1 struct {
 }
 
 type InsightsManagerPolicyManifestV1 struct {
-	FormatVersion         int                              `json:"formatVersion"`
-	SandboxID             string                           `json:"sandboxId"`
-	SandboxGeneration     int64                            `json:"sandboxGeneration"`
-	PolicyRevision        int64                            `json:"policyRevision"`
-	Mode                  string                           `json:"mode"`
-	AllowedRules          []string                         `json:"allowedRules"`
-	DailyRunLimit         int                              `json:"dailyRunLimit"`
-	DailyInputTokenLimit  int64                            `json:"dailyInputTokenLimit"`
-	DailyOutputTokenLimit int64                            `json:"dailyOutputTokenLimit"`
-	EffectiveLimits       InsightsManagerEffectiveLimitsV1 `json:"effectiveLimits"`
-	ManagerProfile        InsightsManagerProfileV1         `json:"managerProfile"`
-	ValidUntil            time.Time                        `json:"validUntil"`
-	RunGeneration         int64                            `json:"runGeneration"`
-	AutoSteerAvailable    bool                             `json:"autoSteerAvailable"`
+	FormatVersion         int                               `json:"formatVersion"`
+	SandboxID             string                            `json:"sandboxId"`
+	SandboxGeneration     int64                             `json:"sandboxGeneration"`
+	PolicyRevision        int64                             `json:"policyRevision"`
+	Mode                  string                            `json:"mode"`
+	AllowedRules          []string                          `json:"allowedRules"`
+	DailyRunLimit         int                               `json:"dailyRunLimit"`
+	DailyInputTokenLimit  int64                             `json:"dailyInputTokenLimit"`
+	DailyOutputTokenLimit int64                             `json:"dailyOutputTokenLimit"`
+	EffectiveLimits       InsightsManagerEffectiveLimitsV1  `json:"effectiveLimits"`
+	ManagerProfile        InsightsManagerProfileV1          `json:"managerProfile"`
+	ValidUntil            time.Time                         `json:"validUntil"`
+	RunGeneration         int64                             `json:"runGeneration"`
+	AutoSteerAvailable    bool                              `json:"autoSteerAvailable"`
+	AutoSteerPolicy       *InsightsManagerAutoSteerPolicyV1 `json:"autoSteerPolicy,omitempty"`
 }
 
 // InsightsManagerFindingEvidenceV1 is the bounded Sandbox finding-evidence
@@ -688,19 +691,21 @@ type InsightsManagerCapabilityV1 struct {
 }
 
 type InsightsManagerRecommendCapabilityV1 struct {
-	Source              InsightsManagerSourceV1  `json:"source"`
-	ProviderRouteDigest string                   `json:"providerRouteDigest"`
-	ProviderID          string                   `json:"providerId"`
-	ModelID             string                   `json:"modelId"`
-	Protocol            string                   `json:"protocol"`
-	RecipeIDs           []string                 `json:"recipeIds"`
-	MaxInputTokens      int64                    `json:"maxInputTokens"`
-	MaxOutputTokens     int64                    `json:"maxOutputTokens"`
-	ToolsAllowed        bool                     `json:"toolsAllowed"`
-	MediaAllowed        bool                     `json:"mediaAllowed"`
-	ManagerProfile      InsightsManagerProfileV1 `json:"managerProfile"`
-	Available           bool                     `json:"available"`
-	Reason              *string                  `json:"reason"`
+	Source              InsightsManagerSourceV1   `json:"source"`
+	ProviderRouteDigest string                    `json:"providerRouteDigest"`
+	ProviderID          string                    `json:"providerId"`
+	ModelID             string                    `json:"modelId"`
+	Protocol            string                    `json:"protocol"`
+	RecipeIDs           []string                  `json:"recipeIds"`
+	MaxInputTokens      int64                     `json:"maxInputTokens"`
+	MaxOutputTokens     int64                     `json:"maxOutputTokens"`
+	ToolsAllowed        bool                      `json:"toolsAllowed"`
+	MediaAllowed        bool                      `json:"mediaAllowed"`
+	ManagerProfile      InsightsManagerProfileV1  `json:"managerProfile"`
+	Available           bool                      `json:"available"`
+	Reason              *string                   `json:"reason"`
+	NativeGuard         *NativeGuardObservationV1 `json:"nativeGuard,omitempty"`
+	ManagerPluginDigest string                    `json:"managerPluginDigest,omitempty"`
 }
 
 type InsightsManagerPolicyReportV1 struct {
@@ -1372,6 +1377,7 @@ type Report struct {
 	InsightsManagerPolicies        []InsightsManagerPolicyReportV1      `json:"insightsManagerPolicies"`
 	InsightsManagerReviews         []InsightsManagerRunReportV1         `json:"insightsManagerReviews"`
 	InsightsTakeovers              []InsightsTakeoverReportV1           `json:"insightsTakeovers"`
+	InsightsManagerGuidance        []InsightsManagerGuidanceV1          `json:"insightsManagerGuidance,omitempty"`
 }
 
 type HostKey struct {
@@ -1427,7 +1433,7 @@ func validInsightsManagerRecipe(value string) bool {
 
 func ValidateInsightsManagerPolicyManifest(value InsightsManagerPolicyManifestV1) error {
 	if value.FormatVersion != 1 || !continuityIDPattern.MatchString(value.SandboxID) || value.SandboxGeneration < 1 ||
-		value.PolicyRevision < 1 || (value.Mode != "off" && value.Mode != "recommend") || len(value.AllowedRules) > 8 ||
+		value.PolicyRevision < 1 || !validInsightsManagerPolicyMode(value) || len(value.AllowedRules) > 8 ||
 		value.DailyRunLimit < 1 || value.DailyRunLimit > 30 || value.DailyInputTokenLimit < 1 || value.DailyInputTokenLimit > 480000 ||
 		value.DailyOutputTokenLimit < 1 || value.DailyOutputTokenLimit > 60000 || !validInsightsManagerLimits(value.EffectiveLimits) ||
 		!validInsightsManagerProfile(value.ManagerProfile) || value.ValidUntil.IsZero() || value.RunGeneration < 1 || value.AutoSteerAvailable {
@@ -2226,4 +2232,79 @@ func validateSetupArtifactSource(value string) error {
 		return errors.New("artifact source contains an unsupported character")
 	}
 	return nil
+}
+
+type InsightsManagerAutoSteerTupleV1 struct {
+	NativeGuardVersion   string `json:"nativeGuardVersion"`
+	CustomNativeVersion  string `json:"customNativeVersion"`
+	NativeSourceRevision string `json:"nativeSourceRevision"`
+	PatchDigest          string `json:"patchDigest"`
+	ArtifactSHA256       string `json:"artifactSha256"`
+	BinarySHA256         string `json:"binarySha256"`
+	ImageDigest          string `json:"imageDigest"`
+	ManagerProfileDigest string `json:"managerProfileDigest"`
+	ManagerPluginDigest  string `json:"managerPluginDigest"`
+}
+
+func (value InsightsManagerAutoSteerTupleV1) Valid() bool {
+	digests := []string{value.PatchDigest, value.ArtifactSHA256, value.BinarySHA256, value.ImageDigest, value.ManagerProfileDigest, value.ManagerPluginDigest}
+	for _, digest := range digests {
+		if !setupDigestPattern.MatchString(digest) {
+			return false
+		}
+	}
+	return value.NativeGuardVersion == "warpmetal.atomic-input.v1" &&
+		value.CustomNativeVersion != "" && len(value.CustomNativeVersion) <= 64 &&
+		continuityIDPattern.MatchString(value.NativeSourceRevision)
+}
+
+type InsightsManagerAutoSteerPolicyV1 struct {
+	FormatVersion  int                              `json:"formatVersion"`
+	Available      bool                             `json:"available"`
+	Reason         *string                          `json:"reason"`
+	QualifiedTuple *InsightsManagerAutoSteerTupleV1 `json:"qualifiedTuple"`
+}
+
+func validInsightsManagerPolicyMode(value InsightsManagerPolicyManifestV1) bool {
+	switch value.Mode {
+	case "off", "recommend":
+		return true
+	case "auto_steer":
+		return value.AutoSteerPolicy != nil && value.AutoSteerPolicy.FormatVersion == 1 &&
+			value.AutoSteerPolicy.Available && value.AutoSteerPolicy.QualifiedTuple != nil && value.AutoSteerPolicy.QualifiedTuple.Valid()
+	}
+	return false
+}
+
+type NativeGuardObservationV1 struct {
+	GuardVersion   string `json:"guardVersion"`
+	CustomVersion  string `json:"customVersion"`
+	SourceRevision string `json:"sourceRevision"`
+	PatchDigest    string `json:"patchDigest"`
+	ArtifactSHA256 string `json:"artifactSha256"`
+	BinarySHA256   string `json:"binarySha256"`
+}
+
+type InsightsManagerGuidanceV1 struct {
+	FormatVersion  int        `json:"formatVersion"`
+	SandboxID      string     `json:"sandboxId"`
+	ReservationID  string     `json:"reservationId"`
+	RunID          string     `json:"runId"`
+	Revision       int64      `json:"revision"`
+	BindingDigest  string     `json:"bindingDigest"`
+	GuidanceDigest string     `json:"guidanceDigest"`
+	GuardID        string     `json:"guardId"`
+	PendingInputID string     `json:"pendingInputId"`
+	State          string     `json:"state"`
+	RefusalCode    *string    `json:"refusalCode"`
+	LogCursor      *int64     `json:"logCursor"`
+	ObservedAt     time.Time  `json:"observedAt"`
+	AdmittedAt     *time.Time `json:"admittedAt"`
+	AvailableAt    *time.Time `json:"availableAt"`
+	SettledAt      *time.Time `json:"settledAt"`
+	ReceiptDigest  string     `json:"receiptDigest"`
+}
+
+type ManagedServiceImageV1 struct {
+	Digest string `json:"digest"`
 }

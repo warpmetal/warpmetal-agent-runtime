@@ -121,7 +121,7 @@ func (c *Coordinator) Apply(ctx context.Context, manifest model.Manifest) error 
 			return err
 		}
 	}
-	return nil
+	return c.dispatchPendingGuidance(ctx)
 }
 
 // RenewPendingTakeovers prepares bounded exact-operation reconciliation from the freshly fetched,
@@ -248,7 +248,7 @@ func (c *Coordinator) Recover(ctx context.Context) error {
 			}
 		}
 	}
-	return nil
+	return c.recoverPendingGuidance(ctx)
 }
 
 // Reports derives the manager policy reports for the node report.
@@ -313,6 +313,12 @@ func (c *Coordinator) Reports(ctx context.Context, staleSources continuity.Stale
 				}
 			}
 		}
+		if settled {
+			holdSandbox := sourceSandbox(ctx, c.Store, value.Manifest.Source)
+			if ok, settleErr := c.guidanceSettled(ctx, holdSandbox); settleErr == nil && !ok {
+				continue
+			}
+		}
 		if !superseded {
 			holdReports = append(holdReports, *value.Report)
 		}
@@ -321,6 +327,11 @@ func (c *Coordinator) Reports(ctx context.Context, staleSources continuity.Stale
 }
 
 func (c *Coordinator) applyPolicy(ctx context.Context, policy model.InsightsManagerPolicyManifestV1) error {
+	if policy.Mode == "off" {
+		if err := c.fenceOffGuidance(ctx, policy.SandboxID); err != nil {
+			return err
+		}
+	}
 	report, err := c.policyReport(ctx, policy)
 	if err != nil {
 		return err
@@ -348,6 +359,7 @@ func (c *Coordinator) policyReport(ctx context.Context, policy model.InsightsMan
 		return model.InsightsManagerPolicyReportV1{}, err
 	}
 	var reports []model.InsightsManagerRecommendCapabilityV1
+	negotiated := false
 	for _, capability := range capabilities {
 		if capability.SandboxID != policy.SandboxID || capability.SandboxGeneration != policy.SandboxGeneration {
 			continue
@@ -369,12 +381,30 @@ func (c *Coordinator) policyReport(ctx context.Context, policy model.InsightsMan
 				reason = "runtime_unavailable"
 			}
 		}
+		var nativeGuard *model.NativeGuardObservationV1
+		pluginDigest := ""
 		var reasonPointer *string
+		if capability.NativeGuard != nil {
+			negotiated = true
+			nativeGuard = capability.NativeGuard
+			pluginDigest = capability.ManagerPluginDigest
+			hardwareAvailable := sandboxRunning && capability.Available && currentSource
+			available = hardwareAvailable
+			reason = ""
+			if !hardwareAvailable {
+				if !currentSource {
+					reason = "source_unavailable"
+				} else {
+					reason = "runtime_unavailable"
+				}
+			}
+			reasonPointer = nil
+		}
 		if reason != "" {
 			value := reason
 			reasonPointer = &value
 		}
-		reports = append(reports, model.InsightsManagerRecommendCapabilityV1{Source: model.InsightsManagerSourceV1{RegisteredSourceID: capability.RegisteredSourceID, WorkspaceEpoch: capability.WorkspaceEpoch, NativeSessionID: capability.NativeSessionID, ServiceRegistrationID: capability.ServiceRegistrationID, ServiceGeneration: capability.ServiceGeneration, SandboxGeneration: capability.SandboxGeneration, ProfileRevision: capability.ProfileRevision, InstructionRevision: capability.InstructionRevision}, ProviderRouteDigest: capability.ProviderRouteDigest, ProviderID: capability.ProviderID, ModelID: capability.ModelID, Protocol: capability.Protocol, RecipeIDs: append([]string(nil), capability.RecipeIDs...), MaxInputTokens: capability.MaxInputTokens, MaxOutputTokens: capability.MaxOutputTokens, ToolsAllowed: capability.ToolsAllowed, MediaAllowed: capability.MediaAllowed, ManagerProfile: capability.ManagerProfile, Available: available, Reason: reasonPointer})
+		reports = append(reports, model.InsightsManagerRecommendCapabilityV1{Source: model.InsightsManagerSourceV1{RegisteredSourceID: capability.RegisteredSourceID, WorkspaceEpoch: capability.WorkspaceEpoch, NativeSessionID: capability.NativeSessionID, ServiceRegistrationID: capability.ServiceRegistrationID, ServiceGeneration: capability.ServiceGeneration, SandboxGeneration: capability.SandboxGeneration, ProfileRevision: capability.ProfileRevision, InstructionRevision: capability.InstructionRevision}, ProviderRouteDigest: capability.ProviderRouteDigest, ProviderID: capability.ProviderID, ModelID: capability.ModelID, Protocol: capability.Protocol, RecipeIDs: append([]string(nil), capability.RecipeIDs...), MaxInputTokens: capability.MaxInputTokens, MaxOutputTokens: capability.MaxOutputTokens, ToolsAllowed: capability.ToolsAllowed, MediaAllowed: capability.MediaAllowed, ManagerProfile: capability.ManagerProfile, Available: available, Reason: reasonPointer, NativeGuard: nativeGuard, ManagerPluginDigest: pluginDigest})
 	}
 	sort.Slice(reports, func(i, j int) bool {
 		return reports[i].Source.RegisteredSourceID < reports[j].Source.RegisteredSourceID
@@ -382,7 +412,17 @@ func (c *Coordinator) policyReport(ctx context.Context, policy model.InsightsMan
 	if len(reports) > 8 {
 		reports = reports[:8]
 	}
-	report := model.InsightsManagerPolicyReportV1{FormatVersion: 1, SandboxID: policy.SandboxID, SandboxGeneration: policy.SandboxGeneration, PolicyRevision: policy.PolicyRevision, RunGeneration: policy.RunGeneration, Status: "applied", Recommend: c.policyRollup(policy, reports), RecommendCapabilities: reports}
+	status := "applied"
+	if policy.Mode == "off" && negotiated {
+		settled, settleErr := c.guidanceSettled(ctx, policy.SandboxID)
+		if settleErr != nil {
+			return model.InsightsManagerPolicyReportV1{}, settleErr
+		}
+		if !settled {
+			status = "awaiting_guidance"
+		}
+	}
+	report := model.InsightsManagerPolicyReportV1{FormatVersion: 1, SandboxID: policy.SandboxID, SandboxGeneration: policy.SandboxGeneration, PolicyRevision: policy.PolicyRevision, RunGeneration: policy.RunGeneration, Status: status, Recommend: c.policyRollup(policy, reports), RecommendCapabilities: reports}
 	report.ReceiptDigest = digestJSON(report)
 	return report, nil
 }
@@ -396,6 +436,9 @@ func (c *Coordinator) policyRollup(policy model.InsightsManagerPolicyManifestV1,
 	available := false
 	for _, value := range reports {
 		available = available || value.Available
+	}
+	if policy.Mode != "recommend" {
+		available = false
 	}
 	reason := "runtime_unavailable"
 	if policy.Mode == "off" {
@@ -471,7 +514,7 @@ func (c *Coordinator) applyReview(ctx context.Context, review model.InsightsMana
 	if err != nil {
 		return err
 	}
-	run := state.LocalManagerRun{Manifest: review, Phase: "start_ack_pending", Capability: *capability, DispatchStarted: false, StartedAt: c.now()}
+	run := state.LocalManagerRun{Manifest: review, Phase: "start_ack_pending", Capability: *capability, DispatchStarted: false, StartedAt: c.now(), AutomaticOrigin: !review.Manual, OriginRunGeneration: managerRunGeneration(ctx, c.Store, review.Source), OriginValidUntil: review.ValidUntil}
 	if err := c.Store.PutManagerRun(ctx, run); err != nil {
 		return err
 	}
@@ -586,12 +629,14 @@ func (c *Coordinator) reviewAuthority(ctx context.Context, review model.Insights
 	if err != nil {
 		return nil, nil, err
 	}
+	var freshPolicy *state.LocalManagerPolicy
 	if requireFresh {
 		policy, err := c.Store.ManagerPolicy(ctx, source.Report.SandboxID)
-		if err != nil || policy == nil || policy.Manifest.Mode != "recommend" || policy.Manifest.PolicyRevision != review.PolicyRevision ||
+		if err != nil || policy == nil || !reviewPolicyModeValid(policy.Manifest) || policy.Manifest.PolicyRevision != review.PolicyRevision ||
 			!c.now().Before(policy.Manifest.ValidUntil) || policy.Manifest.ManagerProfile != review.ManagerProfile {
 			return nil, nil, errors.Join(err, errors.New("manager review policy authority changed"))
 		}
+		freshPolicy = policy
 	}
 	if err := c.localServiceAuthority(ctx, review.Source, review.Target); err != nil {
 		return nil, nil, err
@@ -599,6 +644,12 @@ func (c *Coordinator) reviewAuthority(ctx context.Context, review model.Insights
 	capability, err := c.Store.ManagerCapability(ctx, review.Source.RegisteredSourceID)
 	if err != nil || capability == nil || !capability.Available || capability.ProviderRouteDigest != review.ProviderRouteDigest || capability.ManagerProfile != review.ManagerProfile || capability.ServiceGeneration != review.Source.ServiceGeneration || capability.WorkspaceEpoch != review.Source.WorkspaceEpoch || capability.NativeSessionID != review.Source.NativeSessionID || capability.ProfileRevision != review.Source.ProfileRevision || capability.InstructionRevision != review.Source.InstructionRevision {
 		return nil, nil, errors.Join(err, errors.New("manager capability authority changed"))
+	}
+	if freshPolicy != nil && freshPolicy.Manifest.Mode == "auto_steer" {
+		sandbox, sandboxErr := c.Store.Sandbox(ctx, capability.SandboxID)
+		if sandboxErr != nil || !autoSteerQualified(freshPolicy.Manifest, capability, sandbox) {
+			return nil, nil, errors.Join(sandboxErr, errors.New("manager auto-steer qualification changed"))
+		}
 	}
 	if !contains(capability.RecipeIDs, review.RecipeID) {
 		return nil, nil, errors.New("manager recipe unavailable")
@@ -678,9 +729,20 @@ func (c *Coordinator) dispatchReview(ctx context.Context, run *state.LocalManage
 	if err != nil {
 		return err
 	}
-	request := map[string]any{"formatVersion": 1, "action": action, "instance": instance, "authority": run.Manifest, "finding": evidence, "capability": managerCapabilityWire(run.Capability)}
+	authority := any(run.Manifest)
+	if run.Capability.NativeGuard != nil {
+		descriptorPayload, _ := json.Marshal(run.Manifest)
+		var descriptor map[string]any
+		_ = json.Unmarshal(descriptorPayload, &descriptor)
+		descriptor["runGeneration"] = run.OriginRunGeneration
+		authority = descriptor
+	}
+	request := map[string]any{"formatVersion": 1, "action": action, "instance": instance, "authority": authority, "finding": evidence, "capability": managerCapabilityWire(run.Capability)}
 	if action != "start_review" {
 		request = map[string]any{"formatVersion": 1, "action": action, "instance": instance, "reservationId": run.Manifest.ReservationID, "runId": run.Manifest.RunID, "policyRevision": run.Manifest.PolicyRevision, "runGeneration": managerRunGeneration(ctx, c.Store, run.Manifest.Source), "source": run.Manifest.Source}
+	}
+	if run.Capability.NativeGuard != nil {
+		request["runtimeContractVersion"] = guidanceContractVersion
 	}
 	payload, _ := json.Marshal(request)
 	output, _, err := c.Helper.ExecManager(ctx, sandboxID, payload)
@@ -890,7 +952,7 @@ func (c *Coordinator) ObserveAcknowledgedInsightBatch(ctx context.Context, batch
 		return nil
 	}
 	policy := policyState.Manifest
-	if policy.Mode != "recommend" || !c.now().Before(policy.ValidUntil) || policy.ValidUntil.Sub(c.now()) > 120*time.Second {
+	if !reviewPolicyModeValid(policy) || !c.now().Before(policy.ValidUntil) || policy.ValidUntil.Sub(c.now()) > 120*time.Second {
 		return nil
 	}
 	for _, finding := range batch.Findings {
@@ -1069,9 +1131,9 @@ func (c *Coordinator) completeAutomaticReservation(ctx context.Context, intent *
 		intent.Phase = "applied"
 		return c.Store.PutManagerReservation(ctx, *intent)
 	}
-	if policy.Manifest.Mode != "recommend" || !c.now().Before(policy.Manifest.ValidUntil) {
+	if !reviewPolicyModeValid(policy.Manifest) || !c.now().Before(policy.Manifest.ValidUntil) {
 		code := "policy_off"
-		if policy.Manifest.Mode == "recommend" {
+		if policy.Manifest.Mode != "off" && !c.now().Before(policy.Manifest.ValidUntil) {
 			code = "policy_expired"
 		}
 		return c.settleReservedWithoutExecution(ctx, intent, review, code)
@@ -1080,7 +1142,7 @@ func (c *Coordinator) completeAutomaticReservation(ctx context.Context, intent *
 	if err != nil {
 		return c.settleReservedWithoutExecution(ctx, intent, review, "source_stale")
 	}
-	run := state.LocalManagerRun{Manifest: review, ReservationRequest: &request, Reservation: &reservation, Phase: "start_ack_pending", Capability: *capability, DispatchStarted: false, StartedAt: c.now()}
+	run := state.LocalManagerRun{Manifest: review, ReservationRequest: &request, Reservation: &reservation, Phase: "start_ack_pending", Capability: *capability, DispatchStarted: false, StartedAt: c.now(), AutomaticOrigin: !review.Manual, OriginRunGeneration: policy.Manifest.RunGeneration, OriginValidUntil: review.ValidUntil}
 	if err := c.Store.PutManagerRun(ctx, run); err != nil {
 		return err
 	}

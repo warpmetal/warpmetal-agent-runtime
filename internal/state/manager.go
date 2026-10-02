@@ -14,33 +14,34 @@ import (
 var ErrManagerConflict = errors.New("manager immutable identity conflict")
 
 type LocalManagerCapability struct {
-	RegisteredSourceID    string                         `json:"registeredSourceId"`
-	ServiceRegistrationID string                         `json:"serviceRegistrationId"`
-	ServiceGeneration     int64                          `json:"serviceGeneration"`
-	WorkspaceEpoch        string                         `json:"workspaceEpoch"`
-	NativeSessionID       string                         `json:"nativeSessionId"`
-	SandboxID             string                         `json:"sandboxId"`
-	SandboxGeneration     int64                          `json:"sandboxGeneration"`
-	ProfileRevision       int64                          `json:"profileRevision"`
-	InstructionRevision   int64                          `json:"instructionRevision"`
-	NativeVersion         string                         `json:"nativeVersion"`
-	NativeSourceRevision  string                         `json:"nativeSourceRevision"`
-	Protocol              string                         `json:"protocol"`
-	NativeProtocol        string                         `json:"nativeProtocol"`
-	ProviderID            string                         `json:"providerId"`
-	ModelID               string                         `json:"modelId"`
-	ProviderRouteDigest   string                         `json:"providerRouteDigest"`
-	RecipeIDs             []string                       `json:"recipeIds"`
-	ManagerPluginDigest   string                         `json:"managerPluginDigest"`
-	ManagerProfile        model.InsightsManagerProfileV1 `json:"managerProfile"`
-	MaxInputTokens        int64                          `json:"maxInputTokens"`
-	MaxOutputTokens       int64                          `json:"maxOutputTokens"`
-	FinalRequestMaxBytes  int64                          `json:"finalRequestMaxBytes"`
-	ToolsAllowed          bool                           `json:"toolsAllowed"`
-	MediaAllowed          bool                           `json:"mediaAllowed"`
-	HardOutputTokenLimit  bool                           `json:"hardOutputTokenLimit"`
-	Available             bool                           `json:"available"`
-	Reason                string                         `json:"reason"`
+	RegisteredSourceID    string                          `json:"registeredSourceId"`
+	ServiceRegistrationID string                          `json:"serviceRegistrationId"`
+	ServiceGeneration     int64                           `json:"serviceGeneration"`
+	WorkspaceEpoch        string                          `json:"workspaceEpoch"`
+	NativeSessionID       string                          `json:"nativeSessionId"`
+	SandboxID             string                          `json:"sandboxId"`
+	SandboxGeneration     int64                           `json:"sandboxGeneration"`
+	ProfileRevision       int64                           `json:"profileRevision"`
+	InstructionRevision   int64                           `json:"instructionRevision"`
+	NativeVersion         string                          `json:"nativeVersion"`
+	NativeSourceRevision  string                          `json:"nativeSourceRevision"`
+	Protocol              string                          `json:"protocol"`
+	NativeProtocol        string                          `json:"nativeProtocol"`
+	ProviderID            string                          `json:"providerId"`
+	ModelID               string                          `json:"modelId"`
+	ProviderRouteDigest   string                          `json:"providerRouteDigest"`
+	RecipeIDs             []string                        `json:"recipeIds"`
+	ManagerPluginDigest   string                          `json:"managerPluginDigest"`
+	ManagerProfile        model.InsightsManagerProfileV1  `json:"managerProfile"`
+	NativeGuard           *model.NativeGuardObservationV1 `json:"nativeGuard,omitempty"`
+	MaxInputTokens        int64                           `json:"maxInputTokens"`
+	MaxOutputTokens       int64                           `json:"maxOutputTokens"`
+	FinalRequestMaxBytes  int64                           `json:"finalRequestMaxBytes"`
+	ToolsAllowed          bool                            `json:"toolsAllowed"`
+	MediaAllowed          bool                            `json:"mediaAllowed"`
+	HardOutputTokenLimit  bool                            `json:"hardOutputTokenLimit"`
+	Available             bool                            `json:"available"`
+	Reason                string                          `json:"reason"`
 }
 
 type LocalManagerFinding struct {
@@ -67,6 +68,11 @@ type LocalManagerRun struct {
 	ManagerRegisteredSourceID string                                     `json:"managerRegisteredSourceId"`
 	ManagerSession            *model.InsightsManagerSessionV1            `json:"managerSession"`
 	StartedAt                 time.Time                                  `json:"startedAt"`
+	AutomaticOrigin           bool                                       `json:"automaticOrigin"`
+	GuidanceAttempted         bool                                       `json:"guidanceAttempted"`
+	OriginRunGeneration       int64                                      `json:"originRunGeneration"`
+	OriginValidUntil          time.Time                                  `json:"originValidUntil"`
+	Guidance                  *model.InsightsManagerGuidanceV1           `json:"guidance,omitempty"`
 }
 
 type LocalManagerReservation struct {
@@ -511,4 +517,28 @@ func (s *Store) ManagerTakeovers(ctx context.Context) ([]LocalManagerTakeover, e
 		values = append(values, value)
 	}
 	return values, rows.Err()
+}
+
+// PutManagerGuidance applies the Runtime-owned guidance revision with CAS and
+// final-disposition immutability through the existing manager run row.
+func (s *Store) PutManagerGuidance(ctx context.Context, runID string, value model.InsightsManagerGuidanceV1, expectedRevision int64) error {
+	prior, err := s.ManagerRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if prior == nil {
+		return ErrManagerConflict
+	}
+	current := int64(0)
+	if prior.Guidance != nil {
+		current = prior.Guidance.Revision
+	}
+	if expectedRevision != current {
+		return ErrManagerConflict
+	}
+	if value.Revision != current+1 {
+		return ErrManagerConflict
+	}
+	prior.Guidance = &value
+	return s.PutManagerRun(ctx, *prior)
 }
