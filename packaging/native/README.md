@@ -46,8 +46,9 @@ and never uses upstream/npm identities.
   builder/buildType/invocation/materials/metadata, with artifact and binary
   SHA256 in `invocation.parameters`; cosign 2.5.3 wraps it into the signed
   in-toto statement with the archive subject), and runs the smoke assertions
-  (exact `--version`; with `--smoke`, `smoke.py` starts the server with an
-  isolated home/XDG tree and verifies the real authenticated guard API).
+  (exact `opencode v2.0.14-wm.1` `--version` output; with `--smoke`, `smoke.py`
+  starts the server with an isolated home/XDG tree and verifies the real
+  authenticated guard API).
   The ephemeral baseline commit is never pushed and is never presented as
   official upstream source; the manifest/provenance record both the official
   revision/tree and the local baseline commit.
@@ -59,10 +60,12 @@ and never uses upstream/npm identities.
   inactive session. No credential is printed and the config is removed.
 - `.github/workflows/native-build.yml` — every job fetches the exact upstream
   revision; PRs run lock closure, build, generation checks, affected tests and
-  smoke; the exact custom tag publishes from main ancestry with the same route
-  plus smoke, checksums, keyless cosign OIDC `sign-blob` bundle and
-  `attest-blob` SLSA provenance, then `gh release create --verify-tag
-  --latest=false`.
+  smoke, then retain the assembled candidate artifact
+  (`native-linux-x64-candidate`, 7 days, upload only
+  `RUNNER_TEMP/native-package/artifacts/*`) for root inspection; the exact
+  custom tag publishes from main ancestry with the same route plus smoke,
+  checksums, keyless cosign OIDC `sign-blob` bundle and `attest-blob` SLSA
+  provenance, then `gh release create --verify-tag --latest=false`.
 
 ## Root seal and build sequence
 

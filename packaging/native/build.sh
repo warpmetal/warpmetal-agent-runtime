@@ -298,7 +298,7 @@ printf 'sha256:%s\n' "$BINARY_SHA" > "$ART/opencode.binary.sha256"
 # Smoke: exact version always; authenticated real HTTP guard assertion with --smoke.
 SMOKE_BIN="$PKG_ROOT/bin/opencode"
 SMOKE_VERSION=$("$SMOKE_BIN" --version)
-[ "$SMOKE_VERSION" = "$VERSION" ] || fail "smoke_version_mismatch: got $SMOKE_VERSION want $VERSION"
+[ "$SMOKE_VERSION" = "opencode v$VERSION" ] || fail "smoke_version_mismatch: got $SMOKE_VERSION want opencode v$VERSION"
 if [ "$SMOKE" = "1" ]; then
   [ -f "$SCRIPT_DIR/smoke.py" ] || fail "smoke_helper_missing: packaging/native/smoke.py"
   python3 "$SCRIPT_DIR/smoke.py" \
@@ -385,3 +385,5 @@ PY
 
 printf 'native-build: build ok %s\n' "$TARBALL"
 printf 'native-build: checksums %s.sha256 %s\n' "$TARBALL" "$ART/opencode.binary.sha256"
+printf 'native-build: archive sha256 %s\n' "$ARCHIVE_SHA"
+printf 'native-build: binary sha256 %s\n' "$BINARY_SHA"
