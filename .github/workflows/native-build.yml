@@ -4,10 +4,14 @@ name: Native package
 # Every job fetches the exact official upstream revision into an isolated
 # RUNNER_TEMP checkout and never builds from the Runtime repository checkout.
 # PRs run lock closure, build, generated checks, affected tests and the
-# authenticated binary smoke. The exact custom tag publishes with the same
-# route plus smoke, checksums, keyless cosign bundles and SLSA provenance.
-# This workflow never interacts with existing Runtime v* releases, npm, or
-# official upstream repositories.
+# authenticated binary smoke, then retain the assembled candidate.
+#
+# The exact custom tag publishes normally. A bounded workflow_dispatch with the
+# single closed choice release_tag=opencode-v2.0.14-wm.1 recovers that same
+# immutable tag from corrected main after a publication failure without moving
+# the tag. Signed assets are retained before publication. Existing releases are
+# refused, never overwritten; --latest is never moved and Runtime v* releases,
+# npm, or official upstream repositories are never touched.
 
 on:
   pull_request:
@@ -17,6 +21,14 @@ on:
   push:
     tags:
       - "opencode-v2.0.14-wm.1"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Immutable native package tag to publish"
+        required: true
+        type: choice
+        options:
+          - opencode-v2.0.14-wm.1
 
 permissions:
   contents: read
@@ -79,15 +91,18 @@ jobs:
           overwrite: false
 
   publish:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: write
       id-token: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -95,13 +110,23 @@ jobs:
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: "v2.5.3"
-      - name: Assert exact custom tag on main ancestry
+      - name: Assert exact immutable tag on main ancestry
         run: |
           set -eu
-          test "$GITHUB_REF_NAME" = "opencode-v2.0.14-wm.1"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse "$GITHUB_REF_NAME^{commit}")"
+          test "$RELEASE_TAG" = "opencode-v2.0.14-wm.1"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
           git fetch --no-tags origin main
           git merge-base --is-ancestor HEAD origin/main
+      - name: Refuse an existing immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          test "$RELEASE_TAG" = "opencode-v2.0.14-wm.1"
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "native-release: $RELEASE_TAG already exists; refusing to overwrite" >&2
+            exit 1
+          fi
       - name: Fetch exact official upstream revision
         run: |
           set -eu
@@ -151,12 +176,27 @@ jobs:
             --bundle "$archive.attestation.bundle" "$archive"
           test -s "$archive.cosign.bundle"
           test -s "$archive.attestation.bundle"
+      - name: Retain signed assets before publication
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-signed-linux-x64
+          path: |
+            ${{ runner.temp }}/native-package/artifacts/opencode-cli-linux-x64-2.0.14-wm.1.tgz
+            ${{ runner.temp }}/native-package/artifacts/opencode-cli-linux-x64-2.0.14-wm.1.tgz.sha256
+            ${{ runner.temp }}/native-package/artifacts/opencode.binary.sha256
+            ${{ runner.temp }}/native-package/artifacts/warpmetal-native-provenance.json
+            ${{ runner.temp }}/native-package/artifacts/opencode-cli-linux-x64-2.0.14-wm.1.tgz.cosign.bundle
+            ${{ runner.temp }}/native-package/artifacts/opencode-cli-linux-x64-2.0.14-wm.1.tgz.attestation.bundle
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false
       - name: Publish immutable release for the custom tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
           cd "$RUNNER_TEMP/native-package/artifacts"
+          archive=opencode-cli-linux-x64-2.0.14-wm.1.tgz
           cat > RELEASE_NOTES.md <<'EOF'
           WarpMetal-patched OpenCode package (custom identity, not an upstream release).
 
@@ -165,8 +205,15 @@ jobs:
           - archive: package/bin/opencode npm layout
           - verification: sha256 checksums, keyless cosign OIDC blob bundle and SLSA v0.2 provenance
           EOF
-          gh release create "$GITHUB_REF_NAME" ./* \
+          gh release create "$RELEASE_TAG" \
+            "$archive" \
+            "$archive.sha256" \
+            opencode.binary.sha256 \
+            warpmetal-native-provenance.json \
+            "$archive.cosign.bundle" \
+            "$archive.attestation.bundle" \
+            --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
-            --title "$GITHUB_REF_NAME" \
+            --title "$RELEASE_TAG" \
             --latest=false \
             --notes-file RELEASE_NOTES.md
