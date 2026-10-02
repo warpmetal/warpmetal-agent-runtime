@@ -1,0 +1,172 @@
+name: Native package
+
+# Reproducible WarpMetal-patched OpenCode package (custom version 2.0.14-wm.1).
+# Every job fetches the exact official upstream revision into an isolated
+# RUNNER_TEMP checkout and never builds from the Runtime repository checkout.
+# PRs run lock closure, build, generated checks, affected tests and the
+# authenticated binary smoke. The exact custom tag publishes with the same
+# route plus smoke, checksums, keyless cosign bundles and SLSA provenance.
+# This workflow never interacts with existing Runtime v* releases, npm, or
+# official upstream repositories.
+
+on:
+  pull_request:
+    paths:
+      - "packaging/native/**"
+      - ".github/workflows/native-build.yml"
+  push:
+    tags:
+      - "opencode-v2.0.14-wm.1"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.2"
+      - name: Static closure checks
+        run: |
+          set -eu
+          sh -n packaging/native/build.sh
+          python3 -m py_compile packaging/native/smoke.py
+          test -f packaging/native/upstream.lock.json
+          test -f packaging/native/README.md
+          python3 -c 'import json; json.load(open("packaging/native/upstream.lock.json"))'
+      - name: Fetch exact official upstream revision
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/upstream"
+          git -C "$RUNNER_TEMP/upstream" init --quiet
+          git -C "$RUNNER_TEMP/upstream" remote add origin https://github.com/anomalyco/opencode.git
+          git -C "$RUNNER_TEMP/upstream" fetch --quiet --depth=1 origin 08462140ec0de1e4b17d4a353d8d5827f53cf7b0
+          git -C "$RUNNER_TEMP/upstream" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/upstream" rev-parse HEAD)" = "08462140ec0de1e4b17d4a353d8d5827f53cf7b0"
+          test "$(git -C "$RUNNER_TEMP/upstream" rev-parse 'HEAD^{tree}')" = "9572aed1d292ca13d50e917d794bb0656db51efc"
+      - name: Lock and patch closure (fails closed until the root seal)
+        run: |
+          set -eu
+          packaging/native/build.sh verify \
+            --lock packaging/native/upstream.lock.json \
+            --source "$RUNNER_TEMP/upstream" \
+            --patch packaging/native/warpmetal-atomic-input-v1.patch
+      - name: Build, generation checks, affected tests and smoke
+        run: |
+          set -eu
+          packaging/native/build.sh build \
+            --lock packaging/native/upstream.lock.json \
+            --source "$RUNNER_TEMP/upstream" \
+            --patch packaging/native/warpmetal-atomic-input-v1.patch \
+            --out "$RUNNER_TEMP/native-package" \
+            --bun "$(command -v bun)" \
+            --tests \
+            --smoke
+      - name: Retain assembled native candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-linux-x64-candidate
+          path: ${{ runner.temp }}/native-package/artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false
+
+  publish:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.2"
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v2.5.3"
+      - name: Assert exact custom tag on main ancestry
+        run: |
+          set -eu
+          test "$GITHUB_REF_NAME" = "opencode-v2.0.14-wm.1"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$GITHUB_REF_NAME^{commit}")"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor HEAD origin/main
+      - name: Fetch exact official upstream revision
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/upstream"
+          git -C "$RUNNER_TEMP/upstream" init --quiet
+          git -C "$RUNNER_TEMP/upstream" remote add origin https://github.com/anomalyco/opencode.git
+          git -C "$RUNNER_TEMP/upstream" fetch --quiet --depth=1 origin 08462140ec0de1e4b17d4a353d8d5827f53cf7b0
+          git -C "$RUNNER_TEMP/upstream" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/upstream" rev-parse HEAD)" = "08462140ec0de1e4b17d4a353d8d5827f53cf7b0"
+          test "$(git -C "$RUNNER_TEMP/upstream" rev-parse 'HEAD^{tree}')" = "9572aed1d292ca13d50e917d794bb0656db51efc"
+      - name: Build, generation checks, smoke, checksums and provenance
+        run: |
+          set -eu
+          packaging/native/build.sh build \
+            --lock packaging/native/upstream.lock.json \
+            --source "$RUNNER_TEMP/upstream" \
+            --patch packaging/native/warpmetal-atomic-input-v1.patch \
+            --out "$RUNNER_TEMP/native-package" \
+            --bun "$(command -v bun)" \
+            --smoke
+          cd "$RUNNER_TEMP/native-package/artifacts"
+          test -f opencode-cli-linux-x64-2.0.14-wm.1.tgz
+          test -f opencode-cli-linux-x64-2.0.14-wm.1.tgz.sha256
+          test -f opencode.binary.sha256
+          python3 - <<'PY'
+          import json
+          d = json.load(open("warpmetal-native-provenance.json"))
+          assert set(d) == {"builder", "buildType", "invocation", "materials", "metadata"}, sorted(d)
+          assert d["builder"].get("id")
+          assert isinstance(d["buildType"], str) and d["buildType"]
+          parameters = d["invocation"]["parameters"]
+          assert parameters["sourceRevision"] == "08462140ec0de1e4b17d4a353d8d5827f53cf7b0"
+          assert parameters["sourceTree"] == "9572aed1d292ca13d50e917d794bb0656db51efc"
+          assert parameters["patchDigest"].startswith("sha256:")
+          assert parameters["artifactSha256"].startswith("sha256:")
+          assert parameters["binarySha256"].startswith("sha256:")
+          assert d["metadata"]["reproducible"] is False
+          PY
+      - name: Keyless cosign bundle and SLSA provenance
+        run: |
+          set -eu
+          cd "$RUNNER_TEMP/native-package/artifacts"
+          archive=opencode-cli-linux-x64-2.0.14-wm.1.tgz
+          cosign sign-blob --yes --bundle "$archive.cosign.bundle" "$archive"
+          cosign attest-blob --yes --type slsaprovenance \
+            --predicate warpmetal-native-provenance.json \
+            --bundle "$archive.attestation.bundle" "$archive"
+          test -s "$archive.cosign.bundle"
+          test -s "$archive.attestation.bundle"
+      - name: Publish immutable release for the custom tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          cd "$RUNNER_TEMP/native-package/artifacts"
+          cat > RELEASE_NOTES.md <<'EOF'
+          WarpMetal-patched OpenCode package (custom identity, not an upstream release).
+
+          - custom version: 2.0.14-wm.1
+          - source: official OpenCode 08462140ec0de1e4b17d4a353d8d5827f53cf7b0
+          - archive: package/bin/opencode npm layout
+          - verification: sha256 checksums, keyless cosign OIDC blob bundle and SLSA v0.2 provenance
+          EOF
+          gh release create "$GITHUB_REF_NAME" ./* \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --latest=false \
+            --notes-file RELEASE_NOTES.md
