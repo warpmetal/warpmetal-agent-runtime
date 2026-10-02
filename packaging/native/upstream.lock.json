@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "repository": "https://github.com/anomalyco/opencode",
+    "revision": "08462140ec0de1e4b17d4a353d8d5827f53cf7b0",
+    "tree": "9572aed1d292ca13d50e917d794bb0656db51efc"
+  },
+  "toolchain": {
+    "bun": "1.4.2",
+    "install": "frozen-lockfile-ignore-scripts"
+  },
+  "patch": {
+    "file": "warpmetal-atomic-input-v1.patch",
+    "status": "complete",
+    "digest": "sha256:5bcf0104d17a31d5141d9ad773b7ca7fbeddeb71a4a36689d5baee9f72f0f47b"
+  },
+  "build": {
+    "target": "opencode-linux-x64",
+    "version": "2.0.14-wm.1",
+    "channel": "latest",
+    "bunCompileRelease": "bun-v1.4.2"
+  },
+  "archive": {
+    "name": "opencode-cli-linux-x64-2.0.14-wm.1.tgz",
+    "member": "package/bin/opencode"
+  },
+  "release": {
+    "tag": "opencode-v2.0.14-wm.1",
+    "repository": "warpmetal/warpmetal-agent-runtime"
+  }
+}

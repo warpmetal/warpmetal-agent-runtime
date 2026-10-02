@@ -1,0 +1,1888 @@
+diff --git a/packages/client/src/effect/api/api.ts b/packages/client/src/effect/api/api.ts
+index c77db6c05a56d122f1b14737c52668b18172654b..9a65d5c3d1ee620263248741751ca024ae6a621c 100644
+--- a/packages/client/src/effect/api/api.ts
++++ b/packages/client/src/effect/api/api.ts
+@@ -263,6 +263,7 @@ export type SessionPromptInput = {
+   readonly skills?: ReadonlyArray<PromptInput.SkillAttachment> | undefined
+   readonly metadata?: { readonly [x: string]: unknown } | undefined
+   readonly delivery?: SessionInbox.Delivery | undefined
++  readonly guard?: SessionInbox.Guard | undefined
+   readonly resume?: boolean | undefined
+ }
+ export type SessionPromptOutput = SessionInbox.User
+@@ -363,6 +364,23 @@ export type SessionInboxListOperation<E = never> = (
+   input: SessionInboxListInput,
+ ) => Effect.Effect<SessionInboxListOutput, E>
+ 
++export type SessionInboxGuardInput = { readonly sessionID: Session.ID }
++export type SessionInboxGuardOutput = {
++  readonly formatVersion: 1
++  readonly nativeGuardVersion: string
++  readonly sessionID: Session.ID
++  readonly inputSeq: number | null
++  readonly executionStartedSeq: number | null
++  readonly executionTerminalSeq: number | null
++  readonly contextSeq: number | null
++  readonly active: boolean
++  readonly observedAt: number
++  readonly logCursor: number | null
++}
++export type SessionInboxGuardOperation<E = never> = (
++  input: SessionInboxGuardInput,
++) => Effect.Effect<SessionInboxGuardOutput, E>
++
+ export type SessionInboxCancelInput = { readonly sessionID: Session.ID; readonly inboxID: SessionMessage.ID }
+ export type SessionInboxCancelOutput = void
+ export type SessionInboxCancelOperation<E = never> = (
+@@ -644,6 +662,31 @@ export type SessionLogOutput =
+             readonly delivery: SessionInbox.Delivery
+           }
+         }
++      | {
++          readonly id: Event.ID
++          readonly created: number
++          readonly metadata?: { readonly [x: string]: unknown } | undefined
++          readonly type: "session.inbox.refused"
++          readonly durable: { readonly aggregateID: string; readonly seq: Event.Seq; readonly version: Event.Version }
++          readonly location?:
++            | {
++                readonly directory: AbsolutePath
++                readonly workspaceID?: (string & Brand.Brand<"Workspace.ID">) | undefined
++              }
++            | undefined
++          readonly data: {
++            readonly sessionID: Session.ID
++            readonly inboxID: SessionMessage.ID
++            readonly guardID: string
++            readonly bindingDigest: string
++            readonly code:
++              | "guard_stale_input"
++              | "guard_execution_changed"
++              | "guard_context_changed"
++              | "guard_expired"
++              | "guard_session_mismatch"
++          }
++        }
+       | {
+           readonly id: Event.ID
+           readonly created: number
+@@ -1414,6 +1457,7 @@ export interface SessionApi<E = never> {
+   readonly diff: SessionDiffOperation<E>
+   readonly inbox: {
+     readonly list: SessionInboxListOperation<E>
++    readonly guard: SessionInboxGuardOperation<E>
+     readonly cancel: SessionInboxCancelOperation<E>
+     readonly update: SessionInboxUpdateOperation<E>
+   }
+diff --git a/packages/client/src/effect/generated/client.ts b/packages/client/src/effect/generated/client.ts
+index 269d81c7ecb4c5f71e8bb741ec43ddcbefe2a362..2d18bb2d7931998c5d59ff17958cd919cad22423 100644
+--- a/packages/client/src/effect/generated/client.ts
++++ b/packages/client/src/effect/generated/client.ts
+@@ -70,6 +70,8 @@ import type {
+   SessionDiffOutput,
+   SessionInboxListInput,
+   SessionInboxListOutput,
++  SessionInboxGuardInput,
++  SessionInboxGuardOutput,
+   SessionInboxCancelInput,
+   SessionInboxCancelOutput,
+   SessionInboxUpdateInput,
+@@ -477,6 +479,7 @@ const EndpointSessionPrompt = (raw: RawClient["server.session"]) => (input: Sess
+         skills: input["skills"],
+         metadata: input["metadata"],
+         delivery: input["delivery"],
++        guard: input["guard"],
+         resume: input["resume"],
+       },
+     }).pipe(
+@@ -598,6 +601,14 @@ const EndpointSessionInboxList = (raw: RawClient["server.session"]) => (input: S
+     ),
+   )
+ 
++const EndpointSessionInboxGuard = (raw: RawClient["server.session"]) => (input: SessionInboxGuardInput) =>
++  preserveEffect<SessionInboxGuardOutput>()(
++    raw["session.inbox.guard"]({ params: { sessionID: input["sessionID"] } }).pipe(
++      Effect.mapError(mapClientError),
++      Effect.map((value) => value.data),
++    ),
++  )
++
+ const EndpointSessionInboxCancel = (raw: RawClient["server.session"]) => (input: SessionInboxCancelInput) =>
+   preserveEffect<SessionInboxCancelOutput>()(
+     raw["session.inbox.cancel"]({ params: { sessionID: input["sessionID"], inboxID: input["inboxID"] } }).pipe(
+@@ -767,6 +778,7 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
+   diff: EndpointSessionDiff(raw),
+   inbox: {
+     list: EndpointSessionInboxList(raw),
++    guard: EndpointSessionInboxGuard(raw),
+     cancel: EndpointSessionInboxCancel(raw),
+     update: EndpointSessionInboxUpdate(raw),
+   },
+diff --git a/packages/client/src/promise/generated/client.ts b/packages/client/src/promise/generated/client.ts
+index f2c271e286c67fd7867e27bfcff6b8ec74b28392..fc4bf3ff6279629cc176a2bd970a26cac4aa0252 100644
+--- a/packages/client/src/promise/generated/client.ts
++++ b/packages/client/src/promise/generated/client.ts
+@@ -64,6 +64,8 @@ import type {
+   SessionDiffOutput,
+   SessionInboxListInput,
+   SessionInboxListOutput,
++  SessionInboxGuardInput,
++  SessionInboxGuardOutput,
+   SessionInboxCancelInput,
+   SessionInboxCancelOutput,
+   SessionInboxUpdateInput,
+@@ -694,6 +696,7 @@ export function make(options: ClientOptions) {
+               skills: input["skills"],
+               metadata: input["metadata"],
+               delivery: input["delivery"],
++              guard: input["guard"],
+               resume: input["resume"],
+             },
+             successStatus: 200,
+@@ -858,6 +861,17 @@ export function make(options: ClientOptions) {
+             },
+             requestOptions,
+           ).then((value) => value.data),
++        guard: (input: SessionInboxGuardInput, requestOptions?: RequestOptions) =>
++          request<{ readonly data: SessionInboxGuardOutput }>(
++            {
++              method: "GET",
++              path: `/api/session/${encodeURIComponent(input.sessionID)}/inbox/guard`,
++              successStatus: 200,
++              declaredStatuses: [400, 401, 404],
++              empty: false,
++            },
++            requestOptions,
++          ).then((value) => value.data),
+         cancel: (input: SessionInboxCancelInput, requestOptions?: RequestOptions) =>
+           request<SessionInboxCancelOutput>(
+             {
+diff --git a/packages/client/src/promise/generated/types.ts b/packages/client/src/promise/generated/types.ts
+index a335a9c2a437d5a25e83d8aa77323268ca3ebee8..5a6d7a527c3bf99fc6f9a562cdc0a228aad4b371 100644
+--- a/packages/client/src/promise/generated/types.ts
++++ b/packages/client/src/promise/generated/types.ts
+@@ -161,6 +161,17 @@ export type SessionMessageIdle = {
+ 
+ export type SessionActive = { type: "running" }
+ 
++export type SessionInboxGuard = {
++  formatVersion: 1
++  guardID: string
++  sessionID: string
++  inputSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++  executionStartedSeq: number | "Infinity" | "-Infinity" | "NaN"
++  contextSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++  expiresAt: number | "Infinity" | "-Infinity" | "NaN"
++  bindingDigest: string
++}
++
+ export type SessionInboxDelivery = "steer" | "queue"
+ 
+ export type SessionInboxSyntheticPayload = { text: string; description?: string; metadata?: { [x: string]: JsonValue } }
+@@ -173,6 +184,17 @@ export type SessionGenerateResponse = { data: { text: string } }
+ 
+ export type LocationRef = { directory: string; workspaceID?: string }
+ 
++export type SessionInboxGuard1 = {
++  formatVersion: 1
++  guardID: string
++  sessionID: string
++  inputSeq: number | null
++  executionStartedSeq: number
++  contextSeq: number | null
++  expiresAt: number
++  bindingDigest: string
++}
++
+ export type SessionInboxSyntheticPayload1 = { text: string; description?: string; metadata?: { [x: string]: any } }
+ 
+ export type ShellInfo = {
+@@ -638,6 +660,27 @@ export type SessionInboxDeliveryChanged = {
+   data: { sessionID: string; inboxID: string; delivery: SessionInboxDelivery }
+ }
+ 
++export type SessionInboxRefused = {
++  id: string
++  created: number
++  metadata?: { [x: string]: any }
++  type: "session.inbox.refused"
++  durable: { aggregateID: string; seq: number; version: 1 }
++  location?: LocationRef
++  data: {
++    sessionID: string
++    inboxID: string
++    guardID: string
++    bindingDigest: string
++    code:
++      | "guard_stale_input"
++      | "guard_execution_changed"
++      | "guard_context_changed"
++      | "guard_expired"
++      | "guard_session_mismatch"
++  }
++}
++
+ export type SessionExecutionStarted = {
+   id: string
+   created: number
+@@ -1729,6 +1772,7 @@ export type SessionInboxUserPayload = {
+   agents?: Array<PromptAgentAttachment>
+   skills?: Array<PromptSkillAttachment>
+   metadata?: { [x: string]: JsonValue }
++  guard?: SessionInboxGuard
+ }
+ 
+ export type SessionInboxUserPayload1 = {
+@@ -1737,6 +1781,7 @@ export type SessionInboxUserPayload1 = {
+   agents?: Array<PromptAgentAttachment>
+   skills?: Array<PromptSkillAttachment>
+   metadata?: { [x: string]: any }
++  guard?: SessionInboxGuard1
+ }
+ 
+ export type SessionMessageToolStateCompleted = {
+@@ -2316,6 +2361,7 @@ export type SessionEventDurable =
+   | SessionInboxEnqueued
+   | SessionInboxCancelled
+   | SessionInboxDeliveryChanged
++  | SessionInboxRefused
+   | SessionExecutionStarted
+   | SessionExecutionSucceeded
+   | SessionExecutionFailed
+@@ -2379,6 +2425,7 @@ export type V2Event =
+   | SessionInboxEnqueued
+   | SessionInboxCancelled
+   | SessionInboxDeliveryChanged
++  | SessionInboxRefused
+   | SessionExecutionStarted
+   | SessionExecutionSucceeded
+   | SessionExecutionFailed
+@@ -2519,6 +2566,18 @@ export type MessageNotFoundError = {
+ export const isMessageNotFoundError = (value: unknown): value is MessageNotFoundError =>
+   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "MessageNotFoundError"
+ 
++export type SessionInboxRefusedError = {
++  readonly _tag: "SessionInboxRefusedError"
++  readonly sessionID: string
++  readonly inboxID: string
++  readonly guardID: string
++  readonly bindingDigest: string
++  readonly code: string
++  readonly message: string
++}
++export const isSessionInboxRefusedError = (value: unknown): value is SessionInboxRefusedError =>
++  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SessionInboxRefusedError"
++
+ export type CommandNotFoundError = {
+   readonly _tag: "CommandNotFoundError"
+   readonly command: string
+@@ -3989,6 +4048,16 @@ export type SessionPromptInput = {
+     }>
+     readonly metadata?: { readonly [x: string]: JsonValue }
+     readonly delivery?: ("steer" | "queue") | null
++    readonly guard?: {
++      readonly formatVersion: 1
++      readonly guardID: string
++      readonly sessionID: string
++      readonly inputSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly executionStartedSeq: number | "Infinity" | "-Infinity" | "NaN"
++      readonly contextSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
++      readonly bindingDigest: string
++    } | null
+     readonly resume?: boolean | null
+   }["id"]
+   readonly text: {
+@@ -4010,6 +4079,16 @@ export type SessionPromptInput = {
+     }>
+     readonly metadata?: { readonly [x: string]: JsonValue }
+     readonly delivery?: ("steer" | "queue") | null
++    readonly guard?: {
++      readonly formatVersion: 1
++      readonly guardID: string
++      readonly sessionID: string
++      readonly inputSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly executionStartedSeq: number | "Infinity" | "-Infinity" | "NaN"
++      readonly contextSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
++      readonly bindingDigest: string
++    } | null
+     readonly resume?: boolean | null
+   }["text"]
+   readonly files?: {
+@@ -4031,6 +4110,16 @@ export type SessionPromptInput = {
+     }>
+     readonly metadata?: { readonly [x: string]: JsonValue }
+     readonly delivery?: ("steer" | "queue") | null
++    readonly guard?: {
++      readonly formatVersion: 1
++      readonly guardID: string
++      readonly sessionID: string
++      readonly inputSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly executionStartedSeq: number | "Infinity" | "-Infinity" | "NaN"
++      readonly contextSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
++      readonly bindingDigest: string
++    } | null
+     readonly resume?: boolean | null
+   }["files"]
+   readonly agents?: {
+@@ -4052,6 +4141,16 @@ export type SessionPromptInput = {
+     }>
+     readonly metadata?: { readonly [x: string]: JsonValue }
+     readonly delivery?: ("steer" | "queue") | null
++    readonly guard?: {
++      readonly formatVersion: 1
++      readonly guardID: string
++      readonly sessionID: string
++      readonly inputSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly executionStartedSeq: number | "Infinity" | "-Infinity" | "NaN"
++      readonly contextSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
++      readonly bindingDigest: string
++    } | null
+     readonly resume?: boolean | null
+   }["agents"]
+   readonly skills?: {
+@@ -4073,6 +4172,16 @@ export type SessionPromptInput = {
+     }>
+     readonly metadata?: { readonly [x: string]: JsonValue }
+     readonly delivery?: ("steer" | "queue") | null
++    readonly guard?: {
++      readonly formatVersion: 1
++      readonly guardID: string
++      readonly sessionID: string
++      readonly inputSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly executionStartedSeq: number | "Infinity" | "-Infinity" | "NaN"
++      readonly contextSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
++      readonly bindingDigest: string
++    } | null
+     readonly resume?: boolean | null
+   }["skills"]
+   readonly metadata?: {
+@@ -4094,6 +4203,16 @@ export type SessionPromptInput = {
+     }>
+     readonly metadata?: { readonly [x: string]: JsonValue }
+     readonly delivery?: ("steer" | "queue") | null
++    readonly guard?: {
++      readonly formatVersion: 1
++      readonly guardID: string
++      readonly sessionID: string
++      readonly inputSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly executionStartedSeq: number | "Infinity" | "-Infinity" | "NaN"
++      readonly contextSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
++      readonly bindingDigest: string
++    } | null
+     readonly resume?: boolean | null
+   }["metadata"]
+   readonly delivery?: {
+@@ -4115,8 +4234,49 @@ export type SessionPromptInput = {
+     }>
+     readonly metadata?: { readonly [x: string]: JsonValue }
+     readonly delivery?: ("steer" | "queue") | null
++    readonly guard?: {
++      readonly formatVersion: 1
++      readonly guardID: string
++      readonly sessionID: string
++      readonly inputSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly executionStartedSeq: number | "Infinity" | "-Infinity" | "NaN"
++      readonly contextSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
++      readonly bindingDigest: string
++    } | null
+     readonly resume?: boolean | null
+   }["delivery"]
++  readonly guard?: {
++    readonly id?: string | null
++    readonly text: string
++    readonly files?: ReadonlyArray<{
++      readonly uri: string
++      readonly name?: string
++      readonly description?: string
++      readonly mention?: { readonly start: number; readonly end: number; readonly text: string }
++    }>
++    readonly agents?: ReadonlyArray<{
++      readonly name: string
++      readonly mention?: { readonly start: number; readonly end: number; readonly text: string }
++    }>
++    readonly skills?: ReadonlyArray<{
++      readonly id: string
++      readonly mention?: { readonly start: number; readonly end: number; readonly text: string }
++    }>
++    readonly metadata?: { readonly [x: string]: JsonValue }
++    readonly delivery?: ("steer" | "queue") | null
++    readonly guard?: {
++      readonly formatVersion: 1
++      readonly guardID: string
++      readonly sessionID: string
++      readonly inputSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly executionStartedSeq: number | "Infinity" | "-Infinity" | "NaN"
++      readonly contextSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
++      readonly bindingDigest: string
++    } | null
++    readonly resume?: boolean | null
++  }["guard"]
+   readonly resume?: {
+     readonly id?: string | null
+     readonly text: string
+@@ -4136,6 +4296,16 @@ export type SessionPromptInput = {
+     }>
+     readonly metadata?: { readonly [x: string]: JsonValue }
+     readonly delivery?: ("steer" | "queue") | null
++    readonly guard?: {
++      readonly formatVersion: 1
++      readonly guardID: string
++      readonly sessionID: string
++      readonly inputSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly executionStartedSeq: number | "Infinity" | "-Infinity" | "NaN"
++      readonly contextSeq: number | "Infinity" | "-Infinity" | "NaN" | null
++      readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
++      readonly bindingDigest: string
++    } | null
+     readonly resume?: boolean | null
+   }["resume"]
+ }
+@@ -4392,6 +4562,23 @@ export type SessionInboxListInput = { readonly sessionID: { readonly sessionID:
+ 
+ export type SessionInboxListOutput = { data: Array<SessionInboxInfo> }["data"]
+ 
++export type SessionInboxGuardInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
++
++export type SessionInboxGuardOutput = {
++  data: {
++    formatVersion: 1
++    nativeGuardVersion: string
++    sessionID: string
++    inputSeq: number | null
++    executionStartedSeq: number | null
++    executionTerminalSeq: number | null
++    contextSeq: number | null
++    active: boolean
++    observedAt: number
++    logCursor: number | null
++  }
++}["data"]
++
+ export type SessionInboxCancelInput = {
+   readonly sessionID: { readonly sessionID: string; readonly inboxID: string }["sessionID"]
+   readonly inboxID: { readonly sessionID: string; readonly inboxID: string }["inboxID"]
+diff --git a/packages/core/src/session.ts b/packages/core/src/session.ts
+index f2d4286230b16edb9f42147f5843cde574e17cca..2ef74272e07912222a7ad2f73840b9cd9df3ad08 100644
+--- a/packages/core/src/session.ts
++++ b/packages/core/src/session.ts
+@@ -152,6 +152,8 @@ export interface Interface {
+    * unhandled compaction barriers.
+    */
+   readonly inbox: (sessionID: SessionSchema.ID) => Effect.Effect<SessionInbox.Info[], NotFoundError>
++  /** Read-only coherent guard snapshot over the durable input/execution basis (recovery-only logCursor). */
++  readonly guardSnapshot: (sessionID: SessionSchema.ID) => ReturnType<Session.Handle["guardSnapshot"]>
+   readonly cancelInbox: (input: InboxItemRef) => Effect.Effect<void, NotFoundError | InboxConflictError>
+   readonly steerInbox: (input: InboxItemRef) => Effect.Effect<void, NotFoundError | InboxConflictError>
+   readonly queueInbox: (input: InboxItemRef) => Effect.Effect<void, NotFoundError | InboxConflictError>
+@@ -383,6 +385,7 @@ const layer = Layer.effect(
+         })
+       }),
+       inbox: (sessionID) => sessions.forSession(sessionID).inbox(),
++      guardSnapshot: (sessionID) => sessions.forSession(sessionID).guardSnapshot(),
+       cancelInbox: (input) => sessions.forSession(input.sessionID).cancelInbox(input.inboxID),
+       steerInbox: (input) => sessions.forSession(input.sessionID).steerInbox(input.inboxID),
+       queueInbox: (input) => sessions.forSession(input.sessionID).queueInbox(input.inboxID),
+diff --git a/packages/core/src/session/inbox.ts b/packages/core/src/session/inbox.ts
+index 3688575e2e9333055c19b4c029c8de5ddd6df2fe..7b23632d5c1572b139be39e64fa1e131445ba4a9 100644
+--- a/packages/core/src/session/inbox.ts
++++ b/packages/core/src/session/inbox.ts
+@@ -1,12 +1,13 @@
+ export * as SessionInbox from "./inbox.js"
+ 
+-import { and, asc, eq, or } from "drizzle-orm"
++import { and, asc, desc, eq, inArray, or } from "drizzle-orm"
+ import { Context, DateTime, Effect, Layer, Schema } from "effect"
+ import { makeGlobalNode } from "@opencode/util/effect/app-node"
+ import {
+   Compaction,
+   CompactionPayload,
+   Delivery,
++  Guard,
+   Info,
+   Item,
+   Move,
+@@ -17,6 +18,7 @@ import {
+   UserPayload,
+ } from "@opencode/schema/session-inbox"
+ import { Database } from "../database/database.js"
++import { EventTable } from "../event/sql.js"
+ import { Bus } from "../bus.js"
+ import { KeyedMutex } from "../effect/keyed-mutex.js"
+ import { SessionEvent } from "./event.js"
+@@ -30,6 +32,7 @@ export {
+   Compaction,
+   CompactionPayload,
+   Delivery,
++  Guard,
+   Info,
+   Item,
+   Move,
+@@ -66,6 +69,154 @@ export class LifecycleConflict extends Schema.TaggedError<LifecycleConflict>()("
+   id: SessionMessage.ID,
+ }) {}
+ 
++export const GUARD_CODES = [
++  "guard_stale_input",
++  "guard_execution_changed",
++  "guard_context_changed",
++  "guard_expired",
++  "guard_session_mismatch",
++] as const
++export type GuardCode = (typeof GUARD_CODES)[number]
++
++export class RefusedError extends Schema.TaggedError<RefusedError>()("Session.InboxRefusedError", {
++  sessionID: SessionSchema.ID,
++  inboxID: SessionMessage.ID,
++  guardID: Schema.String,
++  bindingDigest: Schema.String,
++  code: Schema.Literals(GUARD_CODES),
++}) {}
++
++type GuardObservation = {
++  readonly inputSeq: number | null
++  readonly executionStartedSeq: number | null
++  readonly executionTerminalSeq: number | null
++  readonly contextSeq: number | null
++  readonly logCursor: number | null
++}
++
++const GUARD_INBOX_ENQUEUED = Bus.versionedType(SessionEvent.InboxEnqueued.type, 1)
++const GUARD_EXECUTION_STARTED = Bus.versionedType(SessionEvent.Execution.Started.type, 1)
++const GUARD_EXECUTION_TERMINAL = [
++  Bus.versionedType(SessionEvent.Execution.Succeeded.type, 1),
++  Bus.versionedType(SessionEvent.Execution.Interrupted.type, 1),
++  Bus.versionedType(SessionEvent.Execution.Failed.type, 1),
++]
++const GUARD_CONTEXT_CONFIG = [
++  Bus.versionedType(SessionEvent.Permissions.type, 1),
++  Bus.versionedType(SessionEvent.AgentSelected.type, 1),
++  Bus.versionedType(SessionEvent.ModelSelected.type, 1),
++  Bus.versionedType(SessionEvent.RevertEvent.Committed.type, 1),
++]
++const GUARD_INSTRUCTIONS_UPDATED = Bus.versionedType(SessionEvent.InstructionsUpdated.type, 2)
++const GUARD_REFUSED = Bus.versionedType(SessionEvent.InboxRefused.type, 1)
++
++const latestTypeSeq = (db: DatabaseService, sessionID: SessionSchema.ID, types: ReadonlyArray<string>) =>
++  db
++    .select({ seq: EventTable.seq })
++    .from(EventTable)
++    .where(and(eq(EventTable.aggregate_id, sessionID), inArray(EventTable.type, types)))
++    .orderBy(desc(EventTable.seq))
++    .limit(1)
++    .get()
++    .pipe(
++      Effect.orDie,
++      Effect.map((row) => row?.seq ?? null),
++    )
++
++const latestAnySeq = (db: DatabaseService, sessionID: SessionSchema.ID) =>
++  db
++    .select({ seq: EventTable.seq })
++    .from(EventTable)
++    .where(eq(EventTable.aggregate_id, sessionID))
++    .orderBy(desc(EventTable.seq))
++    .limit(1)
++    .get()
++    .pipe(
++      Effect.orDie,
++      Effect.map((row) => row?.seq ?? null),
++    )
++
++/**
++ * Native-owned guard observations derived from the durable EventTable. Absence
++ * is explicit: null differs from the valid first-event sequence 0. Must be
++ * called inside the caller's transaction for admission/delivery comparisons.
++ */
++const observeGuard = Effect.fn("SessionInbox.observeGuard")(function* (
++  db: DatabaseService,
++  sessionID: SessionSchema.ID,
++) {
++  const enqueued = yield* db
++    .select({ seq: EventTable.seq, data: EventTable.data })
++    .from(EventTable)
++    .where(and(eq(EventTable.aggregate_id, sessionID), eq(EventTable.type, GUARD_INBOX_ENQUEUED)))
++    .orderBy(desc(EventTable.seq))
++    .all()
++    .pipe(Effect.orDie)
++  const instructionUpdates = yield* db
++    .select({ seq: EventTable.seq, data: EventTable.data })
++    .from(EventTable)
++    .where(and(eq(EventTable.aggregate_id, sessionID), eq(EventTable.type, GUARD_INSTRUCTIONS_UPDATED)))
++    .orderBy(desc(EventTable.seq))
++    .all()
++    .pipe(Effect.orDie)
++  const inputSeq =
++    enqueued.find((row) => (row.data as { item?: { type?: string } }).item?.type !== "compaction")?.seq ?? null
++  const instructionSeq =
++    instructionUpdates.find((row) => {
++      const data = row.data as {
++        delta?: Record<string, unknown>
++        metadata?: { instructions?: { initial?: boolean } }
++      }
++      return data.metadata?.instructions?.initial !== true && Object.keys(data.delta ?? {}).length > 0
++    })?.seq ?? null
++  const configSeq = yield* latestTypeSeq(db, sessionID, GUARD_CONTEXT_CONFIG)
++  return {
++    inputSeq,
++    executionStartedSeq: yield* latestTypeSeq(db, sessionID, [GUARD_EXECUTION_STARTED]),
++    executionTerminalSeq: yield* latestTypeSeq(db, sessionID, GUARD_EXECUTION_TERMINAL),
++    contextSeq: [instructionSeq, configSeq]
++      .filter((seq): seq is number => seq !== null)
++      .reduce<number | null>((latest, seq) => (latest === null || seq > latest ? seq : latest), null),
++    logCursor: yield* latestAnySeq(db, sessionID),
++  } satisfies GuardObservation
++})
++
++const executionChanged = (guard: Guard, observed: GuardObservation) =>
++  observed.executionStartedSeq === null ||
++  guard.executionStartedSeq !== observed.executionStartedSeq ||
++  (observed.executionTerminalSeq !== null && observed.executionTerminalSeq >= observed.executionStartedSeq)
++
++/** Admission comparison runs before the guarded item's own enqueue is appended. */
++const admissionRefusal = (
++  guard: Guard,
++  observed: GuardObservation,
++  sessionID: SessionSchema.ID,
++  now: number,
++): GuardCode | undefined => {
++  if (guard.sessionID !== sessionID) return "guard_session_mismatch"
++  if (!(now < guard.expiresAt)) return "guard_expired"
++  if (executionChanged(guard, observed)) return "guard_execution_changed"
++  if (guard.contextSeq !== observed.contextSeq) return "guard_context_changed"
++  if (guard.inputSeq !== observed.inputSeq) return "guard_stale_input"
++  return undefined
++}
++
++/** Delivery comparison includes the guarded item's own enqueue as expected input. */
++const deliveryRefusal = (
++  guard: Guard,
++  observed: GuardObservation,
++  sessionID: SessionSchema.ID,
++  now: number,
++  enqueuedSeq: number,
++): GuardCode | undefined => {
++  if (guard.sessionID !== sessionID) return "guard_session_mismatch"
++  if (!(now < guard.expiresAt)) return "guard_expired"
++  if (executionChanged(guard, observed)) return "guard_execution_changed"
++  if (guard.contextSeq !== observed.contextSeq) return "guard_context_changed"
++  if (observed.inputSeq !== enqueuedSeq) return "guard_stale_input"
++  return undefined
++}
++
+ function matches<Type extends Item["type"]>(
+   stored: Info,
+   request: PendingRef & { readonly type: Type },
+@@ -170,15 +321,41 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
+     readonly id: SessionMessage.ID
+     readonly sessionID: SessionSchema.ID
+     readonly item: Item & { readonly type: Type }
++    readonly guard?: Guard
+   }) {
+     const existing = yield* reconcile({ ...request, type: request.item.type, delivery: request.item.delivery })
+     if (existing !== undefined) return existing
++    const guard = request.guard
+     const admitted = yield* bus
+-      .publish(SessionEvent.InboxEnqueued, {
+-        inboxID: request.id,
+-        sessionID: request.sessionID,
+-        item: request.item,
+-      })
++      .publish(
++        SessionEvent.InboxEnqueued,
++        {
++          inboxID: request.id,
++          sessionID: request.sessionID,
++          item: request.item,
++        },
++        guard
++          ? {
++              // Runs inside the aggregate-lock/SQLite transaction after projection
++              // and before the event append; a defect rolls the pending row back.
++              commit: () =>
++                Effect.gen(function* () {
++                  const observed = yield* observeGuard(db, request.sessionID)
++                  const code = admissionRefusal(guard, observed, request.sessionID, Date.now())
++                  if (code !== undefined)
++                    yield* Effect.die(
++                      new RefusedError({
++                        sessionID: request.sessionID,
++                        inboxID: request.id,
++                        guardID: guard.guardID,
++                        bindingDigest: guard.bindingDigest,
++                        code,
++                      }),
++                    )
++                }),
++            }
++          : undefined,
++      )
+       .pipe(
+         Effect.map((event) =>
+           Info.make({
+@@ -259,14 +436,115 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
+     ),
+   )
+ 
++  const refusalRow = Effect.fn("SessionInbox.refusalRow")(function* (
++    sessionID: SessionSchema.ID,
++    inboxID: SessionMessage.ID,
++  ) {
++    const rows = yield* db
++      .select({ data: EventTable.data })
++      .from(EventTable)
++      .where(and(eq(EventTable.aggregate_id, sessionID), eq(EventTable.type, GUARD_REFUSED)))
++      .all()
++      .pipe(Effect.orDie)
++    return rows
++      .map((row) => row.data as { inboxID?: string; guardID?: string; bindingDigest?: string; code?: GuardCode })
++      .find((data) => data.inboxID === inboxID)
++  })
++
++  /** Durable refusal reconciliation, checked before prompt preparation/wake (no duplicate hook or rePOST). */
++  const refusal = Effect.fn("SessionInbox.refusal")(function* (
++    sessionID: SessionSchema.ID,
++    inboxID: SessionMessage.ID,
++  ) {
++    const prior = yield* refusalRow(sessionID, inboxID)
++    if (prior === undefined) return undefined
++    return new RefusedError({
++      sessionID,
++      inboxID,
++      guardID: prior.guardID ?? "",
++      bindingDigest: prior.bindingDigest ?? "",
++      code: prior.code ?? "guard_session_mismatch",
++    })
++  })
++
++  /** Read-only coherent guard snapshot for the public GET; logCursor is a recovery-only hint. */
++  const guardSnapshot = Effect.fn("SessionInbox.guardSnapshot")(function* (sessionID: SessionSchema.ID) {
++    const observed = yield* db.transaction(() => observeGuard(db, sessionID)).pipe(Effect.orDie)
++    return {
++      formatVersion: 1 as const,
++      nativeGuardVersion: "warpmetal.atomic-input.v1",
++      sessionID,
++      inputSeq: observed.inputSeq,
++      executionStartedSeq: observed.executionStartedSeq,
++      executionTerminalSeq: observed.executionTerminalSeq,
++      contextSeq: observed.contextSeq,
++      active:
++        observed.executionStartedSeq !== null &&
++        (observed.executionTerminalSeq === null || observed.executionTerminalSeq < observed.executionStartedSeq),
++      observedAt: Date.now(),
++      logCursor: observed.logCursor,
++    }
++  })
++
++  /**
++   * Guarded admission. The comparison runs in the existing publish commit callback
++   * (inside the SQLite transaction, after projection, before append); a defect rolls
++   * the pending row back. The durable refusal receipt is emitted by this outer defect
++   * catcher under the same inbox mutex; historical replay never runs the callback.
++   */
++  const admitGuarded = Effect.fn("SessionInbox.admitGuarded")(function* <Type extends Item["type"]>(request: {
++    readonly id: SessionMessage.ID
++    readonly sessionID: SessionSchema.ID
++    readonly item: Item & { readonly type: Type }
++    readonly guard: Guard
++  }) {
++    return yield* serialized(
++      request.sessionID,
++      Effect.gen(function* () {
++        const existing = yield* reconcile({
++          id: request.id,
++          sessionID: request.sessionID,
++          type: request.item.type,
++          delivery: request.item.delivery,
++        })
++        if (existing !== undefined) return existing
++        const prior = yield* refusal(request.sessionID, request.id)
++        if (prior !== undefined) return yield* prior
++        return yield* admit<Type>({
++          id: request.id,
++          sessionID: request.sessionID,
++          item: request.item,
++          guard: request.guard,
++        }).pipe(
++          Effect.catchDefect((defect) =>
++            defect instanceof RefusedError
++              ? bus
++                  .publish(SessionEvent.InboxRefused, {
++                    sessionID: request.sessionID,
++                    inboxID: request.id,
++                    guardID: defect.guardID,
++                    bindingDigest: defect.bindingDigest,
++                    code: defect.code,
++                  })
++                  .pipe(Effect.flatMap(() => Effect.fail(defect)))
++              : Effect.die(defect),
++          ),
++        )
++      }),
++    )
++  })
++
+   return {
+     list: (sessionID: SessionSchema.ID) => list(db, sessionID),
+     reconcile,
+     admit,
++    admitGuarded,
+     admitCompaction,
+     cancel,
+     steer,
+     queue,
++    refusal,
++    guardSnapshot,
+   }
+ })
+ 
+@@ -455,36 +733,85 @@ const publishMutation = <A, E, R>(input: PendingRef, effect: Effect.Effect<A, E,
+     Effect.catchDefect((defect) => (defect instanceof LifecycleConflict ? Effect.fail(defect) : Effect.die(defect))),
+   )
+ 
++const deliver = (
++  db: DatabaseService,
++  bus: Bus.Interface,
++  sessionID: SessionSchema.ID,
++  entry: Info,
++  guard?: Guard,
++  enqueuedSeq?: number,
++) =>
++  bus
++    .publish(
++      SessionEvent.InboxDelivered,
++      { sessionID, inboxID: entry.id },
++      guard !== undefined && enqueuedSeq !== undefined
++        ? {
++            // Runs after projection (pending row removed, message inserted) and before
++            // append/commit inside the same aggregate transaction; a defect rolls both back.
++            commit: () =>
++              Effect.gen(function* () {
++                const observed = yield* observeGuard(db, sessionID)
++                const code = deliveryRefusal(guard, observed, sessionID, Date.now(), enqueuedSeq)
++                if (code !== undefined)
++                  yield* Effect.die(
++                    new RefusedError({
++                      sessionID,
++                      inboxID: entry.id,
++                      guardID: guard.guardID,
++                      bindingDigest: guard.bindingDigest,
++                      code,
++                    }),
++                  )
++              }),
++          }
++        : undefined,
++    )
++    .pipe(
++      Effect.catchDefect((defect) =>
++        defect instanceof LifecycleConflict
++          ? promotedFromMessage(db, sessionID, entry.id, entry.delivery).pipe(
++              Effect.flatMap((stored) => (stored !== undefined ? Effect.void : Effect.die(defect))),
++              Effect.orDie,
++            )
++          : Effect.die(defect),
++      ),
++    )
++
+ const publish = Effect.fn("SessionInbox.publish")(function* (
+   db: DatabaseService,
+   bus: Bus.Interface,
+   sessionID: SessionSchema.ID,
+   rows: ReadonlyArray<typeof SessionInboxTable.$inferSelect>,
+ ) {
++  let promoted = 0
+   yield* Effect.forEach(
+     rows,
+     (row) => {
+       const entry = fromRow(row)
+       if (entry.type === "compaction") return Effect.die(new LifecycleConflict({ id: entry.id }))
+-      return bus
+-        .publish(SessionEvent.InboxDelivered, {
+-          sessionID,
+-          inboxID: entry.id,
+-        })
+-        .pipe(
+-          Effect.catchDefect((defect) =>
+-            defect instanceof LifecycleConflict
+-              ? promotedFromMessage(db, sessionID, entry.id, entry.delivery).pipe(
+-                  Effect.flatMap((stored) => (stored !== undefined ? Effect.void : Effect.die(defect))),
+-                  Effect.orDie,
+-                )
+-              : Effect.die(defect),
+-          ),
+-        )
++      const guard = entry.type === "user" ? entry.payload.guard : undefined
++      if (guard === undefined) {
++        return deliver(db, bus, sessionID, entry).pipe(Effect.tap(() => Effect.sync(() => (promoted += 1))))
++      }
++      return deliver(db, bus, sessionID, entry, guard, row.enqueued_seq).pipe(
++        Effect.tap(() => Effect.sync(() => (promoted += 1))),
++        Effect.catchDefect((defect) =>
++          defect instanceof RefusedError
++            ? bus.publish(SessionEvent.InboxRefused, {
++                sessionID,
++                inboxID: entry.id,
++                guardID: defect.guardID,
++                bindingDigest: defect.bindingDigest,
++                code: defect.code,
++              })
++            : Effect.die(defect),
++        ),
++      )
+     },
+     { discard: true },
+   )
+-  return rows.length
++  return promoted
+ })
+ 
+ /**
+diff --git a/packages/core/src/session/message-updater.ts b/packages/core/src/session/message-updater.ts
+index dfe836f30d88ca9d6d8506042397f066d5701074..da5ced17caa577c08339563db3e11077fa3609f8 100644
+--- a/packages/core/src/session/message-updater.ts
++++ b/packages/core/src/session/message-updater.ts
+@@ -138,6 +138,7 @@ export function update(adapter: Adapter, event: SessionEvent.DurableEvent) {
+       "session.inbox.enqueued": () => Effect.void,
+       "session.inbox.cancelled": () => Effect.void,
+       "session.inbox.delivery.changed": () => Effect.void,
++      "session.inbox.refused": () => Effect.void,
+       "session.execution.started": () => Effect.void,
+       "session.execution.succeeded": () => idle("succeeded"),
+       "session.execution.failed": () => idle("failed"),
+diff --git a/packages/core/src/session/projector.ts b/packages/core/src/session/projector.ts
+index 943072aac117731cf43871550a513ddf17e99f8e..d626123ea8200ced0a55a14c98662d7e7223c521 100644
+--- a/packages/core/src/session/projector.ts
++++ b/packages/core/src/session/projector.ts
+@@ -647,6 +647,19 @@ const layer = Layer.effectDiscard(
+           .pipe(Effect.orDie)
+       }),
+     )
++    yield* bus.project(SessionEvent.InboxRefused, (event) =>
++      db
++        .delete(SessionInboxTable)
++        .where(
++          and(
++            eq(SessionInboxTable.id, event.data.inboxID),
++            eq(SessionInboxTable.session_id, event.data.sessionID),
++          ),
++        )
++        .run()
++        .pipe(Effect.orDie, Effect.asVoid),
++    )
++
+     yield* bus.project(SessionEvent.InboxCancelled, (event) =>
+       SessionInbox.projectCancelled(db, {
+         id: event.data.inboxID,
+diff --git a/packages/core/src/session/prompt.ts b/packages/core/src/session/prompt.ts
+index 80878f354dd682311e518cac132f46b61df77523..661ba5a6b05733385664f1b69856ed8f1089c612 100644
+--- a/packages/core/src/session/prompt.ts
++++ b/packages/core/src/session/prompt.ts
+@@ -24,6 +24,7 @@ export type Input = {
+   skills?: PromptInput.Prompt["skills"]
+   metadata?: Record<string, unknown>
+   delivery?: SessionInbox.Delivery
++  guard?: SessionInbox.Guard
+ }
+ 
+ export const prepare = Effect.fn("SessionPrompt.prepare")(function* (request: {
+@@ -84,6 +85,7 @@ export const prepare = Effect.fn("SessionPrompt.prepare")(function* (request: {
+           skills: selected?.length ? selected : undefined,
+         }),
+         metadata: event.metadata,
++        guard: request.input.guard,
+       }),
+       delivery: SessionInbox.Delivery.make(event.delivery),
+     } satisfies SessionInbox.Item
+diff --git a/packages/core/src/session/session.ts b/packages/core/src/session/session.ts
+index cd7a3b0b42626cba0eeabf458ceea73cf5750dac..c4dc4808a852ceec1b1adc7c26009b1aae2778a8 100644
+--- a/packages/core/src/session/session.ts
++++ b/packages/core/src/session/session.ts
+@@ -34,6 +34,7 @@ import { SessionStore } from "./store.js"
+ type PromptRequest = SessionPrompt.Input & {
+   id?: SessionMessage.ID
+   resume?: boolean
++  guard?: SessionInbox.Guard
+ }
+ 
+ /**
+@@ -121,6 +122,10 @@ export const make = Effect.fn("Session.make")(function* () {
+     yield* get(sessionID)
+     return yield* admission.list(sessionID)
+   })
++  const guardSnapshot = Effect.fn("Session.guardSnapshot")(function* (sessionID: SessionSchema.ID) {
++    yield* get(sessionID)
++    return yield* admission.guardSnapshot(sessionID)
++  })
+   const cancelInbox = Effect.fn("Session.cancelInbox")(
+     (sessionID: SessionSchema.ID, inboxID: SessionMessage.ID) => mutatePending(sessionID, inboxID, admission.cancel),
+     Effect.uninterruptible,
+@@ -149,6 +154,10 @@ export const make = Effect.fn("Session.make")(function* () {
+             delivery: input.delivery ?? "steer",
+           })
+           if (existing) return existing
++          if (input.guard) {
++            const refused = yield* admission.refusal(session.id, messageID)
++            if (refused !== undefined) return yield* refused
++          }
+           const item = yield* restore(
+             SessionPrompt.prepare({ session, messageID, input }).pipe(
+               Effect.provideService(Instance.Service, instances),
+@@ -157,6 +166,14 @@ export const make = Effect.fn("Session.make")(function* () {
+           )
+           // Commit a staged revert only after preparation succeeds, before admitting new work.
+           if (session.revert) yield* SessionRevert.commit(bus, session)
++          if (input.guard) {
++            return yield* admission.admitGuarded({
++              id: messageID,
++              sessionID: session.id,
++              item,
++              guard: input.guard,
++            })
++          }
+           return yield* admission.admit({
+             id: messageID,
+             sessionID: session.id,
+@@ -346,6 +363,7 @@ export const make = Effect.fn("Session.make")(function* () {
+     switchAgent,
+     switchModel,
+     inbox,
++    guardSnapshot,
+     prompt,
+     synthetic,
+     shell,
+@@ -369,6 +387,7 @@ export const make = Effect.fn("Session.make")(function* () {
+     const switchAgent = operations.switchAgent.bind(undefined, sessionID)
+     const switchModel = operations.switchModel.bind(undefined, sessionID)
+     const inbox = operations.inbox.bind(undefined, sessionID)
++    const guardSnapshot = operations.guardSnapshot.bind(undefined, sessionID)
+     const prompt = operations.prompt.bind(undefined, sessionID)
+     const synthetic = operations.synthetic.bind(undefined, sessionID)
+     const shell = operations.shell.bind(undefined, sessionID)
+@@ -395,6 +414,7 @@ export const make = Effect.fn("Session.make")(function* () {
+       switchAgent,
+       switchModel,
+       inbox,
++      guardSnapshot,
+       prompt,
+       synthetic,
+       shell,
+diff --git a/packages/core/test/session-prompt.test.ts b/packages/core/test/session-prompt.test.ts
+index 96a2cddcb560ee9ee1528bb101a0242360500122..2bbdd74f08733902d292946b7b91a94f49b337ab 100644
+--- a/packages/core/test/session-prompt.test.ts
++++ b/packages/core/test/session-prompt.test.ts
+@@ -1,8 +1,8 @@
+ import { describe, expect } from "bun:test"
+-import { DateTime, Effect, Fiber, Layer, LayerMap, Schema, Stream } from "effect"
++import { DateTime, Effect, Exit, Cause, Fiber, Layer, LayerMap, Schema, Stream } from "effect"
+ import path from "path"
+ import { pathToFileURL } from "url"
+-import { eq } from "drizzle-orm"
++import { and, desc, eq } from "drizzle-orm"
+ import { Database } from "@opencode/core/database/database"
+ import { Agent } from "@opencode/core/agent"
+ import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
+@@ -1213,4 +1213,243 @@ describe("Session.inbox", () => {
+       expect(yield* eventCount(Bus.versionedType(SessionEvent.InboxCancelled.type, 1))).toBe(1)
+     }),
+   )
++
++  it.effect("refuses stale guarded steering at the durable promotion boundary", () =>
++    Effect.gen(function* () {
++      yield* setup
++      const session = yield* Session.Service
++      const bus = yield* Bus.Service
++      const { db } = yield* Database.Service
++
++      type TestGuard = {
++        formatVersion: 1
++        guardID: string
++        sessionID: string
++        inputSeq: number | null
++        executionStartedSeq: number
++        contextSeq: number | null
++        expiresAt: number
++        bindingDigest: string
++      }
++      const latestSeq = (type: string) =>
++        db
++          .select({ seq: EventTable.seq })
++          .from(EventTable)
++          .where(and(eq(EventTable.aggregate_id, sessionID), eq(EventTable.type, type)))
++          .orderBy(desc(EventTable.seq))
++          .limit(1)
++          .get()
++          .pipe(Effect.orDie)
++      const latestInputSeq = () =>
++        db
++          .select({ seq: EventTable.seq, data: EventTable.data })
++          .from(EventTable)
++          .where(
++            and(
++              eq(EventTable.aggregate_id, sessionID),
++              eq(EventTable.type, Bus.versionedType(SessionEvent.InboxEnqueued.type, 1)),
++            ),
++          )
++          .orderBy(desc(EventTable.seq))
++          .all()
++          .pipe(
++            Effect.orDie,
++            Effect.map(
++              (rows) =>
++                rows.find((row) => (row.data.item as { type?: string } | undefined)?.type !== "compaction")?.seq ?? null,
++            ),
++          )
++      const latestContextSeq = () =>
++        db
++          .select({ seq: EventTable.seq, type: EventTable.type, data: EventTable.data })
++          .from(EventTable)
++          .where(eq(EventTable.aggregate_id, sessionID))
++          .all()
++          .pipe(
++            Effect.orDie,
++            Effect.map((rows) => {
++              const config = new Set([
++                Bus.versionedType(SessionEvent.Permissions.type, 1),
++                Bus.versionedType(SessionEvent.AgentSelected.type, 1),
++                Bus.versionedType(SessionEvent.ModelSelected.type, 1),
++                Bus.versionedType(SessionEvent.RevertEvent.Committed.type, 1),
++              ])
++              const instructions = Bus.versionedType(SessionEvent.InstructionsUpdated.type, 2)
++              let latest: number | null = null
++              for (const row of rows) {
++                const data = row.data as {
++                  delta?: Record<string, unknown>
++                  metadata?: { instructions?: { initial?: boolean } }
++                }
++                const meaningful =
++                  config.has(row.type) ||
++                  (row.type === instructions &&
++                    data.metadata?.instructions?.initial !== true &&
++                    Object.keys(data.delta ?? {}).length > 0)
++                if (meaningful && (latest === null || row.seq > latest)) latest = row.seq
++              }
++              return latest
++            }),
++          )
++      const visible = () =>
++        db
++          .select({ id: SessionMessageTable.id })
++          .from(SessionMessageTable)
++          .where(eq(SessionMessageTable.session_id, sessionID))
++          .all()
++          .pipe(Effect.orDie)
++      const refusals = () =>
++        db
++          .select()
++          .from(EventTable)
++          .where(
++            and(
++              eq(EventTable.aggregate_id, sessionID),
++              eq(EventTable.type, Bus.versionedType("session.inbox.refused", 1)),
++            ),
++          )
++          .all()
++          .pipe(Effect.orDie)
++      let contextSeq: number | null = null
++      const guardFor = (overrides: Partial<TestGuard>): TestGuard => ({
++        formatVersion: 1,
++        guardID: "guard_test_0001",
++        sessionID,
++        inputSeq: 0,
++        executionStartedSeq: 0,
++        contextSeq,
++        expiresAt: Date.now() + 60_000,
++        bindingDigest: "sha256:" + "a".repeat(64),
++        ...overrides,
++      })
++      const guarded = (id: string, text: string, guard: TestGuard) =>
++        session.prompt({ id: SessionMessage.ID.make(id), sessionID, text, guard } as unknown as Parameters<
++          typeof session.prompt
++        >[0])
++
++      yield* bus.publish(SessionEvent.Execution.Started, { sessionID })
++      const startedSeq = (yield* latestSeq(Bus.versionedType(SessionEvent.Execution.Started.type, 1)))?.seq ?? 0
++      contextSeq = yield* latestContextSeq()
++
++      // Positive: a fresh guarded steer is promoted, so the next primary request can receive it.
++      yield* guarded(
++        "msg_guard_fresh",
++        "Fresh guarded steer",
++        guardFor({ inputSeq: yield* latestInputSeq(), executionStartedSeq: startedSeq }),
++      )
++      expect(yield* SessionInbox.promote(db, bus, sessionID, "input")).toBe(1)
++      expect((yield* visible()).some((row) => row.id === "msg_guard_fresh")).toBe(true)
++
++      // Stale owner input after admission must refuse, never reach the next request.
++      const staleGuard = guardFor({
++        guardID: "guard_test_stale",
++        inputSeq: yield* latestInputSeq(),
++        executionStartedSeq: startedSeq,
++      })
++      yield* guarded("msg_guard_stale", "Stale guarded steer", staleGuard)
++      yield* session.prompt({ sessionID, text: "Newer owner steer", resume: false })
++      yield* SessionInbox.promote(db, bus, sessionID, "input")
++      expect((yield* visible()).some((row) => row.id === "msg_guard_stale")).toBe(false)
++      expect((yield* refusals()).map((row) => row.data)).toMatchObject([
++        {
++          inboxID: "msg_guard_stale",
++          guardID: "guard_test_stale",
++          bindingDigest: "sha256:" + "a".repeat(64),
++          code: "guard_stale_input",
++        },
++      ])
++
++      // An already-expired envelope fails at admission: typed refusal, no pending row, durable receipt.
++      const expiredAdmission = yield* guarded(
++        "msg_guard_expired_at_admission",
++        "Expired at admission",
++        guardFor({
++          guardID: "guard_test_expired_admission",
++          inputSeq: yield* latestInputSeq(),
++          executionStartedSeq: startedSeq,
++          expiresAt: Date.now() - 1,
++        }),
++      ).pipe(Effect.exit)
++      expect(Exit.isFailure(expiredAdmission)).toBe(true)
++      if (Exit.isFailure(expiredAdmission)) {
++        expect(Cause.squash(expiredAdmission.cause)).toMatchObject({ _tag: "Session.InboxRefusedError" })
++      }
++      expect((yield* session.inbox(sessionID)).some((item) => item.id === "msg_guard_expired_at_admission")).toBe(false)
++      expect((yield* refusals()).map((row) => row.data)).toContainEqual(
++        expect.objectContaining({ inboxID: "msg_guard_expired_at_admission", code: "guard_expired" }),
++      )
++
++      // A lease admitted fresh that expires before promotion is refused at delivery, never promoted.
++      yield* guarded(
++        "msg_guard_expired_after_admission",
++        "Expired after admission",
++        guardFor({
++          guardID: "guard_test_expired_after",
++          inputSeq: yield* latestInputSeq(),
++          executionStartedSeq: startedSeq,
++          expiresAt: Date.now() + 20,
++        }),
++      )
++      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 30)))
++      yield* SessionInbox.promote(db, bus, sessionID, "input")
++      expect((yield* visible()).some((row) => row.id === "msg_guard_expired_after_admission")).toBe(false)
++      expect((yield* refusals()).map((row) => row.data)).toContainEqual(
++        expect.objectContaining({ inboxID: "msg_guard_expired_after_admission", code: "guard_expired" }),
++      )
++
++      // Completion/interruption changes the execution identity.
++      yield* guarded(
++        "msg_guard_interrupted",
++        "Interrupted guarded steer",
++        guardFor({ guardID: "guard_test_interrupted", inputSeq: yield* latestInputSeq(), executionStartedSeq: startedSeq }),
++      )
++      yield* bus.publish(SessionEvent.Execution.Interrupted, { sessionID, reason: "user" })
++      yield* SessionInbox.promote(db, bus, sessionID, "input")
++      expect((yield* visible()).some((row) => row.id === "msg_guard_interrupted")).toBe(false)
++
++      // A new active execution is the current basis for the context-change isolation case.
++      yield* bus.publish(SessionEvent.Execution.Started, { sessionID })
++      const nextStartedSeq = (yield* latestSeq(Bus.versionedType(SessionEvent.Execution.Started.type, 1)))?.seq ?? 0
++
++      // Meaningful config change invalidates the context snapshot of the current execution.
++      yield* guarded(
++        "msg_guard_context",
++        "Context guarded steer",
++        guardFor({
++          guardID: "guard_test_context",
++          inputSeq: yield* latestInputSeq(),
++          executionStartedSeq: nextStartedSeq,
++        }),
++      )
++      yield* bus.publish(SessionEvent.Permissions, { sessionID, permissions: [] })
++      contextSeq = yield* latestContextSeq()
++      yield* SessionInbox.promote(db, bus, sessionID, "input")
++      expect((yield* visible()).some((row) => row.id === "msg_guard_context")).toBe(false)
++      expect((yield* refusals()).map((row) => row.data)).toContainEqual(
++        expect.objectContaining({ inboxID: "msg_guard_context", code: "guard_context_changed" }),
++      )
++
++      // Cancel wins promotion for a pending guarded steer and stays a distinct disposition.
++      const cancelGuard = guardFor({
++        guardID: "guard_test_cancel",
++        inputSeq: yield* latestInputSeq(),
++        executionStartedSeq: nextStartedSeq,
++      })
++      yield* guarded("msg_guard_cancel", "Cancelled guarded steer", cancelGuard)
++      yield* session.cancelInbox({ sessionID, inboxID: SessionMessage.ID.make("msg_guard_cancel") })
++      yield* SessionInbox.promote(db, bus, sessionID, "input")
++      expect((yield* visible()).some((row) => row.id === "msg_guard_cancel")).toBe(false)
++      expect((yield* refusals()).every((row) => (row.data as { inboxID?: string }).inboxID !== "msg_guard_cancel")).toBe(true)
++
++      // Durable refusal receipts survive restart and prevent silent re-admission.
++      const before = (yield* refusals()).length
++      const readmit = yield* guarded("msg_guard_stale", "Stale guarded steer", staleGuard).pipe(Effect.exit)
++      expect(Exit.isFailure(readmit)).toBe(true)
++      if (Exit.isFailure(readmit)) {
++        expect(Cause.squash(readmit.cause)).toMatchObject({ _tag: "Session.InboxRefusedError" })
++      }
++      expect((yield* session.inbox(sessionID)).some((item) => item.id === "msg_guard_stale")).toBe(false)
++      expect((yield* refusals()).length).toBe(before)
++    }),
++  )
+ })
+diff --git a/packages/core/test/session-runner.test.ts b/packages/core/test/session-runner.test.ts
+index f41f61e7472560f67b88354cda5f9e4cf1c9fc6f..45e4125397039f4063ab691fc7d17b8be48f5533 100644
+--- a/packages/core/test/session-runner.test.ts
++++ b/packages/core/test/session-runner.test.ts
+@@ -79,7 +79,7 @@ import { Location } from "@opencode/core/location"
+ import { Provider } from "@opencode/core/provider"
+ import { Cause, Context, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Stream } from "effect"
+ import { TestClock } from "effect/testing"
+-import { asc, desc, eq, sql } from "drizzle-orm"
++import { asc, desc, and, eq, sql } from "drizzle-orm"
+ import { testEffect } from "./lib/effect"
+ import { promptLocationNode } from "./fixture/prompt-location"
+ import { LocationServiceMap } from "@opencode/core/location-service-map"
+@@ -1443,6 +1443,209 @@ describe("SessionRunnerLLM", () => {
+     expect(userTexts(s.requests[2])).toContain("Queued for later")
+   })
+ 
++  type TestGuard = {
++    formatVersion: 1
++    guardID: string
++    sessionID: string
++    inputSeq: number | null
++    executionStartedSeq: number
++    contextSeq: number | null
++    expiresAt: number
++    bindingDigest: string
++  }
++
++  scenario("serves fresh guarded steering in the next primary request", function* (s) {
++    const latestSeq = (type: string) =>
++      s.db
++        .select({ seq: EventTable.seq })
++        .from(EventTable)
++        .where(and(eq(EventTable.aggregate_id, sessionID), eq(EventTable.type, type)))
++        .orderBy(desc(EventTable.seq))
++        .limit(1)
++        .get()
++        .pipe(Effect.orDie)
++    const latestInputSeq = () =>
++      s.db
++        .select({ seq: EventTable.seq, data: EventTable.data })
++        .from(EventTable)
++        .where(
++          and(
++            eq(EventTable.aggregate_id, sessionID),
++            eq(EventTable.type, Bus.versionedType(SessionEvent.InboxEnqueued.type, 1)),
++          ),
++        )
++        .orderBy(desc(EventTable.seq))
++        .all()
++        .pipe(
++          Effect.orDie,
++          Effect.map(
++            (rows) => rows.find((row) => (row.data.item as { type?: string } | undefined)?.type !== "compaction")?.seq ?? null,
++          ),
++        )
++    const latestContextSeq = () =>
++      s.db
++        .select({ seq: EventTable.seq, type: EventTable.type, data: EventTable.data })
++        .from(EventTable)
++        .where(eq(EventTable.aggregate_id, sessionID))
++        .all()
++        .pipe(
++          Effect.orDie,
++          Effect.map((rows) => {
++            const config = new Set([
++              Bus.versionedType(SessionEvent.Permissions.type, 1),
++              Bus.versionedType(SessionEvent.AgentSelected.type, 1),
++              Bus.versionedType(SessionEvent.ModelSelected.type, 1),
++              Bus.versionedType(SessionEvent.RevertEvent.Committed.type, 1),
++            ])
++            const instructions = Bus.versionedType(SessionEvent.InstructionsUpdated.type, 2)
++            let latest: number | null = null
++            for (const row of rows) {
++              const data = row.data as {
++                delta?: Record<string, unknown>
++                metadata?: { instructions?: { initial?: boolean } }
++              }
++              const meaningful =
++                config.has(row.type) ||
++                (row.type === instructions &&
++                  data.metadata?.instructions?.initial !== true &&
++                  Object.keys(data.delta ?? {}).length > 0)
++              if (meaningful && (latest === null || row.seq > latest)) latest = row.seq
++            }
++            return latest
++          }),
++        )
++    yield* s.admit("Echo before guarded steering")
++    yield* s.llm.push(
++      TestLLM.tool("call-guard-fresh", "echo", { text: "working" }),
++      TestLLM.text("Fresh handled", "text-fresh"),
++    )
++    const tools = yield* s.blockTools()
++    const run = yield* s.resume.pipe(Effect.forkChild)
++    yield* tools.started
++    // The lightweight coordinator fixture omits lifecycle callbacks; seed the true
++    // native Started presence the real SessionExecution would publish for this run.
++    yield* s.bus.publish(SessionEvent.Execution.Started, { sessionID })
++    const started = yield* latestSeq(Bus.versionedType(SessionEvent.Execution.Started.type, 1))
++    const guard: TestGuard = {
++      formatVersion: 1,
++      guardID: "guard_runner_fresh",
++      sessionID,
++      inputSeq: yield* latestInputSeq(),
++      executionStartedSeq: started?.seq ?? 0,
++      contextSeq: yield* latestContextSeq(),
++      expiresAt: Date.now() + 60_000,
++      bindingDigest: "sha256:" + "c".repeat(64),
++    }
++    yield* s.session.prompt({
++      id: SessionMessage.ID.make("msg_guard_runner_fresh"),
++      sessionID,
++      text: "Fresh guarded steer",
++      guard,
++    } as unknown as Parameters<typeof s.session.prompt>[0])
++    yield* tools.release
++    yield* Fiber.join(run)
++
++    expect(s.requests.length).toBeGreaterThanOrEqual(2)
++    expect(userTexts(s.requests[1]!)).toContain("Fresh guarded steer")
++  })
++
++  scenario("never serves stale guarded steering in the next primary request", function* (s) {
++    const latestSeq = (type: string) =>
++      s.db
++        .select({ seq: EventTable.seq })
++        .from(EventTable)
++        .where(and(eq(EventTable.aggregate_id, sessionID), eq(EventTable.type, type)))
++        .orderBy(desc(EventTable.seq))
++        .limit(1)
++        .get()
++        .pipe(Effect.orDie)
++    const latestInputSeq = () =>
++      s.db
++        .select({ seq: EventTable.seq, data: EventTable.data })
++        .from(EventTable)
++        .where(
++          and(
++            eq(EventTable.aggregate_id, sessionID),
++            eq(EventTable.type, Bus.versionedType(SessionEvent.InboxEnqueued.type, 1)),
++          ),
++        )
++        .orderBy(desc(EventTable.seq))
++        .all()
++        .pipe(
++          Effect.orDie,
++          Effect.map(
++            (rows) => rows.find((row) => (row.data.item as { type?: string } | undefined)?.type !== "compaction")?.seq ?? null,
++          ),
++        )
++    const latestContextSeq = () =>
++      s.db
++        .select({ seq: EventTable.seq, type: EventTable.type, data: EventTable.data })
++        .from(EventTable)
++        .where(eq(EventTable.aggregate_id, sessionID))
++        .all()
++        .pipe(
++          Effect.orDie,
++          Effect.map((rows) => {
++            const config = new Set([
++              Bus.versionedType(SessionEvent.Permissions.type, 1),
++              Bus.versionedType(SessionEvent.AgentSelected.type, 1),
++              Bus.versionedType(SessionEvent.ModelSelected.type, 1),
++              Bus.versionedType(SessionEvent.RevertEvent.Committed.type, 1),
++            ])
++            const instructions = Bus.versionedType(SessionEvent.InstructionsUpdated.type, 2)
++            let latest: number | null = null
++            for (const row of rows) {
++              const data = row.data as {
++                delta?: Record<string, unknown>
++                metadata?: { instructions?: { initial?: boolean } }
++              }
++              const meaningful =
++                config.has(row.type) ||
++                (row.type === instructions &&
++                  data.metadata?.instructions?.initial !== true &&
++                  Object.keys(data.delta ?? {}).length > 0)
++              if (meaningful && (latest === null || row.seq > latest)) latest = row.seq
++            }
++            return latest
++          }),
++        )
++    yield* s.admit("Echo before stale steering")
++    yield* s.llm.push(
++      TestLLM.tool("call-guard-stale", "echo", { text: "working" }),
++      TestLLM.text("Stale handled", "text-stale"),
++    )
++    const tools = yield* s.blockTools()
++    const run = yield* s.resume.pipe(Effect.forkChild)
++    yield* tools.started
++    // The lightweight coordinator fixture omits lifecycle callbacks; seed the true
++    // native Started presence the real SessionExecution would publish for this run.
++    yield* s.bus.publish(SessionEvent.Execution.Started, { sessionID })
++    const started = yield* latestSeq(Bus.versionedType(SessionEvent.Execution.Started.type, 1))
++    const guard: TestGuard = {
++      formatVersion: 1,
++      guardID: "guard_runner_stale",
++      sessionID,
++      inputSeq: yield* latestInputSeq(),
++      executionStartedSeq: started?.seq ?? 0,
++      contextSeq: yield* latestContextSeq(),
++      expiresAt: Date.now() + 60_000,
++      bindingDigest: "sha256:" + "d".repeat(64),
++    }
++    yield* s.session.prompt({
++      id: SessionMessage.ID.make("msg_guard_runner_stale"),
++      sessionID,
++      text: "Stale guarded steer",
++      guard,
++    } as unknown as Parameters<typeof s.session.prompt>[0])
++    yield* s.admit("Newer owner steer")
++    yield* tools.release
++    yield* Fiber.join(run)
++
++    expect(s.requests.length).toBeGreaterThanOrEqual(2)
++    expect(userTexts(s.requests[1]!)).not.toContain("Stale guarded steer")
++    expect(userTexts(s.requests[1]!)).toContain("Newer owner steer")
++  })
++
+   scenario("runs a queued control on Location entry before a carried continuation", function* (s) {
+     const runner = yield* SessionRunner.Service
+     yield* s.admit("Echo before moving")
+diff --git a/packages/protocol/src/errors.ts b/packages/protocol/src/errors.ts
+index 5e2ee1705c8a33c1c25cc371ecc187226054eecf..caad55294df35e69f5ce460eec816fb9dd000ada 100644
+--- a/packages/protocol/src/errors.ts
++++ b/packages/protocol/src/errors.ts
+@@ -46,6 +46,20 @@ export class ConflictError extends Schema.TaggedError<ConflictError>()(
+   { httpApiStatus: 409 },
+ ) {}
+ 
++/** Typed guarded-steering refusal: durable receipt exists; input was not admitted/delivered. */
++export class SessionInboxRefusedError extends Schema.TaggedError<SessionInboxRefusedError>()(
++  "SessionInboxRefusedError",
++  {
++    sessionID: Schema.String,
++    inboxID: Schema.String,
++    guardID: Schema.String,
++    bindingDigest: Schema.String,
++    code: Schema.String,
++    message: Schema.String,
++  },
++  { httpApiStatus: 409 },
++) {}
++
+ export class SessionBusyError extends Schema.TaggedError<SessionBusyError>()(
+   "SessionBusyError",
+   {
+diff --git a/packages/protocol/src/groups/session.ts b/packages/protocol/src/groups/session.ts
+index dae63ffe64b07de1e6c30b9a05539ece18e81924..6a92444d579cf3810f835887847b5fdbbb6e1cdf 100644
+--- a/packages/protocol/src/groups/session.ts
++++ b/packages/protocol/src/groups/session.ts
+@@ -28,6 +28,7 @@ import {
+   MessageNotFoundError,
+   ServiceUnavailableError,
+   SessionBusyError,
++  SessionInboxRefusedError,
+   SessionNotFoundError,
+   SkillNotFoundError,
+   UnknownError,
+@@ -395,10 +396,11 @@ export const makeSessionGroup = <
+           ...PromptInput.Prompt.fields,
+           metadata: SessionInbox.UserPayload.fields.metadata,
+           delivery: SessionInbox.Delivery.pipe(Schema.optional),
++          guard: SessionInbox.Guard.pipe(Schema.optional),
+           resume: Schema.Boolean.pipe(Schema.optional),
+         }),
+         success: Schema.Struct({ data: SessionInbox.User }),
+-        error: [ConflictError, InvalidRequestError, SessionNotFoundError],
++        error: [ConflictError, InvalidRequestError, SessionNotFoundError, SessionInboxRefusedError],
+       })
+         .middleware(sessionLocationMiddleware)
+         .annotateMerge(
+@@ -614,6 +616,33 @@ export const makeSessionGroup = <
+         }),
+       ),
+     )
++    .add(
++      HttpApiEndpoint.get("session.inbox.guard", "/api/session/:sessionID/inbox/guard", {
++        params: { sessionID: Session.ID },
++        success: Schema.Struct({
++          data: Schema.Struct({
++            formatVersion: Schema.Literal(1),
++            nativeGuardVersion: Schema.String,
++            sessionID: Session.ID,
++            inputSeq: Schema.NullOr(Schema.Number),
++            executionStartedSeq: Schema.NullOr(Schema.Number),
++            executionTerminalSeq: Schema.NullOr(Schema.Number),
++            contextSeq: Schema.NullOr(Schema.Number),
++            active: Schema.Boolean,
++            observedAt: Schema.Number,
++            logCursor: Schema.NullOr(Schema.Number),
++          }),
++        }),
++        error: SessionNotFoundError,
++      }).annotateMerge(
++        OpenApi.annotations({
++          identifier: "session.inbox.guard",
++          summary: "Read session guard snapshot",
++          description:
++            "Coherent read-only snapshot of the native durable input, execution, and context basis for guarded steering. The log cursor is a recovery-only hint.",
++        }),
++      ),
++    )
+     .add(
+       HttpApiEndpoint.delete("session.inbox.cancel", "/api/session/:sessionID/inbox/:inboxID", {
+         params: { sessionID: Session.ID, inboxID: SessionMessage.ID },
+diff --git a/packages/schema/src/session-event.ts b/packages/schema/src/session-event.ts
+index bb8a56e454c2d014f39156294cf0628b81d8a019..18434ecaab95563fb9829a20c87e2d8a11d77482 100644
+--- a/packages/schema/src/session-event.ts
++++ b/packages/schema/src/session-event.ts
+@@ -229,6 +229,24 @@ export const InboxDeliveryChanged = Event.durable({
+ })
+ export type InboxDeliveryChanged = typeof InboxDeliveryChanged.Type
+ 
++export const InboxRefused = Event.durable({
++  type: "session.inbox.refused",
++  ...options,
++  schema: {
++    ...InboxRef,
++    guardID: Schema.String,
++    bindingDigest: Schema.String,
++    code: Schema.Literals([
++      "guard_stale_input",
++      "guard_execution_changed",
++      "guard_context_changed",
++      "guard_expired",
++      "guard_session_mismatch",
++    ]),
++  },
++})
++export type InboxRefused = typeof InboxRefused.Type
++
+ export namespace Execution {
+   export const Started = Event.durable({ type: "session.execution.started", ...options, schema: Base })
+   export type Started = typeof Started.Type
+@@ -657,6 +675,7 @@ export const Definitions = Event.inventory(
+   InboxEnqueued,
+   InboxCancelled,
+   InboxDeliveryChanged,
++  InboxRefused,
+   Execution.Started,
+   Execution.Succeeded,
+   Execution.Failed,
+diff --git a/packages/schema/src/session-inbox.ts b/packages/schema/src/session-inbox.ts
+index 361c0c492ce81aaea18fa31d36d3b00dc8d13c7b..e65df2d7fd495b69becbe332c4dbd20b77f881e7 100644
+--- a/packages/schema/src/session-inbox.ts
++++ b/packages/schema/src/session-inbox.ts
+@@ -11,10 +11,23 @@ import { SessionMessage } from "./session-message.js"
+ export const Delivery = Schema.Literals(["steer", "queue"]).annotate({ identifier: "Session.Inbox.Delivery" })
+ export type Delivery = typeof Delivery.Type
+ 
++export interface Guard extends Schema.Schema.Type<typeof Guard> {}
++export const Guard = Schema.Struct({
++  formatVersion: Schema.Literal(1),
++  guardID: Schema.String,
++  sessionID: SessionID,
++  inputSeq: Schema.NullOr(Schema.Number),
++  executionStartedSeq: Schema.Number,
++  contextSeq: Schema.NullOr(Schema.Number),
++  expiresAt: Schema.Number,
++  bindingDigest: Schema.String,
++}).annotate({ identifier: "Session.Inbox.Guard" })
++
+ export interface UserPayload extends Schema.Schema.Type<typeof UserPayload> {}
+ export const UserPayload = Schema.Struct({
+   ...Prompt.fields,
+   metadata: Schema.Record(Schema.String, Schema.Unknown).pipe(optional),
++  guard: Guard.pipe(optional),
+ }).annotate({ identifier: "Session.Inbox.UserPayload" })
+ 
+ export interface SyntheticPayload extends Schema.Schema.Type<typeof SyntheticPayload> {}
+diff --git a/packages/schema/test/event-manifest.test.ts b/packages/schema/test/event-manifest.test.ts
+index a6b1c95197d229e2d59df029bd86ad5270aae4dc..5c4696ed1a914f016b08df4366d14da42efe7f1f 100644
+--- a/packages/schema/test/event-manifest.test.ts
++++ b/packages/schema/test/event-manifest.test.ts
+@@ -124,6 +124,7 @@ describe("public event manifest", () => {
+         "session.inbox.enqueued.1",
+         "session.inbox.cancelled.1",
+         "session.inbox.delivery.changed.1",
++        "session.inbox.refused.1",
+         "session.execution.started.1",
+         "session.execution.succeeded.1",
+         "session.execution.failed.1",
+diff --git a/packages/server/src/handlers/session.ts b/packages/server/src/handlers/session.ts
+index c0d819dd728035695f116cdf27804b495e72e4d6..e89543e1f8b3d4cb28bbe2f8983f0dc52b265be2 100644
+--- a/packages/server/src/handlers/session.ts
++++ b/packages/server/src/handlers/session.ts
+@@ -20,6 +20,7 @@ import {
+   MessageNotFoundError,
+   ServiceUnavailableError,
+   SessionBusyError,
++  SessionInboxRefusedError,
+   SkillNotFoundError,
+ } from "@opencode/protocol/errors"
+ import { AbsolutePath } from "@opencode/core/schema"
+@@ -311,6 +312,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
+                 skills: ctx.payload.skills,
+                 metadata: ctx.payload.metadata,
+                 delivery: ctx.payload.delivery,
++                guard: ctx.payload.guard,
+                 resume: ctx.payload.resume,
+               })
+               .pipe(
+@@ -323,6 +325,18 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
+                     }),
+                   ),
+                 ),
++                Effect.catchTag("Session.InboxRefusedError", (error) =>
++                  Effect.fail(
++                    new SessionInboxRefusedError({
++                      sessionID: error.sessionID,
++                      inboxID: error.inboxID,
++                      guardID: error.guardID,
++                      bindingDigest: error.bindingDigest,
++                      code: error.code,
++                      message: `Guarded input was refused: ${error.code}`,
++                    }),
++                  ),
++                ),
+                 Effect.catchTag("Session.AttachmentError", (error) =>
+                   Effect.fail(new InvalidRequestError({ message: error.message, field: "files" })),
+                 ),
+@@ -535,6 +549,16 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
+           }
+         }),
+       )
++      .handle(
++        "session.inbox.guard",
++        Effect.fn(function* (ctx) {
++          return {
++            data: yield* session
++              .guardSnapshot(ctx.params.sessionID)
++              .pipe(Effect.catchTag("Session.NotFoundError", missingSession)),
++          }
++        }),
++      )
+       .handle(
+         "session.inbox.cancel",
+         Effect.fn(function* (ctx) {
+diff --git a/packages/server/test/session-guard.test.ts b/packages/server/test/session-guard.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2e834554ce1e9deb14c1d9958264fd7aa87a5539
+--- /dev/null
++++ b/packages/server/test/session-guard.test.ts
+@@ -0,0 +1,107 @@
++import { expect } from "bun:test"
++import { OpenCode } from "@opencode/client"
++import { Effect } from "effect"
++import { it } from "../../core/test/lib/effect"
++import { ServerFetch } from "../src/fetch"
++
++const authorization = `Basic ${btoa("opencode:secret")}`
++
++const setup = Effect.gen(function* () {
++  const handler = yield* ServerFetch.make({
++    app: { version: "test" },
++    database: { path: ":memory:" },
++    events: { persist: true },
++    config: { project: false },
++    models: { fetch: false },
++    fs: { filewatcher: false },
++    password: "secret",
++  })
++  const api = OpenCode.make({
++    baseUrl: "http://opencode.local",
++    headers: { authorization },
++    fetch: Object.assign((input: string | URL | Request, init?: RequestInit) => handler(new Request(input, init)), {
++      preconnect: fetch.preconnect,
++    }),
++  })
++  return { api, handler }
++})
++
++it.live("serves the guard snapshot over authenticated HTTP and rejects anonymous access", () =>
++  Effect.gen(function* () {
++    const fixture = yield* setup
++    const session = yield* Effect.promise(() => fixture.api.session.create({ title: "Guard snapshot" }))
++
++    const anonymous = yield* Effect.promise(() =>
++      fixture.handler(new Request(`http://opencode.local/api/session/${session.id}/inbox/guard`, { method: "GET" })),
++    )
++    expect(anonymous.status).toBe(401)
++
++    const snapshot = yield* Effect.promise(() => fixture.api.session.inbox.guard({ sessionID: session.id }))
++    expect(snapshot).toMatchObject({
++      formatVersion: 1,
++      nativeGuardVersion: "warpmetal.atomic-input.v1",
++      sessionID: session.id,
++      inputSeq: null,
++      executionStartedSeq: null,
++      executionTerminalSeq: null,
++      contextSeq: null,
++      active: false,
++    })
++    expect(snapshot.logCursor === null || typeof snapshot.logCursor === "number").toBe(true)
++  }),
++)
++
++it.live("refuses a guarded prompt with typed 409 and a durable session-log receipt", () =>
++  Effect.gen(function* () {
++    const fixture = yield* setup
++    const session = yield* Effect.promise(() => fixture.api.session.create({ title: "Guard refusal" }))
++    const guard = {
++      formatVersion: 1 as const,
++      guardID: "guard_http_0001",
++      sessionID: session.id,
++      inputSeq: null,
++      executionStartedSeq: 0,
++      contextSeq: null,
++      expiresAt: Date.now() + 60_000,
++      bindingDigest: "sha256:" + "e".repeat(64),
++    }
++    const refused = (id: string) =>
++      fixture.api.session
++        .prompt({ sessionID: session.id, id, text: "Stale guarded steer", guard, resume: false })
++        .then(
++          () => undefined,
++          (error: unknown) => error,
++        )
++
++    const refusal = yield* Effect.promise(() => refused("msg_guard_http"))
++    expect(refusal).toMatchObject({
++      _tag: "SessionInboxRefusedError",
++      sessionID: session.id,
++      inboxID: "msg_guard_http",
++      guardID: "guard_http_0001",
++      bindingDigest: "sha256:" + "e".repeat(64),
++      code: "guard_execution_changed",
++    })
++
++    const inbox = yield* Effect.promise(() => fixture.api.session.inbox.list({ sessionID: session.id }))
++    expect(inbox.some((item) => item.id === "msg_guard_http")).toBe(false)
++
++    const events: Array<{ type?: string }> = []
++    yield* Effect.promise(async () => {
++      const abort = new AbortController()
++      try {
++        for await (const event of fixture.api.session.log({ sessionID: session.id, after: 0 }, { signal: abort.signal })) {
++          events.push(event as { type?: string })
++          if (events.some((item) => item.type === "session.inbox.refused")) break
++        }
++      } finally {
++        abort.abort()
++      }
++    })
++    expect(events).toContainEqual(expect.objectContaining({ type: "session.inbox.refused" }))
++
++    // The durable receipt reconciles a retry: the same id cannot be silently re-admitted.
++    const again = yield* Effect.promise(() => refused("msg_guard_http"))
++    expect(again).toMatchObject({ _tag: "SessionInboxRefusedError", code: "guard_execution_changed" })
++  }),
++)
