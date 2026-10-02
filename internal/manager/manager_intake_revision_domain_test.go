@@ -139,8 +139,10 @@ func TestManagerIntakeFailClosedNegatives(t *testing.T) {
 
 	t.Run("stale or non-current manager policy declines the intake", func(t *testing.T) {
 		for name, mutate := range map[string]func(*model.InsightsManagerPolicyManifestV1){
-			"off":          func(policy *model.InsightsManagerPolicyManifestV1) { policy.Mode = "off"; policy.AllowedRules = nil },
-			"out of window": func(policy *model.InsightsManagerPolicyManifestV1) { policy.ValidUntil = policy.ValidUntil.Add(3 * time.Hour) },
+			"off": func(policy *model.InsightsManagerPolicyManifestV1) { policy.Mode = "off"; policy.AllowedRules = nil },
+			"out of window": func(policy *model.InsightsManagerPolicyManifestV1) {
+				policy.ValidUntil = policy.ValidUntil.Add(3 * time.Hour)
+			},
 		} {
 			t.Run(name, func(t *testing.T) {
 				journey := newIntakeJourney(t, 4)

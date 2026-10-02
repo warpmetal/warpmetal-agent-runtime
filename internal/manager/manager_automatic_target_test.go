@@ -12,18 +12,18 @@ import (
 )
 
 type automaticTargetJourney struct {
-	fixture    managerCoordinatorFixture
-	policy     model.InsightsManagerPolicyManifestV1
-	source     model.InsightsManagerSourceV1
-	sandboxID  string
-	store      *state.Store
-	control    *fakeManagerControl
+	fixture     managerCoordinatorFixture
+	policy      model.InsightsManagerPolicyManifestV1
+	source      model.InsightsManagerSourceV1
+	sandboxID   string
+	store       *state.Store
+	control     *fakeManagerControl
 	coordinator *Coordinator
-	finding    model.InsightFindingV1
-	batch      model.InsightBatchV1
-	receipt    model.InsightBatchReceiptV1
-	expected   model.InsightsManagerTargetV1
-	minimal    model.InsightsManagerTargetV1
+	finding     model.InsightFindingV1
+	batch       model.InsightBatchV1
+	receipt     model.InsightBatchReceiptV1
+	expected    model.InsightsManagerTargetV1
+	minimal     model.InsightsManagerTargetV1
 }
 
 func stringPointer(value string) *string { return &value }
@@ -114,7 +114,7 @@ func newAutomaticTargetJourney(t *testing.T) *automaticTargetJourney {
 	return &automaticTargetJourney{
 		fixture: fixture, policy: policy, source: source, sandboxID: sandboxID, store: store, control: control,
 		coordinator: coordinator, finding: finding, batch: batch,
-		receipt:  model.InsightBatchReceiptV1{BatchID: batch.BatchID, Accepted: 1, ThroughSequence: batch.ThroughSequence},
+		receipt: model.InsightBatchReceiptV1{BatchID: batch.BatchID, Accepted: 1, ThroughSequence: batch.ThroughSequence},
 		expected: model.InsightsManagerTargetV1{
 			TeamID: fixture.RecommendTakeover.Target.TeamID, MemberID: fixture.RecommendTakeover.Target.MemberID,
 			WorkID: stringPointer("work_live_manager_insights_20260929l9a"), WorkRevision: intPointer(1),
