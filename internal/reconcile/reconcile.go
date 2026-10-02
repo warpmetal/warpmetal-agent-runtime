@@ -99,6 +99,7 @@ type ManagerControl interface {
 	ApplyPolicies(context.Context, model.Manifest) error
 	Apply(context.Context, model.Manifest) error
 	Reports(context.Context, continuity.StaleSourceSet) ([]model.InsightsManagerPolicyReportV1, []model.InsightsManagerRunReportV1, []model.InsightsTakeoverReportV1, error)
+	GuidanceReports(context.Context) ([]model.InsightsManagerGuidanceV1, error)
 }
 
 type managedWorkerExecution struct {
@@ -551,6 +552,7 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 		InsightsManagerPolicies:        make([]model.InsightsManagerPolicyReportV1, 0),
 		InsightsManagerReviews:         make([]model.InsightsManagerRunReportV1, 0),
 		InsightsTakeovers:              make([]model.InsightsTakeoverReportV1, 0),
+		InsightsManagerGuidance:        make([]model.InsightsManagerGuidanceV1, 0),
 	}
 	for _, value := range sandboxes {
 		item := model.SandboxReport{
@@ -661,9 +663,14 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 		if err != nil {
 			return model.Report{}, err
 		}
+		guidance, guidanceErr := r.Manager.GuidanceReports(ctx)
+		if guidanceErr != nil {
+			return model.Report{}, guidanceErr
+		}
 		report.InsightsManagerPolicies = policies
 		report.InsightsManagerReviews = reviews
 		report.InsightsTakeovers = takeovers
+		report.InsightsManagerGuidance = guidance
 	}
 	return report, nil
 }

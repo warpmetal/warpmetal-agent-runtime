@@ -2,8 +2,10 @@ package manager
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1163,7 +1165,8 @@ func seedManagerCoordinatorPrerequisites(t *testing.T, store *state.Store, fixtu
 	ctx := context.Background()
 	source := fixture.Review.Source
 	if err := store.PutSandbox(ctx, state.LocalSandbox{ID: fixture.Policy.SandboxID, DesiredState: "running", ObservedState: "running",
-		Generation: source.SandboxGeneration, ObservedGeneration: source.SandboxGeneration, Lifetime: "persistent"}); err != nil {
+		Generation: source.SandboxGeneration, ObservedGeneration: source.SandboxGeneration, Lifetime: "persistent",
+		ImageDigest: q2TestImageDigest()}); err != nil {
 		t.Fatal(err)
 	}
 	serviceManifest := model.ManagedServiceV1{FormatVersion: 1, OperationID: "op_manager_service0001", ActionRevision: 1, DesiredRevision: 1,
@@ -1456,3 +1459,860 @@ func managerHoldReceipt(t *testing.T, manifest model.InsightsTakeoverManifestV1,
 
 var _ Control = (*fakeManagerControl)(nil)
 var _ Helper = (*fakeManagerHelper)(nil)
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Q2 paired guidance boundary tests (root revisions 178/180/186). The legacy
+// Recommend journey remains a zero-dispatch control. The qualified automatic
+// origin is seeded through existing store types with the tuple facts held as
+// JSON-shaped test-local seams, so the expected RED is behavioral (missing
+// qualified admission/dispatch/observation/cancellation), never a missing-type
+// compile error.
+// ---------------------------------------------------------------------------
+
+func q2ActionCalls(calls []managerHelperCall, action string) []managerHelperCall {
+	var matched []managerHelperCall
+	for _, call := range calls {
+		if call.Payload["action"] == action {
+			matched = append(matched, call)
+		}
+	}
+	return matched
+}
+
+// q2CanonicalDigest is the r178/r180 canonical digest: sha256 over UTF-8 compact
+// sorted-key JSON excluding the digest field itself.
+func q2CanonicalDigest(t *testing.T, value map[string]any) string {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(payload)
+	return fmt.Sprintf("sha256:%x", sum)
+}
+
+func q2BindingDigest(t *testing.T, authority map[string]any, reservationID, runID string) string {
+	t.Helper()
+	source, _ := authority["source"].(map[string]any)
+	binding := map[string]any{
+		"bindingVersion":        1,
+		"guardId":               opaqueID("guard_", runID),
+		"instructionRevision":   source["instructionRevision"],
+		"nativeSessionId":       source["nativeSessionId"],
+		"pendingInputId":        opaqueID("msg_", runID),
+		"profileRevision":       source["profileRevision"],
+		"registeredSourceId":    source["registeredSourceId"],
+		"reservationId":         reservationID,
+		"runId":                 runID,
+		"sandboxGeneration":     source["sandboxGeneration"],
+		"serviceGeneration":     source["serviceGeneration"],
+		"serviceRegistrationId": source["serviceRegistrationId"],
+		"workspaceEpoch":        source["workspaceEpoch"],
+	}
+	return q2CanonicalDigest(t, binding)
+}
+
+// q2GuidanceReceipt builds the dispatch/observe/cancel helper receipt with the
+// exact guidance snapshot keys, canonical receiptDigest and finite times taken
+// from the fixture clock (never a fabricated future).
+func q2GuidanceReceipt(t *testing.T, action, sandboxID string, authority map[string]any, guidanceDigest, state string, now time.Time) []byte {
+	t.Helper()
+	reservationID, _ := authority["reservationId"].(string)
+	runID, _ := authority["runId"].(string)
+	stamp := now.UTC().Format(time.RFC3339)
+	snapshot := map[string]any{
+		"formatVersion":  1,
+		"sandboxId":      sandboxID,
+		"reservationId":  reservationID,
+		"runId":          runID,
+		"revision":       1,
+		"bindingDigest":  q2BindingDigest(t, authority, reservationID, runID),
+		"guidanceDigest": guidanceDigest,
+		"guardId":        opaqueID("guard_", runID),
+		"pendingInputId": opaqueID("msg_", runID),
+		"state":          state,
+		"refusalCode":    nil,
+		"logCursor":      nil,
+		"observedAt":     stamp,
+		"admittedAt":     now.Add(-2 * time.Second).UTC().Format(time.RFC3339),
+		"availableAt":    nil,
+		"settledAt":      nil,
+	}
+	switch state {
+	case "available_to_worker":
+		snapshot["availableAt"] = now.Add(-time.Second).UTC().Format(time.RFC3339)
+		snapshot["settledAt"] = snapshot["availableAt"]
+	case "cancelled", "refused":
+		snapshot["settledAt"] = now.Add(-time.Second).UTC().Format(time.RFC3339)
+	}
+	snapshot["receiptDigest"] = q2CanonicalDigest(t, snapshot)
+	receipt := map[string]any{
+		"formatVersion": 1,
+		"action":        action,
+		"reservationId": reservationID,
+		"runId":         runID,
+		"guidance":      snapshot,
+	}
+	encoded, err := json.Marshal(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
+// q2LegacyJourney is the existing legacy Recommend automatic journey: unqualified
+// capability, mode recommend. It must produce zero native guidance.
+func q2LegacyJourney(t *testing.T) (managerCoordinatorFixture, *state.Store, *fakeManagerControl, *fakeManagerHelper, *Coordinator, model.Manifest, model.InsightsManagerPolicyManifestV1) {
+	t.Helper()
+	fixture := loadManagerCoordinatorFixture(t)
+	policy := fixture.Policy
+	policy.PolicyRevision = fixture.AutomaticReservation.PolicyRevision
+	policy.RunGeneration = 2
+	policy.ValidUntil = fixture.AutomaticReservation.ExpiresAt
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	seedManagerCoordinatorAuthority(t, store, fixture)
+	helper := &fakeManagerHelper{reviewOutput: automaticManagerReviewReceipt(t, fixture)}
+	control := &fakeManagerControl{reservation: fixture.AutomaticReservation, dynamic: true}
+	requireManagerStartReportBeforeHelper(t, helper, control)
+	now := fixture.AutomaticReservation.ExpiresAt.Add(-30 * time.Second)
+	coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return now }}
+	manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
+		InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{policy}}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+	batch := managerInsightBatch(fixture, fixture.AutomaticReservation.PolicyRevision, "batch_q2_legacy0001")
+	receipt := model.InsightBatchReceiptV1{BatchID: batch.BatchID, Accepted: len(batch.Findings), ThroughSequence: batch.ThroughSequence}
+	if err := coordinator.ObserveAcknowledgedInsightBatch(context.Background(), batch, receipt); err != nil {
+		t.Fatal(err)
+	}
+	if len(control.reservations) != 1 || len(q2ActionCalls(helper.calls, "start_review")) != 1 {
+		t.Fatalf("legacy journey precondition: reservations=%d start_review=%d", len(control.reservations), len(q2ActionCalls(helper.calls, "start_review")))
+	}
+	if len(control.reports) == 0 || control.reports[len(control.reports)-1].State != "recommended" {
+		t.Fatalf("legacy journey precondition: terminal report ACK = %#v", control.reports)
+	}
+	return fixture, store, control, helper, coordinator, manifest, policy
+}
+
+// q2QualifiedJourney seeds the qualified automatic origin: mode auto_steer with
+// the negotiated tuple seam, custom native version and exact plugin/profile/source
+// capability, then runs the automatic review to a terminal recommended ACK.
+
+// q2SeedManagerFinding seeds the acknowledged finding without re-running the
+// default capability prerequisites (the qualified journey seeds its own
+// capability explicitly).
+func q2SeedManagerFinding(t *testing.T, store *state.Store, fixture managerCoordinatorFixture) {
+	t.Helper()
+	source := fixture.Review.Source
+	finding := model.InsightFindingV1{FindingID: fixture.Review.FindingID, RuleID: fixture.Review.RuleID, State: "open",
+		Revision: fixture.Review.FindingRevision, FirstSequence: 1, LastSequence: 8, Count: 4, Threshold: 3,
+		MatchedCallIDs: []string{"call_manager0001"}, FirstObservedAt: fixture.Review.ValidUntil.Add(-time.Minute),
+		LastObservedAt: fixture.Review.ValidUntil.Add(-time.Minute), Coverage: "complete", ToolCategory: "shell", Phase: "tool"}
+	if err := store.PutManagerFinding(context.Background(), state.LocalManagerFinding{Finding: finding, Source: source,
+		PolicyRevision: fixture.Review.PolicyRevision, JournalGeneration: "journal_manager0001", Acknowledged: true}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func q2QualifiedJourney(t *testing.T) (managerCoordinatorFixture, *state.Store, *fakeManagerControl, *fakeManagerHelper, *Coordinator, model.Manifest, model.InsightsManagerPolicyManifestV1, model.InsightsManagerRunReportV1, map[string]any, bool) {
+	t.Helper()
+	fixture := loadManagerCoordinatorFixture(t)
+	policy := fixture.Policy
+	policy.Mode = "auto_steer"
+	policy.AutoSteerAvailable = false
+	policy.PolicyRevision = fixture.AutomaticReservation.PolicyRevision
+	policy.RunGeneration = 180
+	policy.ValidUntil = fixture.AutomaticReservation.ExpiresAt
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	policy = q2MergeQualifiedPolicy(t, policy, fixture.Review.ManagerProfile.ProfileDigest)
+	qualified := state.LocalManagerCapability{
+		RegisteredSourceID: fixture.Review.Source.RegisteredSourceID, ServiceRegistrationID: fixture.Review.Source.ServiceRegistrationID,
+		ServiceGeneration: fixture.Review.Source.ServiceGeneration, WorkspaceEpoch: fixture.Review.Source.WorkspaceEpoch,
+		NativeSessionID: fixture.Review.Source.NativeSessionID, SandboxID: fixture.Policy.SandboxID, SandboxGeneration: fixture.Review.Source.SandboxGeneration,
+		ProfileRevision: fixture.Review.Source.ProfileRevision, InstructionRevision: fixture.Review.Source.InstructionRevision,
+		NativeVersion: "2.0.14-wm.1", NativeSourceRevision: "08462140ec0de1e4b17d4a353d8d5827f53cf7b0",
+		Protocol: "opencode-supervisor/1", NativeProtocol: "openai_chat", ProviderID: "deepseek", ModelID: "deepseek-chat",
+		ProviderRouteDigest: fixture.Review.ProviderRouteDigest, RecipeIDs: []string{fixture.Review.RecipeID},
+		ManagerPluginDigest: "sha256:f7d9cec7e6bcfef134b0d27c5bd1526a0199859b5954c0dae523ff843eaf7a94",
+		ManagerProfile:      fixture.Review.ManagerProfile, MaxInputTokens: 8000, MaxOutputTokens: 1000,
+		FinalRequestMaxBytes: 7000, ToolsAllowed: false, MediaAllowed: false, HardOutputTokenLimit: true, Available: true,
+	}
+	qualified = q2MergeQualifiedCapability(t, qualified)
+	seedManagerCoordinatorPrerequisites(t, store, fixture, qualified)
+	q2SeedManagerFinding(t, store, fixture)
+	report := model.InsightsManagerPolicyReportV1{FormatVersion: 1, SandboxID: policy.SandboxID,
+		SandboxGeneration: fixture.Review.Source.SandboxGeneration, PolicyRevision: policy.PolicyRevision, RunGeneration: policy.RunGeneration,
+		Status: "applied", Recommend: model.InsightsManagerCapabilityV1{Available: true},
+		ReceiptDigest: "sha256:" + strings.Repeat("9", 64)}
+	if err := store.PutManagerPolicy(context.Background(), state.LocalManagerPolicy{Manifest: policy, Report: report}); err != nil {
+		t.Fatal(err)
+	}
+	helper := &fakeManagerHelper{reviewOutput: automaticManagerReviewReceipt(t, fixture)}
+	control := &fakeManagerControl{reservation: fixture.AutomaticReservation, dynamic: true}
+	now := fixture.AutomaticReservation.ExpiresAt.Add(-30 * time.Second)
+	coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return now }}
+	manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
+		InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{policy}}
+	batch := managerInsightBatch(fixture, fixture.AutomaticReservation.PolicyRevision, "batch_q2_qualified0001")
+	receipt := model.InsightBatchReceiptV1{BatchID: batch.BatchID, Accepted: len(batch.Findings), ThroughSequence: batch.ThroughSequence}
+	_ = coordinator.ObserveAcknowledgedInsightBatch(context.Background(), batch, receipt)
+	admitted := len(control.reservations) == 1 && len(q2ActionCalls(helper.calls, "start_review")) == 1 &&
+		len(control.reports) > 0 && control.reports[len(control.reports)-1].State == "recommended"
+	terminal := model.InsightsManagerRunReportV1{}
+	if len(control.reports) > 0 {
+		terminal = control.reports[len(control.reports)-1]
+	}
+	var authority map[string]any
+	if starts := q2ActionCalls(helper.calls, "start_review"); len(starts) == 1 {
+		authority, _ = starts[0].Payload["authority"].(map[string]any)
+	}
+	return fixture, store, control, helper, coordinator, manifest, policy, terminal, authority, admitted
+}
+
+func q2QualifiedPrereqs(t *testing.T, helper *fakeManagerHelper, authority map[string]any, terminal model.InsightsManagerRunReportV1, sandboxID string, now time.Time) string {
+	t.Helper()
+	if terminal.Proposal == nil || terminal.Proposal.GuidanceDigest == nil || *terminal.Proposal.GuidanceDigest == "" {
+		t.Fatalf("qualified terminal recommended proposal omitted guidanceDigest: %#v", terminal.Proposal)
+	}
+	guidanceDigest := *terminal.Proposal.GuidanceDigest
+	helper.outputs = map[string][]byte{
+		"dispatch_guidance": q2GuidanceReceipt(t, "dispatch_guidance", sandboxID, authority, guidanceDigest, "pending", now),
+		"observe_guidance":  q2GuidanceReceipt(t, "observe_guidance", sandboxID, authority, guidanceDigest, "available_to_worker", now),
+		"cancel_guidance":   q2GuidanceReceipt(t, "cancel_guidance", sandboxID, authority, guidanceDigest, "cancelled", now),
+	}
+	return guidanceDigest
+}
+
+// TestQ2LegacyRecommendControlNeverDispatchesGuidance is the primary control:
+// unqualified legacy Recommend must produce zero native guidance and no
+// negotiation fields on any helper request.
+func TestQ2LegacyRecommendControlNeverDispatchesGuidance(t *testing.T) {
+	_, _, control, helper, coordinator, manifest, _ := q2LegacyJourney(t)
+	reportsBefore, callsBefore := len(control.reports), len(helper.calls)
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+	if dispatches := q2ActionCalls(helper.calls[callsBefore:], "dispatch_guidance"); len(dispatches) != 0 {
+		t.Fatalf("R186: legacy Recommend must never admit native guidance: %#v", helper.calls[callsBefore:])
+	}
+	if len(control.reports) != reportsBefore {
+		t.Fatalf("legacy Recommend guidance changed model reports: before=%d after=%d", reportsBefore, len(control.reports))
+	}
+	for _, call := range helper.calls[callsBefore:] {
+		if _, ok := call.Payload["runtimeContractVersion"]; ok {
+			t.Fatalf("legacy helper request carried negotiation fields: %#v", call.Payload)
+		}
+	}
+}
+
+// TestQ2QualifiedAutoSteerOriginDispatchesEndOfPassWithNegotiatedAuthority is the
+// primary qualified RED: one negotiated dispatch_guidance at end-of-pass Apply
+// after the terminal ACK, with exact request keys, origin runGeneration, real
+// canonical binding digest and the terminal guidance digest.
+func TestQ2QualifiedAutoSteerOriginDispatchesEndOfPassWithNegotiatedAuthority(t *testing.T) {
+	fixture, store, control, helper, coordinator, manifest, policy, terminal, authority, admitted := q2QualifiedJourney(t)
+	if !admitted {
+		t.Fatalf("R186/R178: qualified auto_steer origin must admit exactly one automatic review before guidance (reservations=%d start_review=%d reports=%#v)",
+			len(control.reservations), len(q2ActionCalls(helper.calls, "start_review")), control.reports)
+	}
+	capability, err := store.ManagerCapability(context.Background(), terminal.Source.RegisteredSourceID)
+	if err != nil || capability == nil {
+		t.Fatalf("qualified capability = %#v, %v", capability, err)
+	}
+	if authority["runGeneration"] != float64(policy.RunGeneration) {
+		t.Fatalf("R194/R180: negotiated start-review authority must carry origin runGeneration: %#v", authority["runGeneration"])
+	}
+	now := fixture.AutomaticReservation.ExpiresAt.Add(-30 * time.Second)
+	q2QualifiedPrereqs(t, helper, authority, terminal, capability.SandboxID, now)
+	helper.beforeCall = func(request map[string]any) error {
+		if request["action"] != "dispatch_guidance" {
+			return nil
+		}
+		run, err := store.ManagerRun(context.Background(), terminal.RunID)
+		if err != nil || run == nil {
+			return fmt.Errorf("intent check read failed: %v", err)
+		}
+		if !run.GuidanceAttempted || run.Guidance != nil {
+			return errors.New("durable attempt intent must exist before the helper POST")
+		}
+		return nil
+	}
+	reportsBefore, callsBefore := len(control.reports), len(helper.calls)
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatalf("R186: qualified end-of-pass Apply must admit the negotiated guidance attempt: %v", err)
+	}
+	dispatches := q2ActionCalls(helper.calls[callsBefore:], "dispatch_guidance")
+	if len(dispatches) != 1 {
+		t.Fatalf("R178/R186: exactly one negotiated dispatch_guidance; got %#v", helper.calls[callsBefore:])
+	}
+	request := dispatches[0].Payload
+	keys := []string{"formatVersion", "action", "instance", "runtimeContractVersion", "authority", "bindingDigest"}
+	if len(request) != len(keys) {
+		t.Fatalf("R178: dispatch_guidance keys must be exactly %v: %#v", keys, request)
+	}
+	for _, key := range keys {
+		if _, ok := request[key]; !ok {
+			t.Fatalf("R178: dispatch_guidance missing %s: %#v", key, request)
+		}
+	}
+	if request["runtimeContractVersion"] != "0.1.32" {
+		t.Fatalf("R180/R186: negotiated dispatch must carry exactly 0.1.32: %#v", request["runtimeContractVersion"])
+	}
+	dispatchAuthority, _ := request["authority"].(map[string]any)
+	if dispatchAuthority["runGeneration"] != float64(policy.RunGeneration) {
+		t.Fatalf("R180/R186: dispatch authority runGeneration = %#v want %d", dispatchAuthority["runGeneration"], policy.RunGeneration)
+	}
+	if dispatchAuthority["validUntil"] != authority["validUntil"] {
+		t.Fatalf("R180: advice lifetime must not be renewed: dispatch=%#v start=%#v", dispatchAuthority["validUntil"], authority["validUntil"])
+	}
+	reservationID, _ := dispatchAuthority["reservationId"].(string)
+	runID, _ := dispatchAuthority["runId"].(string)
+	if request["bindingDigest"] != q2BindingDigest(t, dispatchAuthority, reservationID, runID) {
+		t.Fatalf("R178/R180: dispatch bindingDigest is not the canonical digest: %#v", request["bindingDigest"])
+	}
+	if len(control.reports) != reportsBefore {
+		t.Fatalf("R178: guidance dispatch must not create a model report: before=%d after=%d", reportsBefore, len(control.reports))
+	}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+	if again := q2ActionCalls(helper.calls[callsBefore:], "dispatch_guidance"); len(again) != 1 {
+		t.Fatalf("R178/R186: one automatic attempt per episode; second pass dispatched %d", len(again))
+	}
+}
+
+// TestQ2QualifiedOriginRecoverObservesUnknownGetOnly is the recovery RED: after
+// an unknown negotiated dispatch, Recover observes GET-only exactly once and
+// never initiates another attempt or model review.
+func TestQ2QualifiedOriginRecoverObservesUnknownGetOnly(t *testing.T) {
+	fixture, store, control, helper, coordinator, manifest, _, terminal, authority, admitted := q2QualifiedJourney(t)
+	if !admitted {
+		t.Fatalf("R186/R178: qualified auto_steer origin must admit exactly one automatic review before recovery (reports=%#v)", control.reports)
+	}
+	capability, err := store.ManagerCapability(context.Background(), terminal.Source.RegisteredSourceID)
+	if err != nil || capability == nil {
+		t.Fatalf("qualified capability = %#v, %v", capability, err)
+	}
+	now := fixture.AutomaticReservation.ExpiresAt.Add(-30 * time.Second)
+	q2QualifiedPrereqs(t, helper, authority, terminal, capability.SandboxID, now)
+	helper.loseActions = map[string]bool{"dispatch_guidance": true}
+	callsBefore := len(helper.calls)
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Logf("unknown qualified dispatch surfaced: %v", err)
+	}
+	if dispatches := q2ActionCalls(helper.calls[callsBefore:], "dispatch_guidance"); len(dispatches) != 1 {
+		t.Fatalf("R186 precondition: exactly one attempted negotiated guidance before recovery; got %#v", helper.calls[callsBefore:])
+	}
+	recoverBefore := len(helper.calls)
+	if err := coordinator.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	after := helper.calls[recoverBefore:]
+	if again := q2ActionCalls(after, "dispatch_guidance"); len(again) != 0 {
+		t.Fatalf("R178/R186: Recover must never initiate another guidance attempt: %#v", after)
+	}
+	if started := q2ActionCalls(after, "start_review"); len(started) != 0 {
+		t.Fatalf("R178: Recover must never start a new model review: %#v", after)
+	}
+	observed := q2ActionCalls(after, "observe_guidance")
+	if len(observed) != 1 {
+		t.Fatalf("R178/R186: Recover must reconcile unknown guidance GET-only via observe_guidance: %#v", after)
+	}
+	observeKeys := []string{"formatVersion", "action", "instance", "runtimeContractVersion", "reservationId", "runId", "bindingDigest"}
+	if len(observed[0].Payload) != len(observeKeys) {
+		t.Fatalf("R178: observe_guidance keys must be exactly %v: %#v", observeKeys, observed[0].Payload)
+	}
+	if observed[0].Payload["runtimeContractVersion"] != "0.1.32" {
+		t.Fatalf("R180: observe_guidance must carry exactly 0.1.32: %#v", observed[0].Payload["runtimeContractVersion"])
+	}
+}
+
+// TestQ2QualifiedOriginOffCancelsPendingWithTruthfulAck is the Off RED: Off
+// fences new attempts and cancels known pending guidance through the existing
+// DELETE path with exact identity keys.
+func TestQ2QualifiedOriginOffCancelsPendingWithTruthfulAck(t *testing.T) {
+	fixture, store, control, helper, coordinator, manifest, policy, terminal, authority, admitted := q2QualifiedJourney(t)
+	if !admitted {
+		t.Fatalf("R186/R178: qualified auto_steer origin must admit exactly one automatic review before Off (reports=%#v)", control.reports)
+	}
+	capability, err := store.ManagerCapability(context.Background(), terminal.Source.RegisteredSourceID)
+	if err != nil || capability == nil {
+		t.Fatalf("qualified capability = %#v, %v", capability, err)
+	}
+	now := fixture.AutomaticReservation.ExpiresAt.Add(-30 * time.Second)
+	q2QualifiedPrereqs(t, helper, authority, terminal, capability.SandboxID, now)
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatalf("R186: qualified guidance attempt required before Off: %v", err)
+	}
+	if dispatches := q2ActionCalls(helper.calls, "dispatch_guidance"); len(dispatches) != 1 {
+		t.Fatalf("R186 precondition: pending qualified guidance attempt required before Off; got %#v", helper.calls)
+	}
+	off := policy
+	off.PolicyRevision++
+	off.RunGeneration++
+	off.Mode = "off"
+	off.AllowedRules = []string{}
+	manifest.DesiredRevision++
+	manifest.InsightsManagerPolicies = []model.InsightsManagerPolicyManifestV1{off}
+	callsBefore := len(helper.calls)
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+	after := helper.calls[callsBefore:]
+	cancels := q2ActionCalls(after, "cancel_guidance")
+	if len(cancels) != 1 {
+		t.Fatalf("R178/R186: Off must cancel known pending guidance via the existing DELETE path; got %#v", after)
+	}
+	cancelKeys := []string{"formatVersion", "action", "instance", "runtimeContractVersion", "reservationId", "runId", "bindingDigest"}
+	if len(cancels[0].Payload) != len(cancelKeys) {
+		t.Fatalf("R178: cancel_guidance keys must be exactly %v: %#v", cancelKeys, cancels[0].Payload)
+	}
+	if cancels[0].Payload["runtimeContractVersion"] != "0.1.32" {
+		t.Fatalf("R180: cancel_guidance must carry exactly 0.1.32: %#v", cancels[0].Payload["runtimeContractVersion"])
+	}
+	if again := q2ActionCalls(helper.calls, "dispatch_guidance"); len(again) != 1 {
+		t.Fatalf("R186: Off must fence new attempts; dispatches=%d", len(again))
+	}
+	storedPolicy, err := store.ManagerPolicy(context.Background(), policy.SandboxID)
+	if err != nil || storedPolicy == nil || storedPolicy.Report.Status != "applied" {
+		t.Fatalf("R194: Off applied only after known pending guidance settled: %#v, %v", storedPolicy, err)
+	}
+}
+
+// TestQ2UnknownGuidanceKeepsOffAckUnsettled proves unknown guidance stays
+// protective: Off must not cancel it, must not claim applied, and later
+// recovery remains GET-only.
+func TestQ2UnknownGuidanceKeepsOffAckUnsettled(t *testing.T) {
+	fixture, store, control, helper, coordinator, manifest, policy, terminal, authority, admitted := q2QualifiedJourney(t)
+	if !admitted {
+		t.Fatalf("qualified origin not admitted: %#v", control.reports)
+	}
+	capability, err := store.ManagerCapability(context.Background(), terminal.Source.RegisteredSourceID)
+	if err != nil || capability == nil {
+		t.Fatalf("capability = %#v, %v", capability, err)
+	}
+	now := fixture.AutomaticReservation.ExpiresAt.Add(-30 * time.Second)
+	q2QualifiedPrereqs(t, helper, authority, terminal, capability.SandboxID, now)
+	helper.loseActions = map[string]bool{"dispatch_guidance": true}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Logf("unknown dispatch surfaced: %v", err)
+	}
+	if len(q2ActionCalls(helper.calls, "dispatch_guidance")) != 1 {
+		t.Fatalf("expected one attempted dispatch before Off: %#v", helper.calls)
+	}
+	off := policy
+	off.PolicyRevision++
+	off.RunGeneration++
+	off.Mode = "off"
+	off.AllowedRules = []string{}
+	manifest.DesiredRevision++
+	manifest.InsightsManagerPolicies = []model.InsightsManagerPolicyManifestV1{off}
+	callsBefore := len(helper.calls)
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+	if cancels := q2ActionCalls(helper.calls[callsBefore:], "cancel_guidance"); len(cancels) != 0 {
+		t.Fatalf("R194: Off must not cancel unknown guidance: %#v", cancels)
+	}
+	storedPolicy, err := store.ManagerPolicy(context.Background(), policy.SandboxID)
+	if err != nil || storedPolicy == nil || storedPolicy.Report.Status == "applied" {
+		t.Fatalf("R194: Off must not claim applied while unknown guidance unsettled: %#v, %v", storedPolicy, err)
+	}
+	recoverBefore := len(helper.calls)
+	if err := coordinator.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	after := helper.calls[recoverBefore:]
+	if len(q2ActionCalls(after, "dispatch_guidance")) != 0 || len(q2ActionCalls(after, "start_review")) != 0 {
+		t.Fatalf("R194: recovery after unknown must be GET-only: %#v", after)
+	}
+	if len(q2ActionCalls(after, "observe_guidance")) != 1 {
+		t.Fatalf("R194: unknown guidance recovery must observe exactly once: %#v", after)
+	}
+}
+
+// TestQ2AttemptIntentWithoutSnapshotRecoversGetOnly proves a crash between the
+// durable intent and any result recovers without a second attempt.
+func TestQ2AttemptIntentWithoutSnapshotRecoversGetOnly(t *testing.T) {
+	fixture, store, control, helper, coordinator, _, _, terminal, authority, admitted := q2QualifiedJourney(t)
+	if !admitted {
+		t.Fatalf("qualified origin not admitted: %#v", control.reports)
+	}
+	capability, err := store.ManagerCapability(context.Background(), terminal.Source.RegisteredSourceID)
+	if err != nil || capability == nil {
+		t.Fatalf("capability = %#v, %v", capability, err)
+	}
+	now := fixture.AutomaticReservation.ExpiresAt.Add(-30 * time.Second)
+	q2QualifiedPrereqs(t, helper, authority, terminal, capability.SandboxID, now)
+	run, err := store.ManagerRun(context.Background(), terminal.RunID)
+	if err != nil || run == nil {
+		t.Fatalf("run = %#v, %v", run, err)
+	}
+	run.GuidanceAttempted = true
+	run.Guidance = nil
+	if err := store.PutManagerRun(context.Background(), *run); err != nil {
+		t.Fatal(err)
+	}
+	callsBefore := len(helper.calls)
+	if err := coordinator.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	after := helper.calls[callsBefore:]
+	if len(q2ActionCalls(after, "dispatch_guidance")) != 0 {
+		t.Fatalf("R194: recovery must never dispatch a second attempt: %#v", after)
+	}
+	if observed := q2ActionCalls(after, "observe_guidance"); len(observed) != 1 {
+		t.Fatalf("R194: attempted-without-snapshot must recover GET-only: %#v", after)
+	}
+	reloaded, err := store.ManagerRun(context.Background(), terminal.RunID)
+	if err != nil || reloaded == nil || reloaded.Guidance == nil || reloaded.Guidance.GuidanceDigest != *terminal.Proposal.GuidanceDigest {
+		t.Fatalf("R194: recovered snapshot must keep the original proposal digest: %#v, %v", reloaded, err)
+	}
+}
+
+func q2TestArtifactDigest() string { return "sha256:" + strings.Repeat("4e", 32) }
+func q2TestBinaryDigest() string   { return "sha256:" + strings.Repeat("ef", 32) }
+func q2TestImageDigest() string    { return "sha256:" + strings.Repeat("1a", 32) }
+
+const (
+	q2GuardVersion    = "warpmetal.atomic-input.v1"
+	q2CustomVersion   = "2.0.14-wm.1"
+	q2SourceRevision  = "08462140ec0de1e4b17d4a353d8d5827f53cf7b0"
+	q2PatchDigest     = "sha256:5bcf0104d17a31d5141d9ad773b7ca7fbeddeb71a4a36689d5baee9f72f0f47b"
+	q2ProfileDigest   = "sha256:4ea596774c5b66bfc395bda3f6c00765d4e89e22f270235a327872b3760e5e17"
+	q2PluginDigest    = "sha256:f7d9cec7e6bcfef134b0d27c5bd1526a0199859b5954c0dae523ff843eaf7a94"
+	q2ContractVersion = "0.1.32"
+)
+
+// q2MergedJSON overlays an exact extra JSON object onto an existing typed value
+// and returns the merged bytes, so fields the current types do not know are
+// still authored and will be captured by future typed fields via the same
+// json.Unmarshal path.
+func q2MergedJSON(t *testing.T, base any, extra string) []byte {
+	t.Helper()
+	payload, err := json.Marshal(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var merged map[string]any
+	if err := json.Unmarshal(payload, &merged); err != nil {
+		t.Fatal(err)
+	}
+	var overlay map[string]any
+	if err := json.Unmarshal([]byte(extra), &overlay); err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range overlay {
+		merged[key] = value
+	}
+	out, err := json.Marshal(merged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func q2QualifiedPolicyExtra(profileDigest string) string {
+	return fmt.Sprintf(`{"autoSteerPolicy":{"formatVersion":1,"available":true,"reason":null,"qualifiedTuple":{"nativeGuardVersion":%q,"customNativeVersion":%q,"nativeSourceRevision":%q,"patchDigest":%q,"artifactSha256":%q,"binarySha256":%q,"imageDigest":%q,"managerProfileDigest":%q,"managerPluginDigest":%q}}}`,
+		q2GuardVersion, q2CustomVersion, q2SourceRevision, q2PatchDigest, q2TestArtifactDigest(), q2TestBinaryDigest(),
+		q2TestImageDigest(), profileDigest, q2PluginDigest)
+}
+
+func q2QualifiedCapabilityExtra() string {
+	return fmt.Sprintf(`{"nativeGuard":{"guardVersion":%q,"customVersion":%q,"sourceRevision":%q,"patchDigest":%q,"artifactSha256":%q,"binarySha256":%q}}`,
+		q2GuardVersion, q2CustomVersion, q2SourceRevision, q2PatchDigest, q2TestArtifactDigest(), q2TestBinaryDigest())
+}
+
+func q2MergeQualifiedPolicy(t *testing.T, policy model.InsightsManagerPolicyManifestV1, profileDigest string) model.InsightsManagerPolicyManifestV1 {
+	t.Helper()
+	var merged model.InsightsManagerPolicyManifestV1
+	if err := json.Unmarshal(q2MergedJSON(t, policy, q2QualifiedPolicyExtra(profileDigest)), &merged); err != nil {
+		t.Fatal(err)
+	}
+	return merged
+}
+
+func q2MergeQualifiedCapability(t *testing.T, capability state.LocalManagerCapability) state.LocalManagerCapability {
+	t.Helper()
+	var merged state.LocalManagerCapability
+	if err := json.Unmarshal(q2MergedJSON(t, capability, q2QualifiedCapabilityExtra()), &merged); err != nil {
+		t.Fatal(err)
+	}
+	return merged
+}
+
+// TestQ2QualifiedWireRoundTripRetainsNegotiatedObjects is the named wire
+// serialization assertion: a valid32 policy, capability and managed service must
+// survive a JSON round trip with their qualified objects intact.
+func TestQ2QualifiedWireRoundTripRetainsNegotiatedObjects(t *testing.T) {
+	policyJSON := q2MergedJSON(t, model.InsightsManagerPolicyManifestV1{}, q2QualifiedPolicyExtra(q2ProfileDigest))
+	var policy model.InsightsManagerPolicyManifestV1
+	if err := json.Unmarshal(policyJSON, &policy); err != nil {
+		t.Fatal(err)
+	}
+	capabilityJSON := q2MergedJSON(t, state.LocalManagerCapability{}, q2QualifiedCapabilityExtra())
+	var capability state.LocalManagerCapability
+	if err := json.Unmarshal(capabilityJSON, &capability); err != nil {
+		t.Fatal(err)
+	}
+	serviceJSON := q2MergedJSON(t, model.ManagedServiceV1{FormatVersion: 1}, fmt.Sprintf(`{"runtimeContractVersion":%q,"image":{"digest":%q}}`, q2ContractVersion, q2TestImageDigest()))
+	var service model.ManagedServiceV1
+	if err := json.Unmarshal(serviceJSON, &service); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct {
+		name  string
+		value any
+		key   string
+	}{
+		{"policy", policy, "autoSteerPolicy"},
+		{"capability", capability, "nativeGuard"},
+		{"managedService", service, "runtimeContractVersion"},
+	} {
+		payload, err := json.Marshal(item.value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var round map[string]any
+		if err := json.Unmarshal(payload, &round); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := round[item.key]; !ok {
+			t.Fatalf("R189: %s JSON round trip lost %s; wire=%s", item.name, item.key, string(payload))
+		}
+	}
+}
+
+// TestQ2LegacyHelperCapabilityWireUnchangedAndNoNegotiationFields is the
+// existing-shape control: the helper capability wire stays the exact legacy 17
+// fields and the legacy policy manifest carries no negotiated extras.
+func TestQ2LegacyHelperCapabilityWireUnchangedAndNoNegotiationFields(t *testing.T) {
+	fixture, store, _, _, _, _, _ := q2LegacyJourney(t)
+	capability, err := store.ManagerCapability(context.Background(), fixture.Review.Source.RegisteredSourceID)
+	if err != nil || capability == nil {
+		t.Fatalf("capability = %#v, %v", capability, err)
+	}
+	encoded, err := json.Marshal(managerCapabilityWire(*capability))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if len(wire) != 17 {
+		t.Fatalf("legacy helper capability wire changed width: %#v", wire)
+	}
+	for _, forbidden := range []string{"nativeGuard", "runtimeContractVersion", "autoSteerPolicy", "guidance"} {
+		if _, ok := wire[forbidden]; ok {
+			t.Fatalf("legacy helper capability wire must omit %s: %#v", forbidden, wire)
+		}
+	}
+	policyEncoded, err := json.Marshal(fixture.Policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var policy map[string]any
+	if err := json.Unmarshal(policyEncoded, &policy); err != nil {
+		t.Fatal(err)
+	}
+	if available, ok := policy["autoSteerAvailable"]; !ok || available != false {
+		t.Fatalf("legacy autoSteerAvailable must stay present false: %#v", policy["autoSteerAvailable"])
+	}
+	if _, ok := policy["autoSteerPolicy"]; ok {
+		t.Fatalf("legacy policy manifest must omit the negotiated autoSteerPolicy: %#v", policy)
+	}
+}
+
+// q2RawGuidanceReceipt builds an SF-shaped raw receipt with fixed 3-digit
+// millisecond timestamps and the helper digest over the raw closed map, before
+// any Go time normalization.
+func q2RawGuidanceReceipt(t *testing.T, action, sandboxID string, authority map[string]any, guidanceDigest, state string, now time.Time) []byte {
+	t.Helper()
+	reservationID, _ := authority["reservationId"].(string)
+	runID, _ := authority["runId"].(string)
+	observed := now.UTC().Truncate(time.Second).Add(30 * time.Millisecond).Format("2006-01-02T15:04:05.000Z")
+	admitted := now.UTC().Truncate(time.Second).Format("2006-01-02T15:04:05.000Z")
+	snapshot := map[string]any{
+		"formatVersion": 1, "sandboxId": sandboxID, "reservationId": reservationID, "runId": runID,
+		"revision": 1, "bindingDigest": q2BindingDigest(t, authority, reservationID, runID),
+		"guidanceDigest": guidanceDigest, "guardId": opaqueID("guard_", runID), "pendingInputId": opaqueID("msg_", runID),
+		"state": state, "refusalCode": nil, "logCursor": nil,
+		"observedAt": observed, "admittedAt": admitted, "availableAt": nil, "settledAt": nil,
+	}
+	snapshot["receiptDigest"] = q2CanonicalDigest(t, snapshot)
+	snapshotJSON, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := map[string]any{"formatVersion": 1, "action": action, "reservationId": reservationID, "runId": runID, "guidance": json.RawMessage(snapshotJSON)}
+	payload, err := json.Marshal(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
+
+// TestQ2RawMillisecondReceiptCanonicalBeforeDecode proves the helper digest is
+// validated over the original raw strings before decoding.
+func TestQ2RawMillisecondReceiptCanonicalBeforeDecode(t *testing.T) {
+	fixture, store, control, helper, coordinator, manifest, _, terminal, authority, admitted := q2QualifiedJourney(t)
+	if !admitted {
+		t.Fatalf("qualified origin not admitted: %#v", control.reports)
+	}
+	capability, err := store.ManagerCapability(context.Background(), terminal.Source.RegisteredSourceID)
+	if err != nil || capability == nil {
+		t.Fatalf("capability = %#v, %v", capability, err)
+	}
+	now := fixture.AutomaticReservation.ExpiresAt.Add(-30 * time.Second)
+	helper.outputs = map[string][]byte{
+		"dispatch_guidance": q2RawGuidanceReceipt(t, "dispatch_guidance", capability.SandboxID, authority, *terminal.Proposal.GuidanceDigest, "pending", now),
+	}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatalf("R198-B1: raw millisecond receipt must validate before decode: %v", err)
+	}
+	run, err := store.ManagerRun(context.Background(), terminal.RunID)
+	if err != nil || run == nil || run.Guidance == nil {
+		t.Fatalf("published guidance = %#v, %v", run, err)
+	}
+	expected := now.UTC().Truncate(time.Second).Add(30 * time.Millisecond)
+	if !run.Guidance.ObservedAt.Equal(expected) {
+		t.Fatalf("R198-B1: observedAt lost the millisecond fraction: %s", run.Guidance.ObservedAt)
+	}
+	if run.Guidance.ReceiptDigest != canonicalGuidanceDigest(*run.Guidance) {
+		t.Fatalf("R198-B1: Runtime publication digest must be canonical: %s", run.Guidance.ReceiptDigest)
+	}
+}
+
+// q2AwaitingScenario drives the qualified unknown-guidance Off flow.
+func q2AwaitingScenario(t *testing.T) (*Coordinator, *state.Store, *fakeManagerHelper, managerCoordinatorFixture, model.InsightsManagerPolicyManifestV1, map[string]any, model.InsightsManagerRunReportV1) {
+	t.Helper()
+	fixture, store, control, helper, coordinator, manifest, policy, terminal, authority, admitted := q2QualifiedJourney(t)
+	if !admitted {
+		t.Fatalf("qualified origin not admitted: %#v", control.reports)
+	}
+	capability, err := store.ManagerCapability(context.Background(), terminal.Source.RegisteredSourceID)
+	if err != nil || capability == nil {
+		t.Fatalf("capability = %#v, %v", capability, err)
+	}
+	now := fixture.AutomaticReservation.ExpiresAt.Add(-30 * time.Second)
+	q2QualifiedPrereqs(t, helper, authority, terminal, capability.SandboxID, now)
+	helper.loseActions = map[string]bool{"dispatch_guidance": true}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Logf("unknown qualified dispatch surfaced: %v", err)
+	}
+	off := policy
+	off.PolicyRevision++
+	off.RunGeneration++
+	off.Mode = "off"
+	off.AllowedRules = []string{}
+	manifest.DesiredRevision++
+	manifest.InsightsManagerPolicies = []model.InsightsManagerPolicyManifestV1{off}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+	return coordinator, store, helper, fixture, off, authority, terminal
+}
+
+func q2FindPolicyReport(t *testing.T, reports []model.InsightsManagerPolicyReportV1, sandboxID string) model.InsightsManagerPolicyReportV1 {
+	t.Helper()
+	for _, report := range reports {
+		if report.SandboxID == sandboxID {
+			return report
+		}
+	}
+	t.Fatalf("policy report for %s missing: %#v", sandboxID, reports)
+	return model.InsightsManagerPolicyReportV1{}
+}
+
+// TestQ2ReportsAwaitingGuidanceAndHardwareCapability proves the closed
+// awaiting_guidance status is derived in Reports and negotiated capability
+// items carry real nativeGuard/plugin facts independent of desired Off.
+func TestQ2ReportsAwaitingGuidanceAndHardwareCapability(t *testing.T) {
+	coordinator, store, helper, fixture, off, authority, terminal := q2AwaitingScenario(t)
+	capability, err := store.ManagerCapability(context.Background(), terminal.Source.RegisteredSourceID)
+	if err != nil || capability == nil {
+		t.Fatalf("capability = %#v, %v", capability, err)
+	}
+	reports, _, _, err := coordinator.Reports(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := q2FindPolicyReport(t, reports, off.SandboxID)
+	if report.Status != "awaiting_guidance" {
+		t.Fatalf("R198-B2: Reports must derive awaiting_guidance while unknown unsettled: %#v", report)
+	}
+	payload, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(payload, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire["status"] != "awaiting_guidance" {
+		t.Fatalf("R198-B2: serialized status must be awaiting_guidance: %#v", wire["status"])
+	}
+	var negotiated *model.InsightsManagerRecommendCapabilityV1
+	for index := range report.RecommendCapabilities {
+		if report.RecommendCapabilities[index].NativeGuard != nil {
+			negotiated = &report.RecommendCapabilities[index]
+			break
+		}
+	}
+	if negotiated == nil || negotiated.ManagerPluginDigest != capability.ManagerPluginDigest ||
+		negotiated.NativeGuard.PatchDigest != capability.NativeGuard.PatchDigest ||
+		negotiated.NativeGuard.BinarySHA256 != capability.NativeGuard.BinarySHA256 {
+		t.Fatalf("R198-B3/B4: negotiated item must carry real nativeGuard/plugin facts: %#v", negotiated)
+	}
+	if !negotiated.Available || (negotiated.Reason != nil && *negotiated.Reason != "") {
+		t.Fatalf("R198-B4: hardware capability must be available independent of desired Off/lease: %#v", negotiated)
+	}
+	if report.Recommend.Available || report.Recommend.Reason == nil || *report.Recommend.Reason != "policy_off" {
+		t.Fatalf("R198-B4: policy rollup must remain mode fenced: %#v", report.Recommend)
+	}
+	now := fixture.AutomaticReservation.ExpiresAt.Add(-30 * time.Second)
+	helper.outputs["observe_guidance"] = q2GuidanceReceipt(t, "observe_guidance", capability.SandboxID, authority, *terminal.Proposal.GuidanceDigest, "available_to_worker", now)
+	if err := coordinator.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	settledReports, _, _, err := coordinator.Reports(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settled := q2FindPolicyReport(t, settledReports, off.SandboxID); settled.Status != "applied" {
+		t.Fatalf("R198-B2: settled guidance must derive applied: %#v", settled)
+	}
+}
+
+// TestQ2WireExampleExport writes actual serialized Reports examples when
+// Q2_WIRE_EXAMPLE is set.
+func TestQ2WireExampleExport(t *testing.T) {
+	path := os.Getenv("Q2_WIRE_EXAMPLE")
+	if path == "" {
+		t.Skip("Q2_WIRE_EXAMPLE not set")
+	}
+	coordinator, _, _, _, _, _, _ := q2AwaitingScenario(t)
+	reports, _, _, err := coordinator.Reports(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	example := map[string]any{"formatVersion": 1, "reports": reports}
+	payload, err := json.MarshalIndent(example, "", " ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(payload, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -36,6 +36,10 @@ func (manager *fakeManagerCoordinator) Recover(context.Context) error {
 	return nil
 }
 
+func (manager *fakeManagerCoordinator) GuidanceReports(_ context.Context) ([]model.InsightsManagerGuidanceV1, error) {
+	return nil, nil
+}
+
 func (manager *fakeManagerCoordinator) ApplyPolicies(_ context.Context, manifest model.Manifest) error {
 	manager.policyApplies = append(manager.policyApplies, manifest)
 	return nil
