@@ -551,6 +551,18 @@ func (g *Gateway) validateSessionHandoff(
 	}, ""
 }
 
+// managerInspectableTerminalState reports the valid proposal-bearing terminal
+// outcomes whose completed manager session may be opened read-only through the
+// exact handoff mapping. It admits no worker input, guidance delivery or any
+// other mutating permission.
+func managerInspectableTerminalState(state string) bool {
+	switch state {
+	case "recommended", "no_action", "needs_owner":
+		return true
+	}
+	return false
+}
+
 func (g *Gateway) validateManagerSessionHandoff(
 	ctx context.Context,
 	grant state.LocalGrant,
@@ -561,8 +573,9 @@ func (g *Gateway) validateManagerSessionHandoff(
 ) (containers.SessionHandoffLaunch, string) {
 	identity, sourceRef := target.Identity, target.Source
 	run, err := g.Store.ManagerRunBySource(ctx, sourceRef.RegisteredSourceID)
-	if err != nil || run == nil || run.Phase != "recommended" || run.Report == nil || run.Report.State != "recommended" ||
-		run.ManagerRegisteredSourceID != sourceRef.RegisteredSourceID || run.ManagerSession == nil {
+	if err != nil || run == nil || run.Report == nil || run.Report.Proposal == nil || run.ManagerSession == nil ||
+		run.Phase != run.Report.State || !managerInspectableTerminalState(run.Phase) ||
+		run.ManagerRegisteredSourceID != sourceRef.RegisteredSourceID {
 		return containers.SessionHandoffLaunch{}, "handoff_target_changed"
 	}
 	session := run.ManagerSession

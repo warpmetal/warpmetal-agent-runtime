@@ -108,12 +108,18 @@ type fakeManagerHelper struct {
 	reviewOutput []byte
 	outputs      map[string][]byte
 	loseActions  map[string]bool
+	beforeCall   func(map[string]any) error
 }
 
 func (helper *fakeManagerHelper) ExecManager(_ context.Context, sandboxID string, payload []byte) ([]byte, []byte, error) {
 	var request map[string]any
 	if err := json.Unmarshal(payload, &request); err != nil {
 		return nil, nil, err
+	}
+	if helper.beforeCall != nil {
+		if err := helper.beforeCall(request); err != nil {
+			return nil, nil, err
+		}
 	}
 	helper.calls = append(helper.calls, managerHelperCall{SandboxID: sandboxID, Payload: request})
 	action, _ := request["action"].(string)
@@ -144,12 +150,19 @@ func (helper *fakeManagerHelper) ExecManager(_ context.Context, sandboxID string
 }
 
 type fakeManagerControl struct {
-	reservations []model.InsightsManagerReservationRequestV1
-	reservation  model.InsightsManagerReservationV1
-	reports      []model.InsightsManagerRunReportV1
-	dynamic      bool
-	loseReserve  bool
-	runForReport *model.InsightsManagerReservationRequestV1
+	reservations     []model.InsightsManagerReservationRequestV1
+	reservation      model.InsightsManagerReservationV1
+	reports          []model.InsightsManagerRunReportV1
+	dynamic          bool
+	loseReserve      bool
+	runForReport     *model.InsightsManagerReservationRequestV1
+	startReportError error
+	startACKChange   func(*model.InsightsManagerActivityV1)
+	// startReportLoseOnce models a reviewing report that the backend accepted
+	// but whose reply was lost: the report was recorded, the caller sees an
+	// error, and the retry must re-send the same idempotent report instead of
+	// treating the run as helper execution_unknown.
+	startReportLoseOnce bool
 }
 
 func (control *fakeManagerControl) ReserveInsightsManagerReview(_ context.Context, request model.InsightsManagerReservationRequestV1) (model.InsightsManagerReservationV1, error) {
@@ -178,6 +191,13 @@ func (control *fakeManagerControl) ReserveInsightsManagerReview(_ context.Contex
 
 func (control *fakeManagerControl) SubmitInsightsManagerRunReport(_ context.Context, report model.InsightsManagerRunReportV1) (model.InsightsManagerActivityV1, error) {
 	control.reports = append(control.reports, report)
+	if report.State == "reviewing" && control.startReportError != nil {
+		return model.InsightsManagerActivityV1{}, control.startReportError
+	}
+	if report.State == "reviewing" && control.startReportLoseOnce {
+		control.startReportLoseOnce = false
+		return model.InsightsManagerActivityV1{}, errors.New("injected lost reviewing report reply")
+	}
 	rationale := (*string)(nil)
 	if report.Proposal != nil {
 		value := report.Proposal.RationaleCode
@@ -187,58 +207,367 @@ func (control *fakeManagerControl) SubmitInsightsManagerRunReport(_ context.Cont
 	if run := control.runForReport; run != nil {
 		requestID, findingID, ruleID, recipeID = run.RequestID, run.FindingID, run.RuleID, run.RecipeID
 	}
-	return model.InsightsManagerActivityV1{RunID: report.RunID, ReservationID: report.ReservationID, RequestID: requestID,
+	activity := model.InsightsManagerActivityV1{RunID: report.RunID, ReservationID: report.ReservationID, RequestID: requestID,
 		Manual: report.Manual, FindingID: findingID, RuleID: ruleID, RecipeID: recipeID, Source: report.Source, Target: report.Target,
 		State: report.State, RationaleCode: rationale, ModelRequests: report.Usage.ModelRequests, InputTokens: report.Usage.InputTokens,
 		OutputTokens: report.Usage.OutputTokens, ManagerSession: model.InsightsManagerActivitySessionV1{Capability: "exact_session"},
-		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}, nil
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if report.State == "reviewing" && control.startACKChange != nil {
+		control.startACKChange(&activity)
+	}
+	return activity, nil
 }
 
 func TestCoordinatorPersistsBeforeDispatchAndReconcilesLostStartAfterSQLiteReopen(t *testing.T) {
-	fixture := loadManagerCoordinatorFixture(t)
-	databasePath := filepath.Join(t.TempDir(), "runtime.sqlite3")
-	store, err := state.Open(databasePath)
+	t.Run("accepted start then ambiguous helper and reopen", func(t *testing.T) {
+		fixture := loadManagerCoordinatorFixture(t)
+		databasePath := filepath.Join(t.TempDir(), "runtime.sqlite3")
+		store, err := state.Open(databasePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		seedManagerCoordinatorAuthority(t, store, fixture)
+		helper := &fakeManagerHelper{loseStart: true, reviewOutput: managerReviewReceipt(t, fixture, "reconcile_review")}
+		control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
+		requireManagerStartReportBeforeHelper(t, helper, control)
+		now := func() time.Time { return fixture.Review.ValidUntil.Add(-30 * time.Second) }
+		coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: now}
+		manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
+			InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{fixture.Policy},
+			InsightsManagerReviews:  []model.InsightsManagerReviewManifestV1{fixture.Review}}
+		if err := coordinator.Apply(context.Background(), manifest); err == nil {
+			t.Fatal("lost start response returned success")
+		}
+		persisted, err := store.ManagerRun(context.Background(), fixture.Review.RunID)
+		if err != nil || persisted == nil || persisted.Phase != "execution_unknown" || !persisted.DispatchStarted || persisted.Report != nil {
+			t.Fatalf("durable pre-dispatch intent = %#v, %v", persisted, err)
+		}
+		if err := store.Close(); err != nil {
+			t.Fatal(err)
+		}
+		store, err = state.Open(databasePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer store.Close()
+		coordinator = &Coordinator{Store: store, Control: control, Helper: helper, Now: now}
+		if err := coordinator.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if len(helper.calls) != 2 || helper.calls[0].Payload["action"] != "start_review" || helper.calls[1].Payload["action"] != "reconcile_review" {
+			t.Fatalf("lost response replayed native work: %#v", helper.calls)
+		}
+		if len(control.reports) != 2 || control.reports[0].State != "reviewing" || control.reports[1].State != "recommended" {
+			t.Fatalf("restart replayed or omitted start report: %#v", control.reports)
+		}
+		policyReports, runReports, takeoverReports, err := coordinator.Reports(context.Background(), nil)
+		if err != nil || len(policyReports) != 1 || len(runReports) != 1 || len(takeoverReports) != 0 || runReports[0].State != "recommended" {
+			t.Fatalf("recovered reports = %#v/%#v/%#v, %v", policyReports, runReports, takeoverReports, err)
+		}
+		mapped, err := store.ManagerRunBySource(context.Background(), managerSourceID(fixture.Review.RunID))
+		if err != nil || mapped == nil || mapped.Manifest.RunID != fixture.Review.RunID || mapped.ManagerSession == nil ||
+			mapped.ManagerSession.NativeSessionID != fixture.Handoff.Handoff.Source.NativeSessionID {
+			t.Fatalf("manager session mapping = %#v, %v", mapped, err)
+		}
+	})
+	for _, refusal := range []string{"report refused", "run ACK changed", "finding ACK changed"} {
+		t.Run(refusal+" before helper and after reopen", func(t *testing.T) {
+			fixture := loadManagerCoordinatorFixture(t)
+			databasePath := filepath.Join(t.TempDir(), "runtime.sqlite3")
+			store, err := state.Open(databasePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			seedManagerCoordinatorAuthority(t, store, fixture)
+			helper := &fakeManagerHelper{reviewOutput: managerReviewReceipt(t, fixture, "start_review")}
+			control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
+			if refusal == "report refused" {
+				control.startReportError = errors.New("injected start report refusal")
+			} else {
+				control.startACKChange = func(activity *model.InsightsManagerActivityV1) {
+					if refusal == "run ACK changed" {
+						activity.RunID += "_foreign"
+					} else {
+						activity.FindingID += "_foreign"
+					}
+				}
+			}
+			now := fixture.Review.ValidUntil.Add(-30 * time.Second)
+			coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return now }}
+			manifest := model.Manifest{InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{fixture.Policy},
+				InsightsManagerReviews: []model.InsightsManagerReviewManifestV1{fixture.Review}}
+			err = coordinator.Apply(context.Background(), manifest)
+			if err == nil || len(helper.calls) != 0 {
+				t.Fatalf("unacknowledged review reached helper: helperCalls=%d error=%v", len(helper.calls), err)
+			}
+			pending, err := store.ManagerRun(context.Background(), fixture.Review.RunID)
+			if err != nil || pending == nil || !reflect.DeepEqual(pending.Manifest, fixture.Review) {
+				t.Fatalf("unacknowledged review intent was not preserved: %v", err)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+			store, err = state.Open(databasePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			coordinator.Store = store
+			err = coordinator.Recover(context.Background())
+			if err == nil || len(helper.calls) != 0 {
+				t.Fatalf("unacknowledged reopened review reached helper: helperCalls=%d error=%v", len(helper.calls), err)
+			}
+			control.startReportError, control.startACKChange = nil, nil
+			if err := coordinator.Recover(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if len(helper.calls) != 1 || helper.calls[0].Payload["action"] != "start_review" {
+				t.Fatalf("fresh acknowledged recovery did not start exactly once: %#v", helper.calls)
+			}
+		})
+	}
+	t.Run("lost reviewing reply retries the same idempotent report before helper", func(t *testing.T) {
+		fixture := loadManagerCoordinatorFixture(t)
+		databasePath := filepath.Join(t.TempDir(), "runtime.sqlite3")
+		store, err := state.Open(databasePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		seedManagerCoordinatorAuthority(t, store, fixture)
+		helper := &fakeManagerHelper{reviewOutput: managerReviewReceipt(t, fixture, "start_review")}
+		control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review), startReportLoseOnce: true}
+		now := fixture.Review.ValidUntil.Add(-30 * time.Second)
+		coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return now }}
+		manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
+			InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{fixture.Policy},
+			InsightsManagerReviews:  []model.InsightsManagerReviewManifestV1{fixture.Review}}
+		// The backend accepted the reviewing report but the reply was lost: the
+		// run must stay a non-dispatched start_ack_pending intent, never helper
+		// execution_unknown, and the helper must see zero work.
+		if err := coordinator.Apply(context.Background(), manifest); err == nil || len(helper.calls) != 0 {
+			t.Fatalf("lost reviewing reply returned success or reached helper: calls=%d err=%v", len(helper.calls), err)
+		}
+		if len(control.reports) != 1 || control.reports[0].State != "reviewing" {
+			t.Fatalf("lost reviewing report trace = %#v", control.reports)
+		}
+		pending, err := store.ManagerRun(context.Background(), fixture.Review.RunID)
+		if err != nil || pending == nil || pending.Phase != "start_ack_pending" || pending.DispatchStarted || pending.Report != nil {
+			t.Fatalf("lost reviewing reply intent = %#v, %v", pending, err)
+		}
+		if err := store.Close(); err != nil {
+			t.Fatal(err)
+		}
+		store, err = state.Open(databasePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer store.Close()
+		coordinator.Store = store
+		if err := coordinator.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if len(control.reports) != 3 || control.reports[0].State != "reviewing" || control.reports[1].State != "reviewing" ||
+			control.reports[2].State != "recommended" || !reflect.DeepEqual(control.reports[0], control.reports[1]) {
+			t.Fatalf("lost reviewing reply was not retried idempotently: %#v", control.reports)
+		}
+		if len(helper.calls) != 1 || helper.calls[0].Payload["action"] != "start_review" {
+			t.Fatalf("lost reviewing reply recovery started %d helper calls: %#v", len(helper.calls), helper.calls)
+		}
+		settled, err := store.ManagerRun(context.Background(), fixture.Review.RunID)
+		if err != nil || settled == nil || settled.Phase != "recommended" || settled.Report == nil {
+			t.Fatalf("lost reviewing reply recovery settlement = %#v, %v", settled, err)
+		}
+	})
+	for _, loss := range []string{"pending ACK expires", "pending ACK source unavailable", "ACK latency expires"} {
+		t.Run(loss+" settles zero native work", func(t *testing.T) {
+			fixture := loadManagerCoordinatorFixture(t)
+			databasePath := filepath.Join(t.TempDir(), "runtime.sqlite3")
+			store, err := state.Open(databasePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			seedManagerCoordinatorAuthority(t, store, fixture)
+			helper := &fakeManagerHelper{reviewOutput: managerReviewReceipt(t, fixture, "start_review")}
+			control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
+			now := fixture.Review.ValidUntil.Add(-30 * time.Second)
+			if loss == "ACK latency expires" {
+				control.startACKChange = func(*model.InsightsManagerActivityV1) { now = fixture.Review.ValidUntil.Add(time.Second) }
+			} else {
+				control.startReportError = errors.New("injected start report refusal")
+			}
+			coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return now }}
+			err = coordinator.Apply(context.Background(), model.Manifest{
+				InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{fixture.Policy},
+				InsightsManagerReviews:  []model.InsightsManagerReviewManifestV1{fixture.Review},
+			})
+			if len(helper.calls) != 0 || (loss != "ACK latency expires" && err == nil) {
+				t.Fatalf("unacknowledged/expired start reached helper: calls=%d err=%v", len(helper.calls), err)
+			}
+			if loss != "ACK latency expires" {
+				pending, err := store.ManagerRun(context.Background(), fixture.Review.RunID)
+				if err != nil || pending == nil || pending.Phase != "start_ack_pending" || pending.DispatchStarted {
+					t.Fatalf("unstarted ACK intent changed: %#v %v", pending, err)
+				}
+				if loss == "pending ACK expires" {
+					now = fixture.Review.ValidUntil.Add(time.Second)
+				} else {
+					source, err := store.ContinuitySource(context.Background(), fixture.Review.Source.RegisteredSourceID)
+					if err != nil {
+						t.Fatal(err)
+					}
+					source.Report.Availability = "unavailable"
+					if err := store.PutContinuitySource(context.Background(), *source); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := store.Close(); err != nil {
+					t.Fatal(err)
+				}
+				store, err = state.Open(databasePath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				coordinator.Store = store
+				if err := coordinator.Recover(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			defer store.Close()
+			settled, err := store.ManagerRun(context.Background(), fixture.Review.RunID)
+			if err != nil || settled == nil || settled.Phase != "failed" || settled.DispatchStarted || settled.Report == nil ||
+				!settled.Report.Usage.UsageCertain || settled.Report.Usage.UnusedProof != "trusted_zero_start" ||
+				settled.Report.Usage.ModelRequests != 0 || settled.Report.Usage.InputTokens != 0 || settled.Report.Usage.OutputTokens != 0 || len(helper.calls) != 0 {
+				t.Fatalf("unstarted review did not settle unused: %#v %v", settled, err)
+			}
+		})
+	}
+}
+
+// TestCoordinatorReportsActualTerminalProposalOutcomes is the paired strict
+// terminal-semantics journey: the helper receipt's nullable proposal carries
+// the actual closed outcome/rationale/citation bounds, and Runtime must report
+// no_action as no_action instead of relabeling it, preserving the actual
+// negative proposal summary and manager session. The report is asserted through
+// its JSON shape so this journey does not depend on production structs that the
+// C1 implementation changes.
+func TestCoordinatorReportsActualTerminalProposalOutcomes(t *testing.T) {
+	for _, terminal := range []struct {
+		status  string
+		outcome string
+	}{
+		{status: "no_action", outcome: "no_action"},
+		{status: "needs_owner", outcome: "needs_owner"},
+	} {
+		t.Run(terminal.status+" keeps the actual proposal summary", func(t *testing.T) {
+			fixture := loadManagerCoordinatorFixture(t)
+			databasePath := filepath.Join(t.TempDir(), "runtime.sqlite3")
+			store, err := state.Open(databasePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			seedManagerCoordinatorAuthority(t, store, fixture)
+			helper := &fakeManagerHelper{reviewOutput: managerTerminalReceipt(t, fixture, terminal.status, terminal.outcome)}
+			control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
+			now := fixture.Review.ValidUntil.Add(-30 * time.Second)
+			coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return now }}
+			manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
+				InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{fixture.Policy},
+				InsightsManagerReviews:  []model.InsightsManagerReviewManifestV1{fixture.Review}}
+			if err := coordinator.Apply(context.Background(), manifest); err != nil {
+				t.Fatalf("actual terminal %s receipt was refused: %v", terminal.status, err)
+			}
+			stored, err := store.ManagerRun(context.Background(), fixture.Review.RunID)
+			if err != nil || stored == nil || stored.Phase != terminal.status || stored.Report == nil {
+				t.Fatalf("terminal %s run = %#v, %v", terminal.status, stored, err)
+			}
+			report := managerReportJSON(t, stored.Report)
+			if report["state"] != terminal.status {
+				t.Fatalf("terminal report state changed: %#v", report["state"])
+			}
+			proposal, ok := report["proposal"].(map[string]any)
+			// The receipt's actual citation bounds 3..5 differ from the seeded
+			// finding window 1..8: a synthesized finding window is a failure.
+			if !ok || proposal["outcome"] != terminal.outcome || proposal["rationaleCode"] != "unchanged_failure_repeated" ||
+				proposal["recipeId"] != fixture.Review.RecipeID || proposal["guidanceDigest"] != nil ||
+				proposal["firstSequence"] != float64(3) || proposal["lastSequence"] != float64(5) {
+				t.Fatalf("actual terminal proposal summary changed: %#v", report["proposal"])
+			}
+			if report["managerSession"] == nil {
+				t.Fatalf("terminal negative result dropped the manager session: %#v", report)
+			}
+			if len(helper.calls) != 1 || helper.calls[0].Payload["action"] != "start_review" {
+				t.Fatalf("terminal outcome repeated native work: %#v", helper.calls)
+			}
+		})
+	}
+}
+
+func managerTerminalReceipt(t *testing.T, fixture managerCoordinatorFixture, status, outcome string) []byte {
+	t.Helper()
+	payload := managerReviewReceipt(t, fixture, "start_review")
+	var receipt map[string]any
+	if err := json.Unmarshal(payload, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	receipt["status"] = status
+	receipt["proposal"] = map[string]any{"recipeId": fixture.Review.RecipeID, "outcome": outcome,
+		"rationaleCode": "unchanged_failure_repeated", "firstSequence": 3, "lastSequence": 5, "guidanceDigest": nil}
+	// A null-guidance negative proposal requires the guidance receipt digest to
+	// be null too; the seeded positive fixture is not coherent negative output.
+	if guidance, ok := receipt["guidanceReceipt"].(map[string]any); ok {
+		guidance["guidanceDigest"] = nil
+	}
+	encoded, err := json.Marshal(receipt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedManagerCoordinatorAuthority(t, store, fixture)
-	helper := &fakeManagerHelper{loseStart: true, reviewOutput: managerReviewReceipt(t, fixture, "reconcile_review")}
-	control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
-	now := func() time.Time { return fixture.Review.ValidUntil.Add(-30 * time.Second) }
-	coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: now}
-	manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
-		InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{fixture.Policy},
-		InsightsManagerReviews:  []model.InsightsManagerReviewManifestV1{fixture.Review}}
-	if err := coordinator.Apply(context.Background(), manifest); err == nil {
-		t.Fatal("lost start response returned success")
-	}
-	persisted, err := store.ManagerRun(context.Background(), fixture.Review.RunID)
-	if err != nil || persisted == nil || persisted.Phase != "execution_unknown" || !persisted.DispatchStarted || persisted.Report != nil {
-		t.Fatalf("durable pre-dispatch intent = %#v, %v", persisted, err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	store, err = state.Open(databasePath)
+	return encoded
+}
+
+func managerReportJSON(t *testing.T, report *model.InsightsManagerRunReportV1) map[string]any {
+	t.Helper()
+	payload, err := json.Marshal(report)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
-	coordinator = &Coordinator{Store: store, Control: control, Helper: helper, Now: now}
-	if err := coordinator.Recover(context.Background()); err != nil {
+	var value map[string]any
+	if err := json.Unmarshal(payload, &value); err != nil {
 		t.Fatal(err)
 	}
-	if len(helper.calls) != 2 || helper.calls[0].Payload["action"] != "start_review" || helper.calls[1].Payload["action"] != "reconcile_review" {
-		t.Fatalf("lost response replayed native work: %#v", helper.calls)
-	}
-	policyReports, runReports, takeoverReports, err := coordinator.Reports(context.Background(), nil)
-	if err != nil || len(policyReports) != 1 || len(runReports) != 1 || len(takeoverReports) != 0 || runReports[0].State != "recommended" {
-		t.Fatalf("recovered reports = %#v/%#v/%#v, %v", policyReports, runReports, takeoverReports, err)
-	}
-	mapped, err := store.ManagerRunBySource(context.Background(), managerSourceID(fixture.Review.RunID))
-	if err != nil || mapped == nil || mapped.Manifest.RunID != fixture.Review.RunID || mapped.ManagerSession == nil ||
-		mapped.ManagerSession.NativeSessionID != fixture.Handoff.Handoff.Source.NativeSessionID {
-		t.Fatalf("manager session mapping = %#v, %v", mapped, err)
+	return value
+}
+
+// Standalone journey guard: the actual cross-repository producer independently
+// checks the committed PostgreSQL state. Here existing helper dispatch tests
+// also enforce exact wire authority and zero start usage before their fixtures.
+func requireManagerStartReportBeforeHelper(t *testing.T, helper *fakeManagerHelper, control *fakeManagerControl) {
+	t.Helper()
+	helper.beforeCall = func(request map[string]any) error {
+		if request["action"] != "start_review" {
+			return nil
+		}
+		var review model.InsightsManagerReviewManifestV1
+		payload, err := json.Marshal(request["authority"])
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(payload, &review); err != nil {
+			return err
+		}
+		if len(control.reports) != 1 {
+			t.Fatalf("reviewing report must precede helper: reports=%d", len(control.reports))
+		}
+		report := control.reports[0]
+		if report.FormatVersion != 1 || report.State != "reviewing" || report.RunID != review.RunID ||
+			report.ReservationID != review.ReservationID || report.Manual != review.Manual || report.PolicyRevision != review.PolicyRevision ||
+			report.Source != review.Source || !reflect.DeepEqual(report.Target, review.Target) ||
+			report.Proposal != nil || report.ManagerSession != nil || report.ErrorCode != nil || !digestPattern.MatchString(report.ReceiptDigest) ||
+			report.Usage.ModelRequests != 0 || report.Usage.InputTokens != 0 || report.Usage.OutputTokens != 0 ||
+			report.Usage.UsageCertain || report.Usage.UnusedProof != "none" {
+			t.Fatalf("start report changed authority or charged before helper: state=%s run=%s", report.State, report.RunID)
+		}
+		return nil
 	}
 }
 
@@ -262,6 +591,7 @@ func TestCoordinatorContinuesDurableReviewingRunWithoutRestartingIt(t *testing.T
 		"continue_review": managerReviewReceipt(t, fixture, "continue_review"),
 	}}
 	control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
+	requireManagerStartReportBeforeHelper(t, helper, control)
 	coordinator := &Coordinator{Store: store, Control: control, Helper: helper,
 		Now: func() time.Time { return fixture.Review.ValidUntil.Add(-30 * time.Second) }}
 	manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
@@ -276,6 +606,9 @@ func TestCoordinatorContinuesDurableReviewingRunWithoutRestartingIt(t *testing.T
 	}
 	if err := coordinator.Recover(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	if len(control.reports) != 2 || control.reports[0].State != "reviewing" || control.reports[1].State != "recommended" {
+		t.Fatalf("continued review replayed or omitted start report: %#v", control.reports)
 	}
 	if len(helper.calls) != 2 || helper.calls[0].Payload["action"] != "start_review" || helper.calls[1].Payload["action"] != "continue_review" {
 		t.Fatalf("review continuation calls = %#v", helper.calls)
@@ -296,6 +629,7 @@ func TestCoordinatorAutomaticReviewStartsOnceAfterACKAndEnforcesCooldown(t *test
 	seedManagerCoordinatorAuthority(t, store, fixture)
 	helper := &fakeManagerHelper{reviewOutput: automaticManagerReviewReceipt(t, fixture)}
 	control := &fakeManagerControl{reservation: fixture.AutomaticReservation, dynamic: true}
+	requireManagerStartReportBeforeHelper(t, helper, control)
 	now := fixture.AutomaticReservation.ExpiresAt.Add(-30 * time.Second)
 	coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return now }}
 	manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
@@ -817,8 +1151,15 @@ func loadManagerCoordinatorFixture(t *testing.T) managerCoordinatorFixture {
 	return fixture
 }
 
-func seedManagerCoordinatorPrerequisites(t *testing.T, store *state.Store, fixture managerCoordinatorFixture) {
+// seedManagerCoordinatorPrerequisites seeds the local sandbox, managed service,
+// continuity source and manager capability. An optional explicit capability
+// lets a caller seed one full initial capability through the same validated
+// store boundary; ordinary calls keep the controlled default literal unchanged.
+func seedManagerCoordinatorPrerequisites(t *testing.T, store *state.Store, fixture managerCoordinatorFixture, explicit ...state.LocalManagerCapability) {
 	t.Helper()
+	if len(explicit) > 1 {
+		t.Fatal("seedManagerCoordinatorPrerequisites accepts at most one explicit capability")
+	}
 	ctx := context.Background()
 	source := fixture.Review.Source
 	if err := store.PutSandbox(ctx, state.LocalSandbox{ID: fixture.Policy.SandboxID, DesiredState: "running", ObservedState: "running",
@@ -867,6 +1208,9 @@ func seedManagerCoordinatorPrerequisites(t *testing.T, store *state.Store, fixtu
 		InstructionRevision: source.InstructionRevision, ProviderID: "deepseek", ModelID: "deepseek-chat", NativeProtocol: "openai_chat",
 		Protocol: "opencode-supervisor/1", ProviderRouteDigest: fixture.Review.ProviderRouteDigest, ManagerProfile: fixture.Review.ManagerProfile,
 		RecipeIDs: []string{fixture.Review.RecipeID}, MaxInputTokens: 8000, MaxOutputTokens: 1000, Available: true}
+	if len(explicit) == 1 {
+		capability = explicit[0]
+	}
 	if err := store.PutManagerCapability(ctx, capability); err != nil {
 		t.Fatal(err)
 	}
@@ -1010,6 +1354,14 @@ func managerReviewReceipt(t *testing.T, fixture managerCoordinatorFixture, actio
 		t.Fatal(err)
 	}
 	session["managerProfile"] = profileMap
+	// The paired receipt carries the actual six-key proposal. The controlled
+	// local factory derives its recommendation bounds from the seeded finding
+	// (firstSequence 1, lastSequence 8) and keeps the digest coherent with the
+	// guidance receipt; terminal-negative journeys override both.
+	guidance := receipt["guidanceReceipt"].(map[string]any)
+	receipt["proposal"] = map[string]any{"recipeId": fixture.Review.RecipeID, "outcome": "recommendation",
+		"rationaleCode": "unchanged_failure_repeated", "firstSequence": 1, "lastSequence": 8,
+		"guidanceDigest": guidance["guidanceDigest"]}
 	encoded, err := json.Marshal(receipt)
 	if err != nil {
 		t.Fatal(err)

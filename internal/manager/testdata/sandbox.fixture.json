@@ -181,7 +181,15 @@
       "pendingInputId": null
     },
     "receiptDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
-    "error": null
+    "error": null,
+    "proposal": {
+      "recipeId": "inspect_first_failure@1",
+      "outcome": "recommendation",
+      "rationaleCode": "unchanged_failure_repeated",
+      "firstSequence": 40,
+      "lastSequence": 40,
+      "guidanceDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    }
   },
   "findingEvidence": {
     "findingId": "finding_example_0001",

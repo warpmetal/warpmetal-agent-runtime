@@ -352,3 +352,57 @@ Managed managers use idle status and native registration for readiness. Only wor
 Lease renewal and fresh native checks refresh source health while retaining a semantically identical completed managed-service receipt for the same action. Backend observations do not rewrite that action’s desired session mode.
 
 Idle worker completion updates only the execution flag when the exact observed source and lifecycle still match, preserving newer readiness observations and lifecycle fences.
+
+### Managed review execution, findings and hold recovery
+
+Automatic and manual manager reviews follow one durable lifecycle. Runtime first
+persists a non-dispatched `start_ack_pending` intent and submits the exact
+canonical `reviewing` report for that reservation, run, finding, source, target
+and policy revision. Only after the backend acknowledges that exact identity does
+Runtime persist possible dispatch (`execution_unknown` with `DispatchStarted`) and
+invoke the helper. A refused or mismatched acknowledgement dispatches zero helper
+calls; a lost acknowledgement retries the same idempotent report while the
+original authority is valid. A run that never crossed possible dispatch settles
+as failed with `trusted_zero_start` and zero usage once its authority is gone; a
+possible or actual dispatch never claims trusted zero.
+
+`Continue` and `Reconcile` observe the stored native session and typed completed
+assistant for the same admitted run instead of replaying `start_review` or
+creating a new session. `Reconcile`, including `request_evidence` results, is
+GET-only; any permitted `Continue` second evidence prompt remains behind the
+helper's fresh original-authority checks and the existing two-request budget.
+Non-start recovery does not require a local finding row. Usage stays uncertain
+and conservative until a truthful terminal receipt arrives, and terminal reports
+are immutable and re-sent exactly.
+
+A terminal receipt carries the actual outcome. `recommended` requires bounded
+non-empty guidance, `no_action` carries null guidance, and `needs_owner` permits
+null or bounded guidance; an invalid completed answer settles as `needs_owner`
+with a null proposal under the existing closed error. Runtime passes through the
+actual proposal summary, rationale, cited sequence bounds and manager session; it
+never invents a recommendation, rationale or finding window, and raw guidance and
+citations remain private.
+
+Findings acknowledged by the backend while the manager is Off, or under an older
+policy, are retained as observation evidence whose policy revision is provenance,
+not execution permission. Automatic reviews still require the current recommend
+policy with its allowed-rule, cooldown, episode and limit fences. A manual review
+may instead consume the optional backend `findingEvidence` snapshot for a finding
+whose local batch record no longer exists, validated against the manifest
+id/revision/rule/native session and its bounded shape; retention or the snapshot
+alone never authorizes a review without the fresh current policy, source, target
+and capability fences.
+
+Protective Pause and Resume hold operations recover by exact persisted operation
+identity. Restart or lost-response recovery observes the same operation with
+`reconcile_intervention_hold`, including after the 120-second effect lease
+expires, and never replays an acquire or release. Acquisition and release unknown
+phases are preserved across read failures; a fresh observation never authorizes a
+new release or prompt, and a settled Resume keeps its local `released` phase with
+a canonical `ready` report.
+
+Protocol compatibility: the managed control protocol is planned to be required by
+the backend at admission from Runtime 0.1.31 or newer. The paired backend compatibility gate must deliver only the legacy seven-field
+manifest shape to nodes on the older strict 0.1.30 decoder; that gate is still
+pending. A signed 0.1.31 candidate remains qualification-pending; this
+section does not claim a released, deployed or live-verified state.

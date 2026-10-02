@@ -275,7 +275,7 @@
         "runId": {"$ref": "#/$defs/id"},
         "requestId": {"$ref": "#/$defs/id"},
         "manual": {"type": "boolean"},
-        "state": {"type": "string", "enum": ["reserved", "reviewing", "recommended", "needs_owner", "failed", "expired"]},
+        "state": {"type": "string", "enum": ["reserved", "reviewing", "recommended", "no_action", "needs_owner", "failed", "expired"]},
         "findingId": {"$ref": "#/$defs/id"},
         "findingRevision": {"type": "integer", "minimum": 1},
         "policyRevision": {"type": "integer", "minimum": 1},
@@ -314,7 +314,7 @@
         "reservationId": {"$ref": "#/$defs/id"},
         "runId": {"$ref": "#/$defs/id"},
         "manual": {"type": "boolean"},
-        "state": {"type": "string", "enum": ["reviewing", "recommended", "needs_owner", "failed"]},
+        "state": {"type": "string", "enum": ["reviewing", "recommended", "no_action", "needs_owner", "failed"]},
         "policyRevision": {"type": "integer", "minimum": 1},
         "source": {"$ref": "#/$defs/source"},
         "target": {"$ref": "#/$defs/target"},
@@ -339,7 +339,7 @@
         "recipeId": {"$ref": "#/$defs/recipe"},
         "source": {"$ref": "#/$defs/source"},
         "target": {"$ref": "#/$defs/target"},
-        "state": {"type": "string", "enum": ["reserved", "reviewing", "recommended", "needs_owner", "failed", "expired"]},
+        "state": {"type": "string", "enum": ["reserved", "reviewing", "recommended", "no_action", "needs_owner", "failed", "expired"]},
         "rationaleCode": {"oneOf": [{"$ref": "#/$defs/rationaleCode"}, {"type": "null"}]},
         "errorCode": {"$ref": "#/$defs/errorCode"},
         "modelRequests": {"type": "integer", "minimum": 0, "maximum": 2},
@@ -399,9 +399,78 @@
       "required": ["source", "providerRouteDigest", "providerId", "modelId", "protocol", "recipeIds", "maxInputTokens", "maxOutputTokens", "toolsAllowed", "mediaAllowed", "managerProfile", "available", "reason"]
     },
     "reviewManifest": {
-      "type": "object", "additionalProperties": false,
-      "properties": {"formatVersion": {"const": 1}, "reservationId": {"$ref": "#/$defs/id"}, "runId": {"$ref": "#/$defs/id"}, "manual": {"const": true}, "findingId": {"$ref": "#/$defs/id"}, "findingRevision": {"type": "integer", "minimum": 1}, "policyRevision": {"type": "integer", "minimum": 1}, "ruleId": {"$ref": "#/$defs/rule"}, "recipeId": {"$ref": "#/$defs/recipe"}, "providerRouteDigest": {"$ref": "#/$defs/digest"}, "managerProfile": {"$ref": "#/$defs/managerProfile"}, "source": {"$ref": "#/$defs/source"}, "target": {"$ref": "#/$defs/target"}, "budget": {"$ref": "#/$defs/budget"}, "validUntil": {"type": "string", "format": "date-time"}},
-      "required": ["formatVersion", "reservationId", "runId", "manual", "findingId", "findingRevision", "policyRevision", "ruleId", "recipeId", "providerRouteDigest", "managerProfile", "source", "target", "budget", "validUntil"]
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "reservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "manual": {
+          "const": true
+        },
+        "findingId": {
+          "$ref": "#/$defs/id"
+        },
+        "findingRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "policyRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ruleId": {
+          "$ref": "#/$defs/rule"
+        },
+        "recipeId": {
+          "$ref": "#/$defs/recipe"
+        },
+        "providerRouteDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "managerProfile": {
+          "$ref": "#/$defs/managerProfile"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "budget": {
+          "$ref": "#/$defs/budget"
+        },
+        "validUntil": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "findingEvidence": {
+          "$ref": "#/$defs/findingEvidence"
+        }
+      },
+      "required": [
+        "formatVersion",
+        "reservationId",
+        "runId",
+        "manual",
+        "findingId",
+        "findingRevision",
+        "policyRevision",
+        "ruleId",
+        "recipeId",
+        "providerRouteDigest",
+        "managerProfile",
+        "source",
+        "target",
+        "budget",
+        "validUntil"
+      ]
     },
     "takeoverManifest": {
       "type": "object", "additionalProperties": false,
@@ -412,6 +481,83 @@
       "type": "object", "additionalProperties": false,
       "properties": {"formatVersion": {"const": 1}, "operationId": {"$ref": "#/$defs/id"}, "predecessorOperationId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "action": {"type": "string", "enum": ["pause_manager_and_hold_member", "resume_manager_and_release_member"]}, "findingId": {"$ref": "#/$defs/id"}, "findingRevision": {"type": "integer", "minimum": 1}, "policyRevision": {"type": "integer", "minimum": 1}, "runGeneration": {"type": "integer", "minimum": 1}, "holdId": {"$ref": "#/$defs/id"}, "holdRevision": {"type": "integer", "minimum": 1}, "holdState": {"type": "string", "enum": ["active", "released"]}, "source": {"$ref": "#/$defs/source"}, "target": {"$ref": "#/$defs/target"}, "status": {"type": "string", "enum": ["ready", "unsettled", "failed"]}, "pendingInput": {"type": "object", "additionalProperties": false, "properties": {"state": {"type": "string", "enum": ["none_pending", "canceled", "already_available_to_worker", "unknown"]}, "alreadyConsumed": {"type": "boolean"}}, "required": ["state", "alreadyConsumed"]}, "receiptDigest": {"$ref": "#/$defs/digest"}, "errorCode": {"$ref": "#/$defs/errorCode"}},
       "required": ["formatVersion", "operationId", "predecessorOperationId", "action", "findingId", "findingRevision", "policyRevision", "runGeneration", "holdId", "holdRevision", "holdState", "source", "target", "status", "pendingInput", "receiptDigest", "errorCode"]
+    },
+    "findingEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "findingId": {
+          "$ref": "#/$defs/id"
+        },
+        "findingRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "journalGeneration": {
+          "$ref": "#/$defs/id"
+        },
+        "ruleId": {
+          "type": "string"
+        },
+        "nativeSessionId": {
+          "$ref": "#/$defs/id"
+        },
+        "firstSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lastSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "matchedCallIds": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "coverage": {
+          "const": "complete"
+        },
+        "firstObservedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastObservedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "toolCategory": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "phase": {
+          "type": "string",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "findingId",
+        "findingRevision",
+        "journalGeneration",
+        "ruleId",
+        "nativeSessionId",
+        "firstSequence",
+        "lastSequence",
+        "count",
+        "matchedCallIds",
+        "coverage",
+        "firstObservedAt",
+        "lastObservedAt",
+        "toolCategory",
+        "phase"
+      ]
     }
   }
 }

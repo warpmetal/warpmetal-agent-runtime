@@ -1,9 +1,15 @@
 package manager
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -119,8 +125,8 @@ func TestManagerIntakeKeepsManagerPolicyRevisionDomain(t *testing.T) {
 	if len(journey.control.reservations) != 0 || len(journey.control.reports) != 0 {
 		t.Fatalf("intake performed a control/provider action: %#v %#v", journey.control.reservations, journey.control.reports)
 	}
-	capability, finding, err := journey.coordinator.reviewAuthority(ctx, journey.review, true)
-	if err != nil || capability == nil || finding == nil {
+	capability, evidence, err := journey.coordinator.reviewAuthority(ctx, journey.review, true)
+	if err != nil || capability == nil || evidence == nil {
 		t.Fatalf("review authority after intake (RED on .41: manager finding authority changed): %v", err)
 	}
 }
@@ -137,7 +143,11 @@ func TestManagerIntakeFailClosedNegatives(t *testing.T) {
 		}
 	})
 
-	t.Run("stale or non-current manager policy declines the intake", func(t *testing.T) {
+	// C1 r13 requirement-backed maintenance: an exact ACKed observation is
+	// retained regardless of the current Off/not-current policy, while
+	// automatic execution stays at zero. The previous oracle required the
+	// observation itself to be discarded.
+	t.Run("stale or non-current manager policy retains the observation with zero automatic execution", func(t *testing.T) {
 		for name, mutate := range map[string]func(*model.InsightsManagerPolicyManifestV1){
 			"off": func(policy *model.InsightsManagerPolicyManifestV1) { policy.Mode = "off"; policy.AllowedRules = nil },
 			"out of window": func(policy *model.InsightsManagerPolicyManifestV1) {
@@ -154,17 +164,20 @@ func TestManagerIntakeFailClosedNegatives(t *testing.T) {
 				if err := journey.coordinator.ObserveAcknowledgedInsightBatch(context.Background(), journey.batch, journey.receipt); err != nil {
 					t.Fatal(err)
 				}
-				if stored, err := journey.store.ManagerFinding(context.Background(), journey.finding.FindingID); err != nil || stored != nil {
-					t.Fatalf("intake wrote under a non-current policy: %#v %v", stored, err)
+				stored, err := journey.store.ManagerFinding(context.Background(), journey.finding.FindingID)
+				if err != nil || stored == nil || !stored.Acknowledged || !reflect.DeepEqual(stored.Finding, journey.finding) {
+					t.Fatalf("non-current observation was not retained: %#v %v", stored, err)
 				}
 				if len(journey.control.reservations) != 0 || len(journey.control.reports) != 0 {
-					t.Fatalf("declined intake performed a control action: %#v %#v", journey.control.reservations, journey.control.reports)
+					t.Fatalf("non-current observation performed an automatic action: %#v %#v", journey.control.reservations, journey.control.reports)
 				}
 			})
 		}
 	})
 
-	t.Run("a disallowed rule is not intaken", func(t *testing.T) {
+	// C1 r13 requirement-backed maintenance: allowed-rule eligibility gates
+	// automatic execution only; the acknowledged observation is retained.
+	t.Run("a disallowed rule is retained with zero automatic execution", func(t *testing.T) {
 		journey := newIntakeJourney(t, 4)
 		policy := journey.policy
 		disallowed := "suspected_stall@1"
@@ -178,8 +191,12 @@ func TestManagerIntakeFailClosedNegatives(t *testing.T) {
 		if err := journey.coordinator.ObserveAcknowledgedInsightBatch(context.Background(), journey.batch, journey.receipt); err != nil {
 			t.Fatal(err)
 		}
-		if stored, err := journey.store.ManagerFinding(context.Background(), journey.finding.FindingID); err != nil || stored != nil {
-			t.Fatalf("disallowed-rule finding was intaken: %#v %v", stored, err)
+		stored, err := journey.store.ManagerFinding(context.Background(), journey.finding.FindingID)
+		if err != nil || stored == nil || !stored.Acknowledged {
+			t.Fatalf("disallowed-rule observation was not retained: %#v %v", stored, err)
+		}
+		if len(journey.control.reservations) != 0 || len(journey.control.reports) != 0 {
+			t.Fatalf("disallowed rule started automatic work: %#v %#v", journey.control.reservations, journey.control.reports)
 		}
 	})
 
@@ -214,4 +231,184 @@ func TestManagerIntakeFailClosedNegatives(t *testing.T) {
 			t.Fatal("review with a foreign policy revision was accepted")
 		}
 	})
+}
+
+// TestManagerIntakeRetainsOffObservationForCurrentPolicyRecheck is the A0-6
+// paired journey: an open finding acknowledged while the manager is Off is
+// retained as observation evidence whose policy revision is provenance only,
+// and a later manual recheck under the current Recommend policy is admitted
+// without demanding that the historical observation policy equal the current
+// execution policy. Automatic execution stays at zero while the observation is
+// Off, and fresh effect authority is still required for the manual recheck.
+func TestManagerIntakeRetainsOffObservationForCurrentPolicyRecheck(t *testing.T) {
+	journey := newIntakeJourney(t, 4)
+	ctx := context.Background()
+	offPolicy := journey.policy
+	offPolicy.Mode = "off"
+	offPolicy.AllowedRules = nil
+	offPolicy.PolicyRevision++
+	offPolicy.RunGeneration++
+	if err := journey.coordinator.Apply(ctx, model.Manifest{InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{offPolicy}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := journey.coordinator.ObserveAcknowledgedInsightBatch(ctx, journey.batch, journey.receipt); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := journey.store.ManagerFinding(ctx, journey.finding.FindingID)
+	if err != nil || stored == nil || !stored.Acknowledged || !reflect.DeepEqual(stored.Finding, journey.finding) {
+		t.Fatalf("Off acknowledgement was not retained as observation evidence: %#v %v", stored, err)
+	}
+	if len(journey.control.reservations) != 0 || len(journey.control.reports) != 0 {
+		t.Fatalf("Off acknowledgement performed an automatic action: %#v %#v", journey.control.reservations, journey.control.reports)
+	}
+	recommendPolicy := offPolicy
+	recommendPolicy.Mode = "recommend"
+	recommendPolicy.AllowedRules = []string{journey.finding.RuleID}
+	recommendPolicy.PolicyRevision++
+	recommendPolicy.RunGeneration++
+	if err := journey.coordinator.Apply(ctx, model.Manifest{InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{recommendPolicy}}); err != nil {
+		t.Fatal(err)
+	}
+	review := journey.review
+	review.PolicyRevision = recommendPolicy.PolicyRevision
+	review.ValidUntil = recommendPolicy.ValidUntil
+	capability, evidence, err := journey.coordinator.reviewAuthority(ctx, review, true)
+	if err != nil || capability == nil || evidence == nil {
+		t.Fatalf("current Recommend manual recheck refused historical Off evidence: %v", err)
+	}
+	if evidence["findingId"] != journey.finding.FindingID || evidence["findingRevision"] != journey.finding.Revision ||
+		evidence["ruleId"] != journey.finding.RuleID {
+		t.Fatalf("manual recheck used changed finding evidence: %#v", evidence)
+	}
+	// Fresh effect authority is preserved: the same retained evidence under an
+	// Off current policy still fails before any control or helper action.
+	guarded := recommendPolicy
+	guarded.Mode = "off"
+	guarded.AllowedRules = nil
+	guarded.PolicyRevision++
+	guarded.RunGeneration++
+	if err := journey.coordinator.Apply(ctx, model.Manifest{InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{guarded}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := journey.coordinator.reviewAuthority(ctx, review, true); err == nil {
+		t.Fatal("Off current policy admitted a manual review")
+	}
+	if len(journey.control.reservations) != 0 || len(journey.control.reports) != 0 {
+		t.Fatalf("manual recheck admission performed a control action: %#v %#v", journey.control.reservations, journey.control.reports)
+	}
+}
+
+// TestManagerReviewManifestCarriesCanonicalFindingEvidence is the optional
+// paired-wire RED: the backend review manifest may carry the canonical 14-field
+// Sandbox findingEvidence snapshot for an already-ACKed finding whose local
+// batch record no longer exists. The strict manifest decoder must admit the
+// optional field (today it refuses it as unknown), and the descriptor must keep
+// the existing helper evidence shape.
+func TestManagerReviewManifestCarriesCanonicalFindingEvidence(t *testing.T) {
+	fixture := loadManagerCoordinatorFixture(t)
+	payload, err := os.ReadFile(filepath.Join("testdata", "sandbox.fixture.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sandbox struct {
+		FindingEvidence map[string]any `json:"findingEvidence"`
+	}
+	if err := json.Unmarshal(payload, &sandbox); err != nil {
+		t.Fatal(err)
+	}
+	if len(sandbox.FindingEvidence) != 14 {
+		t.Fatalf("canonical findingEvidence shape changed: %d fields", len(sandbox.FindingEvidence))
+	}
+	existing := managerFindingEvidence(state.LocalManagerFinding{})
+	existingKeys, manifestKeys := make([]string, 0, len(existing)), make([]string, 0, len(sandbox.FindingEvidence))
+	for key := range existing {
+		existingKeys = append(existingKeys, key)
+	}
+	for key := range sandbox.FindingEvidence {
+		manifestKeys = append(manifestKeys, key)
+	}
+	sort.Strings(existingKeys)
+	sort.Strings(manifestKeys)
+	if !reflect.DeepEqual(existingKeys, manifestKeys) {
+		t.Fatalf("canonical findingEvidence differs from the helper evidence shape: %#v %#v", existingKeys, manifestKeys)
+	}
+	evidenceFinding := model.InsightFindingV1{FindingID: fixture.Review.FindingID, RuleID: fixture.Review.RuleID, State: "open",
+		Revision: fixture.Review.FindingRevision, FirstSequence: 1, LastSequence: 8, Count: 4, Threshold: 3,
+		MatchedCallIDs: []string{"call_manager0001"}, FirstObservedAt: fixture.Review.ValidUntil.Add(-time.Minute),
+		LastObservedAt: fixture.Review.ValidUntil.Add(-time.Minute), Coverage: "complete", ToolCategory: "shell", Phase: "tool"}
+	canonical := managerFindingEvidence(state.LocalManagerFinding{Finding: evidenceFinding, Source: fixture.Review.Source,
+		JournalGeneration: "journal_manager0001"})
+	encodedReview, err := json.Marshal(fixture.Review)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review := map[string]any{}
+	if err := json.Unmarshal(encodedReview, &review); err != nil {
+		t.Fatal(err)
+	}
+	review["findingEvidence"] = canonical
+	manifestJSON, err := json.Marshal(map[string]any{"desiredRevision": 1, "insightsManagerReviews": []any{review}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(manifestJSON))
+	decoder.DisallowUnknownFields()
+	var manifest model.Manifest
+	if err := decoder.Decode(&manifest); err != nil {
+		t.Fatalf("canonical optional findingEvidence was refused by the strict manifest decoder: %v", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		t.Fatalf("canonical manifest decode trailing data: %v", err)
+	}
+	// The decoded authenticated manifest is consumed directly: the backend
+	// snapshot is the reservation evidence, no local finding row exists, and
+	// no batch/ACK history is manufactured.
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	seedManagerCoordinatorPrerequisites(t, store, fixture)
+	helper := &fakeManagerHelper{reviewOutput: managerReviewReceipt(t, fixture, "start_review")}
+	control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
+	requireManagerStartReportBeforeHelper(t, helper, control)
+	now := fixture.Review.ValidUntil.Add(-30 * time.Second)
+	coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return now }}
+	manifest.InsightsManagerPolicies = []model.InsightsManagerPolicyManifestV1{fixture.Policy}
+	if err := coordinator.Apply(ctx, manifest); err != nil {
+		t.Fatalf("findingEvidence manifest was refused by the coordinator: %v", err)
+	}
+	if len(helper.calls) != 1 || helper.calls[0].Payload["action"] != "start_review" {
+		t.Fatalf("findingEvidence review helper calls = %#v", helper.calls)
+	}
+	actualJSON, err := json.Marshal(helper.calls[0].Payload["finding"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var actual map[string]any
+	if err := json.Unmarshal(actualJSON, &actual); err != nil {
+		t.Fatal(err)
+	}
+	expectedJSON, err := json.Marshal(canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var expected map[string]any
+	if err := json.Unmarshal(expectedJSON, &expected); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("canonical findingEvidence did not pass through exactly: %#v", actual)
+	}
+	if len(control.reports) != 2 || control.reports[0].State != "reviewing" || control.reports[1].State != "recommended" {
+		t.Fatalf("findingEvidence review reports = %#v", control.reports)
+	}
+	if finding, err := store.ManagerFinding(ctx, fixture.Review.FindingID); err != nil || finding != nil {
+		t.Fatalf("findingEvidence review manufactured local ACK history: %#v %v", finding, err)
+	}
+	if reservations, err := store.ManagerReservations(ctx); err != nil || len(reservations) != 0 {
+		t.Fatalf("findingEvidence review created a reservation: %#v %v", reservations, err)
+	}
 }

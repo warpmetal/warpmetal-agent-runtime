@@ -27,6 +27,7 @@ var (
 	imagePattern           = regexp.MustCompile(`^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$`)
 	setupDigestPattern     = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 	continuityIDPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+	managerEvidenceIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{3,159}$`)
 	npmPackagePattern      = regexp.MustCompile(`^(?:@[a-z0-9][a-z0-9._-]{0,62}/)?[a-z0-9][a-z0-9._-]{0,62}$`)
 	npmBinPattern          = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
 	relativePathPattern    = regexp.MustCompile(`^[A-Za-z0-9._/-]{1,256}$`)
@@ -589,22 +590,45 @@ type InsightsManagerPolicyManifestV1 struct {
 	AutoSteerAvailable    bool                             `json:"autoSteerAvailable"`
 }
 
+// InsightsManagerFindingEvidenceV1 is the bounded Sandbox finding-evidence
+// descriptor: the same 14 metadata keys the helper request carries. An
+// authenticated manual review manifest may carry one canonical snapshot when
+// the original acknowledged batch record no longer exists locally; it is
+// reservation evidence, not a manufactured observation history.
+type InsightsManagerFindingEvidenceV1 struct {
+	FindingID         string    `json:"findingId"`
+	FindingRevision   int64     `json:"findingRevision"`
+	JournalGeneration string    `json:"journalGeneration"`
+	RuleID            string    `json:"ruleId"`
+	NativeSessionID   string    `json:"nativeSessionId"`
+	FirstSequence     int64     `json:"firstSequence"`
+	LastSequence      int64     `json:"lastSequence"`
+	Count             int64     `json:"count"`
+	MatchedCallIDs    []string  `json:"matchedCallIds"`
+	Coverage          string    `json:"coverage"`
+	FirstObservedAt   time.Time `json:"firstObservedAt"`
+	LastObservedAt    time.Time `json:"lastObservedAt"`
+	ToolCategory      string    `json:"toolCategory"`
+	Phase             string    `json:"phase"`
+}
+
 type InsightsManagerReviewManifestV1 struct {
-	FormatVersion       int                      `json:"formatVersion"`
-	ReservationID       string                   `json:"reservationId"`
-	RunID               string                   `json:"runId"`
-	Manual              bool                     `json:"manual"`
-	FindingID           string                   `json:"findingId"`
-	FindingRevision     int64                    `json:"findingRevision"`
-	PolicyRevision      int64                    `json:"policyRevision"`
-	RuleID              string                   `json:"ruleId"`
-	RecipeID            string                   `json:"recipeId"`
-	ProviderRouteDigest string                   `json:"providerRouteDigest"`
-	ManagerProfile      InsightsManagerProfileV1 `json:"managerProfile"`
-	Source              InsightsManagerSourceV1  `json:"source"`
-	Target              InsightsManagerTargetV1  `json:"target"`
-	Budget              InsightsManagerBudgetV1  `json:"budget"`
-	ValidUntil          time.Time                `json:"validUntil"`
+	FormatVersion       int                                `json:"formatVersion"`
+	ReservationID       string                             `json:"reservationId"`
+	RunID               string                             `json:"runId"`
+	Manual              bool                               `json:"manual"`
+	FindingID           string                             `json:"findingId"`
+	FindingRevision     int64                              `json:"findingRevision"`
+	PolicyRevision      int64                              `json:"policyRevision"`
+	RuleID              string                             `json:"ruleId"`
+	RecipeID            string                             `json:"recipeId"`
+	ProviderRouteDigest string                             `json:"providerRouteDigest"`
+	ManagerProfile      InsightsManagerProfileV1           `json:"managerProfile"`
+	Source              InsightsManagerSourceV1            `json:"source"`
+	Target              InsightsManagerTargetV1            `json:"target"`
+	Budget              InsightsManagerBudgetV1            `json:"budget"`
+	FindingEvidence     *InsightsManagerFindingEvidenceV1  `json:"findingEvidence,omitempty"`
+	ValidUntil          time.Time                          `json:"validUntil"`
 }
 
 type InsightsManagerReservationRequestV1 struct {
@@ -693,12 +717,12 @@ type InsightsManagerPolicyReportV1 struct {
 }
 
 type InsightsManagerProposalV1 struct {
-	RecipeID       string `json:"recipeId"`
-	Outcome        string `json:"outcome"`
-	RationaleCode  string `json:"rationaleCode"`
-	FirstSequence  int64  `json:"firstSequence"`
-	LastSequence   int64  `json:"lastSequence"`
-	GuidanceDigest string `json:"guidanceDigest"`
+	RecipeID       string  `json:"recipeId"`
+	Outcome        string  `json:"outcome"`
+	RationaleCode  string  `json:"rationaleCode"`
+	FirstSequence  int64   `json:"firstSequence"`
+	LastSequence   int64   `json:"lastSequence"`
+	GuidanceDigest *string `json:"guidanceDigest"`
 }
 
 type InsightsManagerSessionV1 struct {
@@ -1430,6 +1454,37 @@ func ValidateInsightsManagerReviewManifest(value InsightsManagerReviewManifestV1
 		!validInsightsManagerSource(value.Source) || !validInsightsManagerTarget(value.Target) || !validInsightsManagerBudget(value.Budget) ||
 		value.ValidUntil.IsZero() {
 		return errors.New("invalid insights manager review manifest")
+	}
+	if value.FindingEvidence != nil {
+		if err := ValidateInsightsManagerFindingEvidence(*value.FindingEvidence, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ValidateInsightsManagerFindingEvidence checks the bounded descriptor shape and
+// its exact binding to the review manifest it authorizes: finding id/revision,
+// rule and native session must match, the journal generation and observation
+// window must be closed, and no unbounded reference list is admitted. The
+// bounds follow the pinned paired schema (complete coverage, opaque ids,
+// bounded string fields). It performs no store access; the caller decides
+// whether to consume the authenticated snapshot or the canonical local
+// observation.
+func ValidateInsightsManagerFindingEvidence(value InsightsManagerFindingEvidenceV1, review InsightsManagerReviewManifestV1) error {
+	if value.FindingID != review.FindingID || value.FindingRevision != review.FindingRevision || value.RuleID != review.RuleID ||
+		value.NativeSessionID != review.Source.NativeSessionID || !managerEvidenceIDPattern.MatchString(value.JournalGeneration) ||
+		value.FirstSequence < 1 || value.LastSequence < value.FirstSequence || value.Count < 1 || len(value.MatchedCallIDs) > 16 ||
+		value.Coverage != "complete" || len(value.ToolCategory) > 32 || len(value.Phase) > 32 ||
+		value.FirstObservedAt.IsZero() || value.LastObservedAt.IsZero() || value.LastObservedAt.Before(value.FirstObservedAt) {
+		return errors.New("invalid insights manager finding evidence")
+	}
+	seen := map[string]bool{}
+	for _, id := range value.MatchedCallIDs {
+		if !managerEvidenceIDPattern.MatchString(id) || seen[id] {
+			return errors.New("invalid insights manager finding evidence reference")
+		}
+		seen[id] = true
 	}
 	return nil
 }

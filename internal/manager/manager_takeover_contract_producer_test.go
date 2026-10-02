@@ -3,12 +3,22 @@ package manager
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/api"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 )
@@ -27,6 +37,10 @@ type managerTakeoverContractInput struct {
 	RecommendPolicy *model.InsightsManagerPolicyManifestV1 `json:"recommendPolicy,omitempty"`
 	Batch           *model.InsightBatchV1                  `json:"batch,omitempty"`
 	BatchReceipt    *model.InsightBatchReceiptV1           `json:"batchReceipt,omitempty"`
+	Review          *model.InsightsManagerReviewManifestV1 `json:"review,omitempty"`
+	ControlOrigin   string                                 `json:"controlOrigin,omitempty"`
+	NodeToken       string                                 `json:"nodeToken,omitempty"`
+	HelperGateURL   string                                 `json:"helperGateURL,omitempty"`
 }
 
 type managerTakeoverContractOutput struct {
@@ -41,6 +55,11 @@ type managerTakeoverContractOutput struct {
 	AutomaticReservations int                                   `json:"automaticReservations"`
 	ReviewRuns            int                                   `json:"reviewRuns"`
 	RefusedAuthorities    []string                              `json:"refusedAuthorities"`
+	HelperCalls           int                                   `json:"helperCalls"`
+	HelperGateStatus      int                                   `json:"helperGateStatus"`
+	Reports               []model.InsightsManagerRunReportV1    `json:"reports"`
+	DispatchStarted       bool                                  `json:"dispatchStarted"`
+	Error                 string                                `json:"error,omitempty"`
 }
 
 func TestManagerTakeoverContractProducer(t *testing.T) {
@@ -67,6 +86,10 @@ func TestManagerTakeoverContractProducer(t *testing.T) {
 	}
 	if err := model.ValidateInsightsManagerPolicyManifest(input.Policy); err != nil {
 		t.Fatalf("backend manager policy refused by Runtime validator: %v", err)
+	}
+	if input.Action == "review" {
+		produceManagerReviewContract(t, input, outputPath)
+		return
 	}
 	store, err := state.Open(filepath.Join(input.StateDirectory, "runtime.sqlite3"))
 	if err != nil {
@@ -117,9 +140,26 @@ func TestManagerTakeoverContractProducer(t *testing.T) {
 		if err := coordinator.ObserveAcknowledgedInsightBatch(ctx, *input.Batch, *input.BatchReceipt); err != nil {
 			t.Fatalf("actual backend-acknowledged Off finding batch: %v", err)
 		}
+		// A0-6 frozen contract: a genuinely backend-ACKed Off finding is
+		// retained as observation evidence independently of the current Off
+		// execution policy. Assert the exact accepted batch finding, source
+		// identity, evidence window, journal generation and original
+		// observation policy revision; retention alone must not authorize any
+		// automatic review work.
+		var accepted *model.InsightFindingV1
+		for index := range input.Batch.Findings {
+			if input.Batch.Findings[index].FindingID == input.Takeover.FindingID {
+				accepted = &input.Batch.Findings[index]
+			}
+		}
+		if accepted == nil {
+			t.Fatalf("actual backend batch omitted the takeover finding %s", input.Takeover.FindingID)
+		}
 		finding, err := store.ManagerFinding(ctx, input.Takeover.FindingID)
-		if err != nil || finding != nil {
-			t.Fatalf("Off acknowledgement changed review finding eligibility: %#v %v", finding, err)
+		if err != nil || finding == nil || !finding.Acknowledged ||
+			!reflect.DeepEqual(finding.Finding, *accepted) || !reflect.DeepEqual(finding.Source, input.Takeover.Source) ||
+			finding.JournalGeneration != input.Batch.JournalGeneration || finding.PolicyRevision != input.OffPolicy.PolicyRevision {
+			t.Fatalf("Off acknowledgement did not retain the exact accepted provenance: %#v %v", finding, err)
 		}
 		reservations, err := store.ManagerReservations(ctx)
 		if err != nil || len(reservations) != 0 {
@@ -241,5 +281,271 @@ func TestManagerTakeoverContractProducer(t *testing.T) {
 	}
 	if err := os.WriteFile(outputPath, append(encoded, '\n'), 0600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The real api.Client serializes and validates both reports. Only its transport
+// is redirected to the explicit ephemeral loopback Flask consumer; no backend
+// reviewing state or acknowledgment is synthesized by this producer.
+type managerReviewLoopbackTransport struct {
+	origin  *url.URL
+	reports []model.InsightsManagerRunReportV1
+}
+
+func (transport *managerReviewLoopbackTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.URL.Scheme != "https" || request.URL.Host != "manager-contract.test" {
+		return nil, fmt.Errorf("unexpected manager contract origin")
+	}
+	if request.URL.Path == "/internal/runtime/insights/manager/reports" {
+		payload, err := io.ReadAll(request.Body)
+		if err != nil {
+			return nil, err
+		}
+		request.Body = io.NopCloser(bytes.NewReader(payload))
+		var report model.InsightsManagerRunReportV1
+		if err := json.Unmarshal(payload, &report); err != nil {
+			return nil, err
+		}
+		transport.reports = append(transport.reports, report)
+	}
+	local := request.Clone(request.Context())
+	local.URL.Scheme, local.URL.Host = transport.origin.Scheme, transport.origin.Host
+	local.Host = transport.origin.Host
+	return http.DefaultTransport.RoundTrip(local)
+}
+
+type managerReviewGateHelper struct {
+	gateURL    string
+	gateStatus int
+	workCalls  int
+	helper     Helper
+}
+
+func (helper *managerReviewGateHelper) ExecManager(ctx context.Context, sandboxID string, payload []byte) ([]byte, []byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, helper.gateURL, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer response.Body.Close()
+	helper.gateStatus = response.StatusCode
+	if response.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("start_report_before_helper: actual backend gate returned %d", response.StatusCode)
+	}
+	helper.workCalls++
+	return helper.helper.ExecManager(ctx, sandboxID, payload)
+}
+
+func produceManagerReviewContract(t *testing.T, input managerTakeoverContractInput, outputPath string) {
+	t.Helper()
+	if input.Review == nil || input.Review.FindingEvidence == nil || input.NodeToken == "" {
+		t.Fatal("review producer requires the actual backend-issued review and fixture node credential")
+	}
+	if err := model.ValidateInsightsManagerReviewManifest(*input.Review); err != nil {
+		t.Fatal(err)
+	}
+	origin, err := url.Parse(input.ControlOrigin)
+	if err != nil || origin.Scheme != "http" || origin.Hostname() != "127.0.0.1" || origin.Port() == "" ||
+		origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" || (origin.Path != "" && origin.Path != "/") {
+		t.Fatal("review producer control origin must be an explicit ephemeral loopback HTTP fixture")
+	}
+	gate, err := url.Parse(input.HelperGateURL)
+	if err != nil || gate.Scheme != origin.Scheme || gate.Host != origin.Host ||
+		gate.Path != "/__manager_test__/review-permission" || gate.RawQuery != "" || gate.Fragment != "" || gate.User != nil {
+		t.Fatal("review helper gate must be the same loopback consumer")
+	}
+	store, err := state.Open(filepath.Join(input.StateDirectory, "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	fixture := loadManagerCoordinatorFixture(t)
+	fixture.Policy, fixture.Review = input.Policy, *input.Review
+	helperImplementation, initialCapability := managerReviewHelper(t, fixture, input)
+	// The real backend manifest supplies canonical evidence. Recovery must not
+	// depend on a fabricated local acknowledged finding or deleted outbox. The
+	// optional process branch seeds its full capability once through the
+	// validated store boundary instead of mutating a narrow fixture later.
+	seedManagerCoordinatorPrerequisites(t, store, fixture, initialCapability...)
+	ctx := context.Background()
+	if err := store.PutManagedTaskAuthority(ctx, state.LocalManagedTaskAuthority{
+		ServiceRegistrationID: input.Review.Source.ServiceRegistrationID, ServiceGeneration: input.Review.Source.ServiceGeneration,
+		SandboxGeneration: input.Review.Source.SandboxGeneration, TaskID: input.Review.Target.TaskID,
+		TaskAttempt: input.Review.Target.TaskAttempt, Busy: input.Review.Target.TaskID != nil, ObservedAt: input.Now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	transport := &managerReviewLoopbackTransport{origin: origin}
+	control := api.Client{Origin: "https://manager-contract.test", NodeToken: input.NodeToken,
+		HTTP: &http.Client{Transport: transport, Timeout: 10 * time.Second}}
+	helper := &managerReviewGateHelper{gateURL: gate.String(), helper: helperImplementation}
+	coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return input.Now }}
+	applyErr := coordinator.Apply(ctx, model.Manifest{InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{input.Policy},
+		InsightsManagerReviews: []model.InsightsManagerReviewManifestV1{*input.Review}})
+	local, err := store.ManagerRun(ctx, input.Review.RunID)
+	if err != nil || local == nil {
+		t.Fatalf("review producer durable run missing: %#v %v", local, err)
+	}
+	finding, err := store.ManagerFinding(ctx, input.Review.FindingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := managerTakeoverContractOutput{Phase: local.Phase, HelperCalls: helper.workCalls,
+		HelperGateStatus: helper.gateStatus, Reports: transport.reports, DispatchStarted: local.DispatchStarted,
+		FindingCached: finding != nil}
+	if applyErr != nil {
+		output.Error = applyErr.Error()
+	}
+	encoded, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outputPath, append(encoded, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// managerReviewHelper selects the controlled in-process receipt branch by
+// default and the optional actual helper-process adapter only when both frozen
+// environment variables are present. It returns the optional full initial
+// capability for the caller to seed once through the validated store boundary.
+// Either branch stays behind the existing backend reviewing gate; the default
+// branch and its oracles are unchanged.
+func managerReviewHelper(t *testing.T, fixture managerCoordinatorFixture, input managerTakeoverContractInput) (Helper, []state.LocalManagerCapability) {
+	t.Helper()
+	source, adapter := os.Getenv("WARP_METAL_SANDBOX_SOURCE"), os.Getenv("WARPMETAL_MANAGER_PROCESS_ADAPTER")
+	switch {
+	case source == "" && adapter == "":
+		return &fakeManagerHelper{reviewOutput: managerReviewReceipt(t, fixture, "start_review")}, nil
+	case source == "" || adapter == "":
+		t.Fatal("helper process adapter branch requires both WARP_METAL_SANDBOX_SOURCE and WARPMETAL_MANAGER_PROCESS_ADAPTER")
+	default:
+		if !filepath.IsAbs(source) || !filepath.IsAbs(adapter) {
+			t.Fatal("helper process adapter source and adapter paths must be absolute")
+		}
+		return &managerProcessHelper{adapterPath: adapter, sandboxSource: source,
+				exchangeDirectory: filepath.Join(input.StateDirectory, "exchange"), now: input.Now},
+			[]state.LocalManagerCapability{managerProcessCapability(t, source, input)}
+	}
+	return nil, nil
+}
+
+// managerProcessCapability builds the full local helper capability for the
+// activated process branch from the actual Sandbox fixture metadata, the
+// installed manager-plugin digest, and the exact incoming review
+// route/profile/recipe plus source/service revisions. It is never used by the
+// controlled receipt branch.
+func managerProcessCapability(t *testing.T, sandboxSource string, input managerTakeoverContractInput) state.LocalManagerCapability {
+	t.Helper()
+	if input.Review == nil {
+		t.Fatal("helper process branch requires the backend-issued review manifest")
+	}
+	payload, err := os.ReadFile(filepath.Join(sandboxSource, "docs", "AGENT_MANAGER_SANDBOX_V1_FIXTURE.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		StartReviewRequest struct {
+			Capability struct {
+				NativeVersion        string `json:"nativeVersion"`
+				NativeSourceRevision string `json:"nativeSourceRevision"`
+				Protocol             string `json:"protocol"`
+				NativeProtocol       string `json:"nativeProtocol"`
+				ProviderID           string `json:"providerId"`
+				ModelID              string `json:"modelId"`
+				MaxInputTokens       int64  `json:"maxInputTokens"`
+				MaxOutputTokens      int64  `json:"maxOutputTokens"`
+				FinalRequestMaxBytes int64  `json:"finalRequestMaxBytes"`
+				ToolsAllowed         bool   `json:"toolsAllowed"`
+				MediaAllowed         bool   `json:"mediaAllowed"`
+				HardOutputTokenLimit bool   `json:"hardOutputTokenLimit"`
+			} `json:"capability"`
+		} `json:"startReviewRequest"`
+	}
+	if err := json.Unmarshal(payload, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	plugin, err := os.ReadFile(filepath.Join(sandboxSource, "manager-plugin", "index.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	review := *input.Review
+	capability := fixture.StartReviewRequest.Capability
+	return state.LocalManagerCapability{
+		RegisteredSourceID: review.Source.RegisteredSourceID, ServiceRegistrationID: review.Source.ServiceRegistrationID,
+		ServiceGeneration: review.Source.ServiceGeneration, WorkspaceEpoch: review.Source.WorkspaceEpoch,
+		NativeSessionID: review.Source.NativeSessionID, SandboxID: input.Policy.SandboxID,
+		SandboxGeneration: review.Source.SandboxGeneration, ProfileRevision: review.Source.ProfileRevision,
+		InstructionRevision: review.Source.InstructionRevision, NativeVersion: capability.NativeVersion,
+		NativeSourceRevision: capability.NativeSourceRevision, Protocol: capability.Protocol,
+		NativeProtocol: capability.NativeProtocol, ProviderID: capability.ProviderID, ModelID: capability.ModelID,
+		ProviderRouteDigest: review.ProviderRouteDigest, RecipeIDs: []string{review.RecipeID},
+		ManagerPluginDigest: fmt.Sprintf("sha256:%x", sha256.Sum256(plugin)), ManagerProfile: review.ManagerProfile,
+		MaxInputTokens: capability.MaxInputTokens, MaxOutputTokens: capability.MaxOutputTokens,
+		FinalRequestMaxBytes: capability.FinalRequestMaxBytes, ToolsAllowed: capability.ToolsAllowed,
+		MediaAllowed: capability.MediaAllowed, HardOutputTokenLimit: capability.HardOutputTokenLimit,
+		Available: true,
+	}
+}
+
+// managerProcessHelper launches the actual adapter child with a bounded
+// context, writes the exact serialized coordinator request to its stdin, and
+// returns the actual helper receipt stdout verbatim. Nothing rewrites the
+// receipt: reservation/run/source identity and native project/location values
+// stay helper-derived. Each action gets its own trace path inside
+// StateDirectory/exchange; an existing trace is never overwritten.
+type managerProcessHelper struct {
+	adapterPath       string
+	sandboxSource     string
+	exchangeDirectory string
+	now               time.Time
+}
+
+func (helper *managerProcessHelper) ExecManager(ctx context.Context, _ string, payload []byte) ([]byte, []byte, error) {
+	var request struct {
+		Action    string                                 `json:"action"`
+		Authority model.InsightsManagerReviewManifestV1 `json:"authority"`
+	}
+	if err := json.Unmarshal(payload, &request); err != nil {
+		return nil, nil, err
+	}
+	if request.Action != "start_review" {
+		return nil, nil, fmt.Errorf("helper process adapter branch covers the start review producer action only")
+	}
+	tracePath, err := helper.tracePath(request.Action, request.Authority.RunID)
+	if err != nil {
+		return nil, nil, err
+	}
+	runContext, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	command := exec.CommandContext(runContext, "python3", helper.adapterPath, helper.sandboxSource,
+		helper.now.UTC().Format(time.RFC3339Nano), tracePath)
+	command.Stdin = bytes.NewReader(payload)
+	var stdout, stderr bytes.Buffer
+	command.Stdout, command.Stderr = &stdout, &stderr
+	command.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	if err := command.Run(); err != nil {
+		return nil, stderr.Bytes(), fmt.Errorf("helper process adapter failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.Bytes(), stderr.Bytes(), nil
+}
+
+func (helper *managerProcessHelper) tracePath(action, runID string) (string, error) {
+	if err := os.MkdirAll(helper.exchangeDirectory, 0o700); err != nil {
+		return "", err
+	}
+	base := fmt.Sprintf("%s-%s-helper-process-trace.json", action, runID)
+	candidate := filepath.Join(helper.exchangeDirectory, base)
+	for attempt := 1; ; attempt++ {
+		if _, err := os.Stat(candidate); errors.Is(err, os.ErrNotExist) {
+			return candidate, nil
+		} else if err != nil {
+			return "", err
+		}
+		candidate = filepath.Join(helper.exchangeDirectory,
+			fmt.Sprintf("%s-%s-helper-process-trace.attempt-%d.json", action, runID, attempt))
 	}
 }

@@ -118,20 +118,27 @@ func (helper *pendingPauseHelper) ExecManager(_ context.Context, _ string, paylo
 	if request.Action != "reconcile_intervention_hold" {
 		return nil, nil, errors.New("recovery repeated a hold mutation")
 	}
-	if !helper.now().Before(request.Manifest.ValidUntil) {
-		return nil, nil, errors.New("helper refused expired persisted takeover lease")
-	}
+	// Reconciliation is a GET-only observation of the exact persisted operation
+	// (C1 r13 hold recovery): it is admitted even after the effect lease expired
+	// and it never authorizes a new mutation. Successful reconciliation echoes
+	// the exact outgoing manifest.
 	if helper.reconcileErr != nil {
 		return nil, nil, helper.reconcileErr
 	}
 	// Reuse the actual outgoing manifest's closed authority representation; the
-	// native helper receipt changes the action and adds only receipt fields.
+	// native helper receipt changes the action and adds only receipt fields. A
+	// successful Resume observation reports released while the canonical report
+	// status stays ready.
 	encoded, _ := json.Marshal(request.Manifest)
 	var receipt map[string]any
 	if err := json.Unmarshal(encoded, &receipt); err != nil {
 		return nil, nil, err
 	}
-	receipt["action"], receipt["status"] = request.Action, "active"
+	status := "active"
+	if request.Manifest.Action == "resume_manager_and_release_member" {
+		status = "released"
+	}
+	receipt["action"], receipt["status"] = request.Action, status
 	receipt["pendingInput"] = model.InsightsTakeoverPendingInputV1{State: "none_pending"}
 	receipt["receiptDigest"], receipt["errorCode"] = "sha256:"+strings.Repeat("a", 64), nil
 	output, err := json.Marshal(receipt)
@@ -299,9 +306,6 @@ func TestReconcileRenewsPendingPauseBeforeRecovery(t *testing.T) {
 			j.manifest.InsightsTakeovers[0].Target.MemberID = "tmem_foreignpending0001"
 		}},
 		{"changed policy revision", func(j *pendingPauseJourney) { j.manifest.InsightsTakeovers[0].PolicyRevision++ }},
-		{"different operation", func(j *pendingPauseJourney) {
-			j.manifest.InsightsTakeovers[0].OperationID = "takeover_foreignpending0001"
-		}},
 		{"expired renewal", func(j *pendingPauseJourney) {
 			j.manifest.InsightsTakeovers[0].ValidUntil = j.coordinator.Now().Add(-time.Second)
 		}},
@@ -345,6 +349,33 @@ func TestReconcileRenewsPendingPauseBeforeRecovery(t *testing.T) {
 			}
 		})
 	}
+	t.Run("a different manifest operation never renews or rewrites the persisted pending Pause", func(t *testing.T) {
+		journey := newPendingPauseJourney(t)
+		ctx := context.Background()
+		foreign := journey.manifest.InsightsTakeovers[0]
+		foreign.OperationID = "takeover_foreignpending0001"
+		foreign.Source.NativeSessionID = "ses_foreignpending0001"
+		journey.manifest.InsightsTakeovers[0] = foreign
+		err := journey.reconciler.Reconcile(ctx, journey.manifest)
+		if err == nil {
+			t.Fatal("foreign operation manifest was applied as authority")
+		}
+		// The persisted pending Pause is observed by its own exact identity; the
+		// foreign manifest neither renewed its lease nor created an operation,
+		// and no acquire was replayed.
+		stored, err := journey.store.ManagerTakeover(ctx, journey.pending.Manifest.OperationID)
+		if err != nil || stored == nil || stored.Phase != "ready" || stored.Report == nil ||
+			!reflect.DeepEqual(stored.Manifest, journey.pending.Manifest) {
+			t.Fatalf("pending Pause observation = %#v, %v", stored, err)
+		}
+		if created, err := journey.store.ManagerTakeover(ctx, foreign.OperationID); err != nil || created != nil {
+			t.Fatalf("foreign operation was persisted: %#v %v", created, err)
+		}
+		if !reflect.DeepEqual(journey.helper.actions, []string{"reconcile_intervention_hold"}) ||
+			len(journey.helper.manifests) != 1 || !reflect.DeepEqual(journey.helper.manifests[0], journey.pending.Manifest) {
+			t.Fatalf("foreign manifest crossed recovery: %#v %#v", journey.helper.actions, journey.helper.manifests)
+		}
+	})
 	t.Run("fresh renewal preserves a later recovery failure and pending identity", func(t *testing.T) {
 		journey := newPendingPauseJourney(t)
 		journey.helper.reconcileErr = errors.New("independent native hold lookup remains unknown")
@@ -360,38 +391,132 @@ func TestReconcileRenewsPendingPauseBeforeRecovery(t *testing.T) {
 			t.Fatalf("failed recovery advanced revision: %d", after)
 		}
 	})
-	t.Run("pending Resume lease is never renewed", func(t *testing.T) {
-		journey := newPendingPauseJourney(t)
-		ctx := context.Background()
-		settled := journey.pending
-		settled.Phase = "ready"
-		if err := journey.store.PutManagerTakeover(ctx, settled); err != nil {
-			t.Fatal(err)
+	t.Run("expired persisted Resume observes the exact operation and preserves release_unknown on read failure", func(t *testing.T) {
+		for _, test := range []struct {
+			name       string
+			readErr    error
+			wantPhase  string
+			wantReport bool
+		}{
+			{name: "observation succeeds after 120s", wantPhase: "released", wantReport: true},
+			{name: "read failure keeps release_unknown", readErr: errors.New("independent native release lookup remains unknown"), wantPhase: "release_unknown"},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				journey := newPendingPauseJourney(t)
+				ctx := context.Background()
+				settled := journey.pending
+				settled.Phase = "ready"
+				if err := journey.store.PutManagerTakeover(ctx, settled); err != nil {
+					t.Fatal(err)
+				}
+				resume := journey.pending.Manifest
+				predecessor := resume.OperationID
+				resume.OperationID, resume.PredecessorOperationID = "takeover_pendingresume0001", &predecessor
+				resume.Action, resume.HoldState, resume.HoldRevision = "resume_manager_and_release_member", "released", 2
+				// The release effect lease expired more than 120 seconds before
+				// this recovery pass; the persisted record is still the exact
+				// observation identity. Observation must not renew or resubmit
+				// the Resume.
+				resume.ValidUntil = journey.coordinator.Now().Add(-121 * time.Second)
+				pending := state.LocalManagerTakeover{Manifest: resume, Phase: "release_unknown", DispatchStarted: true}
+				if err := journey.store.PutManagerTakeover(ctx, pending); err != nil {
+					t.Fatal(err)
+				}
+				journey.helper.reconcileErr = test.readErr
+				journey.manifest.InsightsTakeovers = []model.InsightsTakeoverManifestV1{resume}
+				err := journey.reconciler.Reconcile(ctx, journey.manifest)
+				if test.readErr != nil {
+					if err == nil || !strings.Contains(err.Error(), test.readErr.Error()) {
+						t.Fatalf("failed Resume observation was not surfaced: %v", err)
+					}
+				} else if err != nil {
+					t.Fatalf("expired persisted Resume was not observed: %v", err)
+				}
+				if !reflect.DeepEqual(journey.helper.actions, []string{"reconcile_intervention_hold"}) ||
+					len(journey.helper.manifests) != 1 || !reflect.DeepEqual(journey.helper.manifests[0], pending.Manifest) {
+					t.Fatalf("Resume recovery changed authority or replayed an effect: %#v %#v", journey.helper.actions, journey.helper.manifests)
+				}
+				stored, err := journey.store.ManagerTakeover(ctx, resume.OperationID)
+				if err != nil || stored == nil || stored.Phase != test.wantPhase || !stored.DispatchStarted {
+					t.Fatalf("Resume recovery phase = %#v, %v", stored, err)
+				}
+				if test.wantReport {
+					if stored.Report == nil || stored.Report.Status != "ready" || !reflect.DeepEqual(stored.Manifest, pending.Manifest) {
+						t.Fatalf("Resume observation report = %#v", stored)
+					}
+				} else if stored.Report != nil || !reflect.DeepEqual(stored.Manifest, pending.Manifest) {
+					t.Fatalf("failed Resume observation rewrote the record: %#v", stored)
+				}
+				journey.assertRetained(t, settled)
+				journey.assertRetained(t, journey.prior)
+				if len(journey.helper.actions) != 1 {
+					t.Fatalf("Resume observation authorized a second effect: %#v", journey.helper.actions)
+				}
+			})
 		}
-		resume := journey.pending.Manifest
-		predecessor := resume.OperationID
-		resume.OperationID, resume.PredecessorOperationID = "takeover_pendingresume0001", &predecessor
-		resume.Action, resume.HoldState, resume.HoldRevision = "resume_manager_and_release_member", "released", 2
-		pending := state.LocalManagerTakeover{Manifest: resume, Phase: "release_unknown", DispatchStarted: true}
-		if err := journey.store.PutManagerTakeover(ctx, pending); err != nil {
-			t.Fatal(err)
-		}
-		resume.ValidUntil = journey.fresh.ValidUntil
-		journey.manifest.InsightsTakeovers = []model.InsightsTakeoverManifestV1{resume}
-		err := journey.reconciler.Reconcile(ctx, journey.manifest)
-		if err == nil || !strings.Contains(err.Error(), "helper refused expired persisted takeover lease") {
-			t.Fatalf("expired pending Resume was renewed or its failure ignored: %v", err)
-		}
-		// Preserve the existing error-phase classification in dispatchTakeover;
-		// this change must not renew or otherwise rewrite Resume authority.
-		expected := pending
-		expected.Phase = "acquire_unknown"
-		journey.assertRetained(t, expected)
-		journey.assertRetained(t, settled)
-		journey.assertRetained(t, journey.prior)
-		if !reflect.DeepEqual(journey.helper.actions, []string{"reconcile_intervention_hold"}) ||
-			len(journey.helper.manifests) != 1 || !reflect.DeepEqual(journey.helper.manifests[0], pending.Manifest) {
-			t.Fatalf("pending Resume crossed recovery with a changed lease: %#v %#v", journey.helper.actions, journey.helper.manifests)
+	})
+	t.Run("persisted acquisition and release cuts observe the exact operation and preserve the effect class", func(t *testing.T) {
+		for _, cut := range []struct {
+			name, phase, failurePhase, successPhase string
+			resume                                  bool
+		}{
+			{name: "acquiring cut", phase: "acquiring", failurePhase: "acquire_unknown", successPhase: "ready"},
+			{name: "releasing cut", phase: "releasing", failurePhase: "release_unknown", successPhase: "released", resume: true},
+		} {
+			t.Run(cut.name, func(t *testing.T) {
+				for _, readFailure := range []bool{false, true} {
+					name := "observation"
+					if readFailure {
+						name = "read failure"
+					}
+					t.Run(name, func(t *testing.T) {
+						journey := newPendingPauseJourney(t)
+						ctx := context.Background()
+						// Settle the original pending Pause so this pass observes
+						// only the persisted effect cut under a distinct operation.
+						settled := journey.pending
+						settled.Phase = "ready"
+						if err := journey.store.PutManagerTakeover(ctx, settled); err != nil {
+							t.Fatal(err)
+						}
+						manifestValue := journey.pending.Manifest
+						manifestValue.OperationID = "takeover_cutacquire0001"
+						if cut.resume {
+							predecessor := journey.pending.Manifest.OperationID
+							manifestValue.OperationID, manifestValue.PredecessorOperationID = "takeover_cutresume0001", &predecessor
+							manifestValue.Action, manifestValue.HoldState, manifestValue.HoldRevision = "resume_manager_and_release_member", "released", 2
+						}
+						manifestValue.ValidUntil = journey.coordinator.Now().Add(-121 * time.Second)
+						persisted := state.LocalManagerTakeover{Manifest: manifestValue, Phase: cut.phase, DispatchStarted: true}
+						if err := journey.store.PutManagerTakeover(ctx, persisted); err != nil {
+							t.Fatal(err)
+						}
+						if readFailure {
+							journey.helper.reconcileErr = errors.New("independent native hold lookup remains unknown")
+						}
+						journey.manifest.InsightsTakeovers = []model.InsightsTakeoverManifestV1{manifestValue}
+						err := journey.reconciler.Reconcile(ctx, journey.manifest)
+						if readFailure && (err == nil || !strings.Contains(err.Error(), "independent native hold lookup remains unknown")) {
+							t.Fatalf("cut read failure was not surfaced: %v", err)
+						}
+						if !readFailure && err != nil {
+							t.Fatalf("persisted %s cut was not observed: %v", cut.phase, err)
+						}
+						wantPhase := cut.successPhase
+						if readFailure {
+							wantPhase = cut.failurePhase
+						}
+						stored, err := journey.store.ManagerTakeover(ctx, manifestValue.OperationID)
+						if err != nil || stored == nil || stored.Phase != wantPhase || !reflect.DeepEqual(stored.Manifest, manifestValue) {
+							t.Fatalf("cut phase = %#v (want %s), %v", stored, wantPhase, err)
+						}
+						if !reflect.DeepEqual(journey.helper.actions, []string{"reconcile_intervention_hold"}) ||
+							len(journey.helper.manifests) != 1 || !reflect.DeepEqual(journey.helper.manifests[0], manifestValue) {
+							t.Fatalf("cut recovery changed authority or replayed an effect: %#v %#v", journey.helper.actions, journey.helper.manifests)
+						}
+					})
+				}
+			})
 		}
 	})
 	t.Run("unrelated unknown review stays fatal and untouched", func(t *testing.T) {
@@ -403,7 +528,11 @@ func TestReconcileRenewsPendingPauseBeforeRecovery(t *testing.T) {
 			t.Fatal(err)
 		}
 		err := journey.reconciler.Reconcile(ctx, journey.manifest)
-		if err == nil || !strings.Contains(err.Error(), "recover manager operations: manager recovery finding missing") {
+		// C1 r13: non-start recovery observes the exact stored operation and no
+		// longer depends on a local finding-cache entry. This takeover-only
+		// helper still refuses any non-reconcile action, so the unrelated
+		// review failure stays fatal and its record is untouched.
+		if err == nil || !strings.Contains(err.Error(), "recovery repeated a hold mutation") {
 			t.Fatalf("unrelated unknown review recovery error changed: %v", err)
 		}
 		stored, err := journey.store.ManagerRun(ctx, run.Manifest.RunID)
@@ -414,8 +543,8 @@ func TestReconcileRenewsPendingPauseBeforeRecovery(t *testing.T) {
 		expected.Manifest.ValidUntil = journey.fresh.ValidUntil
 		journey.assertRetained(t, expected)
 		journey.assertRetained(t, journey.prior)
-		if len(journey.helper.actions) != 0 {
-			t.Fatalf("lookup/actions bypassed unrelated recovery failure: %#v", journey.helper.actions)
+		if !reflect.DeepEqual(journey.helper.actions, []string{"reconcile_review"}) {
+			t.Fatalf("unrelated review observation did not use the exact operation: %#v", journey.helper.actions)
 		}
 		if _, after := journey.revisions(t); after != journey.priorRevision {
 			t.Fatalf("unrelated failed recovery advanced revision: %d", after)

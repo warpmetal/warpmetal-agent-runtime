@@ -47,6 +47,7 @@ type reviewHelperReceipt struct {
 	ReservedOutputTokens      int64                           `json:"reservedOutputTokens"`
 	ManagerRegisteredSourceID string                          `json:"managerRegisteredSourceId"`
 	ManagerSession            *model.InsightsManagerSessionV1 `json:"managerSession"`
+	Proposal                  *model.InsightsManagerProposalV1 `json:"proposal"`
 	ProposalDigest            *string                         `json:"proposalDigest"`
 	GuidanceReceipt           *struct {
 		FormatVersion     int     `json:"formatVersion"`
@@ -54,7 +55,7 @@ type reviewHelperReceipt struct {
 		Status            string  `json:"status"`
 		AtomicNativeGuard bool    `json:"atomicNativeGuard"`
 		AutoSteer         bool    `json:"autoSteer"`
-		GuidanceDigest    string  `json:"guidanceDigest"`
+		GuidanceDigest    *string `json:"guidanceDigest"`
 		PendingInputID    *string `json:"pendingInputId"`
 	} `json:"guidanceReceipt"`
 	ReceiptDigest string  `json:"receiptDigest"`
@@ -217,7 +218,11 @@ func (c *Coordinator) Recover(ctx context.Context) error {
 	}
 	for i := range runs {
 		switch runs[i].Phase {
-		case "execution_unknown":
+		case "start_ack_pending":
+			if err := c.recoverStartAck(ctx, &runs[i]); err != nil {
+				return err
+			}
+		case "dispatching", "execution_unknown":
 			if err := c.resumeRun(ctx, &runs[i], "reconcile_review"); err != nil {
 				return err
 			}
@@ -236,11 +241,11 @@ func (c *Coordinator) Recover(ctx context.Context) error {
 		return err
 	}
 	for i := range takeovers {
-		if takeovers[i].Phase != "acquire_unknown" && takeovers[i].Phase != "release_unknown" {
-			continue
-		}
-		if err := c.reconcileTakeover(ctx, &takeovers[i]); err != nil {
-			return err
+		switch takeovers[i].Phase {
+		case "acquiring", "acquire_unknown", "releasing", "release_unknown":
+			if err := c.reconcileTakeover(ctx, &takeovers[i]); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -462,15 +467,93 @@ func (c *Coordinator) applyReview(ctx context.Context, review model.InsightsMana
 	if prior != nil {
 		return c.acceptExistingRun(ctx, prior, review)
 	}
-	capability, finding, err := c.reviewAuthority(ctx, review, true)
+	capability, evidence, err := c.reviewAuthority(ctx, review, true)
 	if err != nil {
 		return err
 	}
-	run := state.LocalManagerRun{Manifest: review, Phase: "dispatching", Capability: *capability, DispatchStarted: true, StartedAt: c.now()}
+	run := state.LocalManagerRun{Manifest: review, Phase: "start_ack_pending", Capability: *capability, DispatchStarted: false, StartedAt: c.now()}
 	if err := c.Store.PutManagerRun(ctx, run); err != nil {
 		return err
 	}
-	return c.dispatchReview(ctx, &run, *finding, "start_review")
+	return c.startAcknowledgedReview(ctx, &run, evidence)
+}
+
+// recoverStartAck retries the exact idempotent reviewing report while the
+// original start authority is still valid. A run that never crossed possible
+// dispatch settles truthfully as failed/trusted_zero_start once that authority
+// is gone; it never reaches the helper and is never helper execution_unknown.
+func (c *Coordinator) recoverStartAck(ctx context.Context, run *state.LocalManagerRun) error {
+	_, evidence, err := c.reviewAuthority(ctx, run.Manifest, true)
+	if err != nil {
+		return c.settleUnstartedRun(ctx, run)
+	}
+	return c.startAcknowledgedReview(ctx, run, evidence)
+}
+
+// startAcknowledgedReview performs the frozen durable start transition: the
+// exact canonical reviewing report is submitted and its returned immutable
+// activity is validated before any possible-dispatch state exists. Only then is
+// the possible helper effect persisted and invoked. A refused or mismatched
+// acknowledgement leaves the run as a non-dispatched start_ack_pending intent
+// with zero helper calls; a post-acknowledgement authority expiry settles it as
+// trusted zero start without helper work.
+func (c *Coordinator) startAcknowledgedReview(ctx context.Context, run *state.LocalManagerRun, evidence map[string]any) error {
+	if err := c.submitStartReviewingReport(ctx, run); err != nil {
+		return err
+	}
+	if _, _, err := c.reviewAuthority(ctx, run.Manifest, true); err != nil {
+		return c.settleUnstartedRun(ctx, run)
+	}
+	run.Phase = "execution_unknown"
+	run.DispatchStarted = true
+	if err := c.Store.PutManagerRun(ctx, *run); err != nil {
+		return err
+	}
+	return c.dispatchReview(ctx, run, evidence, "start_review")
+}
+
+func (c *Coordinator) submitStartReviewingReport(ctx context.Context, run *state.LocalManagerRun) error {
+	report := model.InsightsManagerRunReportV1{FormatVersion: 1, ReservationID: run.Manifest.ReservationID, RunID: run.Manifest.RunID,
+		Manual: run.Manifest.Manual, State: "reviewing", PolicyRevision: run.Manifest.PolicyRevision, Source: run.Manifest.Source,
+		Target: run.Manifest.Target, Usage: model.InsightsManagerUsageV1{UsageCertain: false, UnusedProof: "none"}}
+	report.ReceiptDigest = digestJSON(report)
+	activity, err := c.Control.SubmitInsightsManagerRunReport(ctx, report)
+	if err != nil {
+		return err
+	}
+	if activity.RunID != run.Manifest.RunID || activity.ReservationID != run.Manifest.ReservationID || activity.Manual != run.Manifest.Manual ||
+		activity.FindingID != run.Manifest.FindingID || activity.RuleID != run.Manifest.RuleID || activity.RecipeID != run.Manifest.RecipeID ||
+		activity.Source != run.Manifest.Source || !reflectTarget(activity.Target, run.Manifest.Target) || activity.State != "reviewing" {
+		return errors.New("manager start acknowledgement changed persisted run authority")
+	}
+	return nil
+}
+
+// settleUnstartedRun truthfully retires a genuinely never-dispatched run with
+// zero usage once its start authority is gone. It never authorizes helper work.
+func (c *Coordinator) settleUnstartedRun(ctx context.Context, run *state.LocalManagerRun) error {
+	code := c.unstartedErrorCode(ctx, run)
+	report := model.InsightsManagerRunReportV1{FormatVersion: 1, ReservationID: run.Manifest.ReservationID, RunID: run.Manifest.RunID,
+		Manual: run.Manifest.Manual, State: "failed", PolicyRevision: run.Manifest.PolicyRevision, Source: run.Manifest.Source,
+		Target: run.Manifest.Target, Usage: model.InsightsManagerUsageV1{UsageCertain: true, UnusedProof: "trusted_zero_start"}, ErrorCode: &code}
+	report.ReceiptDigest = digestJSON(report)
+	run.Phase = "report_pending"
+	run.Report = &report
+	if err := c.Store.PutManagerRun(ctx, *run); err != nil {
+		return err
+	}
+	return c.submitRunReport(ctx, run)
+}
+
+func (c *Coordinator) unstartedErrorCode(ctx context.Context, run *state.LocalManagerRun) string {
+	policy, err := c.Store.ManagerPolicy(ctx, sourceSandbox(ctx, c.Store, run.Manifest.Source))
+	if err != nil || policy == nil || policy.Manifest.Mode == "off" {
+		return "policy_off"
+	}
+	if !c.now().Before(policy.Manifest.ValidUntil) || policy.Manifest.ValidUntil.Sub(c.now()) > 120*time.Second {
+		return "policy_expired"
+	}
+	return "source_stale"
 }
 
 func (c *Coordinator) acceptExistingRun(ctx context.Context, prior *state.LocalManagerRun, review model.InsightsManagerReviewManifestV1) error {
@@ -488,7 +571,14 @@ func (c *Coordinator) acceptExistingRun(ctx context.Context, prior *state.LocalM
 	return c.Store.RenewManagerRunLease(ctx, review.RunID, prior.Manifest.ValidUntil, review.ValidUntil)
 }
 
-func (c *Coordinator) reviewAuthority(ctx context.Context, review model.InsightsManagerReviewManifestV1, requireFresh bool) (*state.LocalManagerCapability, *state.LocalManagerFinding, error) {
+// reviewAuthority is the local execution-authority boundary for a review. The
+// current policy revision, fresh lease, source/service/target/capability and
+// recipe fences authorize execution; the acknowledged finding evidence only
+// proves which finding is being reviewed. The evidence is the canonical local
+// observation for automatic reviews, or the authenticated manifest snapshot
+// when a manual reservation carries one; the historical observation policy
+// revision is provenance and never has to equal the current execution revision.
+func (c *Coordinator) reviewAuthority(ctx context.Context, review model.InsightsManagerReviewManifestV1, requireFresh bool) (*state.LocalManagerCapability, map[string]any, error) {
 	if requireFresh && (!c.now().Before(review.ValidUntil) || review.ValidUntil.Sub(c.now()) > 120*time.Second) {
 		return nil, nil, errors.New("manager review authority expired")
 	}
@@ -513,14 +603,23 @@ func (c *Coordinator) reviewAuthority(ctx context.Context, review model.Insights
 	if !contains(capability.RecipeIDs, review.RecipeID) {
 		return nil, nil, errors.New("manager recipe unavailable")
 	}
-	finding, err := c.Store.ManagerFinding(ctx, review.FindingID)
-	if err != nil || finding == nil || !finding.Acknowledged || finding.Finding.Revision != review.FindingRevision || finding.Finding.RuleID != review.RuleID || finding.PolicyRevision != review.PolicyRevision || finding.Source != review.Source {
-		return nil, nil, errors.Join(err, errors.New("manager finding authority changed"))
+	var evidence map[string]any
+	if review.FindingEvidence != nil {
+		if err := model.ValidateInsightsManagerFindingEvidence(*review.FindingEvidence, review); err != nil {
+			return nil, nil, err
+		}
+		evidence = managerFindingEvidenceV1(*review.FindingEvidence)
+	} else {
+		finding, err := c.Store.ManagerFinding(ctx, review.FindingID)
+		if err != nil || finding == nil || !finding.Acknowledged || finding.Finding.Revision != review.FindingRevision || finding.Finding.RuleID != review.RuleID || finding.Source != review.Source {
+			return nil, nil, errors.Join(err, errors.New("manager finding authority changed"))
+		}
+		evidence = managerFindingEvidence(*finding)
 	}
 	if err := c.localTargetAuthority(ctx, review.Source, review.Target); err != nil {
 		return nil, nil, err
 	}
-	return capability, finding, nil
+	return capability, evidence, nil
 }
 
 func (c *Coordinator) localSourceAuthority(ctx context.Context, expected model.InsightsManagerSourceV1) (*state.LocalContinuitySource, error) {
@@ -574,12 +673,12 @@ func (c *Coordinator) localTargetAuthority(ctx context.Context, source model.Ins
 	return nil
 }
 
-func (c *Coordinator) dispatchReview(ctx context.Context, run *state.LocalManagerRun, finding state.LocalManagerFinding, action string) error {
+func (c *Coordinator) dispatchReview(ctx context.Context, run *state.LocalManagerRun, evidence map[string]any, action string) error {
 	sandboxID, instance, err := c.helperTarget(ctx, run.Manifest.Source)
 	if err != nil {
 		return err
 	}
-	request := map[string]any{"formatVersion": 1, "action": action, "instance": instance, "authority": run.Manifest, "finding": managerFindingEvidence(finding), "capability": managerCapabilityWire(run.Capability)}
+	request := map[string]any{"formatVersion": 1, "action": action, "instance": instance, "authority": run.Manifest, "finding": evidence, "capability": managerCapabilityWire(run.Capability)}
 	if action != "start_review" {
 		request = map[string]any{"formatVersion": 1, "action": action, "instance": instance, "reservationId": run.Manifest.ReservationID, "runId": run.Manifest.RunID, "policyRevision": run.Manifest.PolicyRevision, "runGeneration": managerRunGeneration(ctx, c.Store, run.Manifest.Source), "source": run.Manifest.Source}
 	}
@@ -593,12 +692,12 @@ func (c *Coordinator) dispatchReview(ctx context.Context, run *state.LocalManage
 	return c.completeReview(ctx, run, output, action)
 }
 
+// resumeRun observes or continues the same admitted operation. Non-start
+// observation carries no finding requirement: the start evidence was consumed
+// when the run crossed possible dispatch, so recovery must not depend on a
+// local finding history row.
 func (c *Coordinator) resumeRun(ctx context.Context, run *state.LocalManagerRun, action string) error {
-	finding, err := c.Store.ManagerFinding(ctx, run.Manifest.FindingID)
-	if err != nil || finding == nil {
-		return errors.Join(err, errors.New("manager recovery finding missing"))
-	}
-	return c.dispatchReview(ctx, run, *finding, action)
+	return c.dispatchReview(ctx, run, nil, action)
 }
 
 func (c *Coordinator) completeReview(ctx context.Context, run *state.LocalManagerRun, payload []byte, action string) error {
@@ -619,36 +718,22 @@ func (c *Coordinator) completeReview(ctx context.Context, run *state.LocalManage
 		}
 		receipt.Status = "failed"
 	}
-	if receipt.Status != "recommended" && receipt.Status != "needs_owner" && receipt.Status != "failed" {
+	if receipt.Status != "recommended" && receipt.Status != "no_action" && receipt.Status != "needs_owner" && receipt.Status != "failed" {
 		return errors.New("manager helper status is invalid")
 	}
 	if receipt.ModelRequests < 0 || receipt.ModelRequests > run.Manifest.Budget.ModelRequests || receipt.ReservedInputTokens < 0 || receipt.ReservedInputTokens > run.Manifest.Budget.InputTokens || receipt.ReservedOutputTokens < 0 || receipt.ReservedOutputTokens > run.Manifest.Budget.OutputTokens {
 		return errors.New("manager helper exceeded reserved budget")
 	}
 	report := model.InsightsManagerRunReportV1{FormatVersion: 1, ReservationID: run.Manifest.ReservationID, RunID: run.Manifest.RunID, Manual: run.Manifest.Manual, State: receipt.Status, PolicyRevision: run.Manifest.PolicyRevision, Source: run.Manifest.Source, Target: run.Manifest.Target, Usage: model.InsightsManagerUsageV1{ModelRequests: receipt.ModelRequests, InputTokens: receipt.ReservedInputTokens, OutputTokens: receipt.ReservedOutputTokens, UsageCertain: false, UnusedProof: "none"}, ReceiptDigest: receipt.ReceiptDigest}
-	if receipt.Status == "recommended" {
-		if receipt.ManagerSession == nil || receipt.ProposalDigest == nil || !digestPattern.MatchString(*receipt.ProposalDigest) ||
-			receipt.GuidanceReceipt == nil || receipt.GuidanceReceipt.FormatVersion != 1 ||
-			receipt.GuidanceReceipt.Mode != "recommend_only" || receipt.GuidanceReceipt.Status != "not_delivered" ||
-			receipt.GuidanceReceipt.PendingInputID != nil || receipt.GuidanceReceipt.AutoSteer || receipt.GuidanceReceipt.AtomicNativeGuard ||
-			!digestPattern.MatchString(receipt.GuidanceReceipt.GuidanceDigest) || receipt.ManagerSession.NativeSessionID == "" ||
-			!managerNativeProjectPattern.MatchString(receipt.ManagerSession.NativeProjectID) ||
-			!digestPattern.MatchString(receipt.ManagerSession.NativeLocationDigest) {
-			return errors.New("manager recommendation receipt is invalid")
+	if receipt.Status != "failed" {
+		proposal, err := c.terminalProposal(ctx, run, receipt)
+		if err != nil {
+			return err
 		}
-		expectedSource := managerSourceID(run.Manifest.RunID)
-		if receipt.ManagerRegisteredSourceID != expectedSource || receipt.ManagerSession.ServiceRegistrationID != run.Manifest.Source.ServiceRegistrationID || receipt.ManagerSession.ServiceGeneration != run.Manifest.Source.ServiceGeneration || receipt.ManagerSession.ProviderRouteDigest != run.Manifest.ProviderRouteDigest || receipt.ManagerSession.ManagerProfile != run.Manifest.ManagerProfile {
-			return errors.New("manager session receipt changed authority")
+		report.Proposal = proposal
+		if proposal != nil {
+			report.ManagerSession = receipt.ManagerSession
 		}
-		rationale := rationaleForRule(run.Manifest.RuleID)
-		report.Proposal = &model.InsightsManagerProposalV1{RecipeID: run.Manifest.RecipeID, Outcome: "recommendation", RationaleCode: rationale, FirstSequence: 1, LastSequence: 1, GuidanceDigest: receipt.GuidanceReceipt.GuidanceDigest}
-		if finding, _ := c.Store.ManagerFinding(ctx, run.Manifest.FindingID); finding != nil {
-			report.Proposal.FirstSequence = finding.Finding.FirstSequence
-			report.Proposal.LastSequence = finding.Finding.LastSequence
-		}
-		report.ManagerSession = receipt.ManagerSession
-		run.ManagerRegisteredSourceID = expectedSource
-		run.ManagerSession = receipt.ManagerSession
 	}
 	if receipt.Error != nil {
 		code := closedRunError(*receipt.Error)
@@ -660,6 +745,83 @@ func (c *Coordinator) completeReview(ctx context.Context, run *state.LocalManage
 		return err
 	}
 	return c.submitRunReport(ctx, run)
+}
+
+// terminalProposal validates and passes through the actual safe proposal
+// summary. recommendation, no_action and needs_owner keep their own outcome; a
+// needs_owner result without a proposal is the truthful null disposition of an
+// invalid completed output. Runtime never invents an outcome, rationale or
+// finding window, and citation bounds stay the actual receipt values within the
+// consumed evidence.
+func (c *Coordinator) terminalProposal(ctx context.Context, run *state.LocalManagerRun, receipt reviewHelperReceipt) (*model.InsightsManagerProposalV1, error) {
+	wantOutcome := map[string]string{"recommended": "recommendation", "no_action": "no_action", "needs_owner": "needs_owner"}[receipt.Status]
+	if receipt.Proposal == nil {
+		if receipt.Status == "needs_owner" {
+			return nil, nil
+		}
+		return nil, errors.New("manager terminal receipt omitted its proposal")
+	}
+	proposal := receipt.Proposal
+	if proposal.Outcome != wantOutcome || proposal.RecipeID != run.Manifest.RecipeID || !validProposalRationale(proposal.RationaleCode) ||
+		proposal.FirstSequence < 1 || proposal.LastSequence < proposal.FirstSequence {
+		return nil, errors.New("manager proposal changed closed terminal semantics")
+	}
+	if bound := managerSequenceBound(ctx, c.Store, run); bound > 0 && proposal.LastSequence > bound {
+		return nil, errors.New("manager proposal cited outside its acknowledged evidence")
+	}
+	if proposal.GuidanceDigest != nil && !digestPattern.MatchString(*proposal.GuidanceDigest) {
+		return nil, errors.New("manager proposal guidance digest is invalid")
+	}
+	if receipt.ManagerSession == nil || receipt.ManagerSession.NativeSessionID == "" ||
+		!managerNativeProjectPattern.MatchString(receipt.ManagerSession.NativeProjectID) ||
+		!digestPattern.MatchString(receipt.ManagerSession.NativeLocationDigest) {
+		return nil, errors.New("manager proposal receipt omitted a valid manager session")
+	}
+	expectedSource := managerSourceID(run.Manifest.RunID)
+	if receipt.ManagerRegisteredSourceID != expectedSource || receipt.ManagerSession.ServiceRegistrationID != run.Manifest.Source.ServiceRegistrationID || receipt.ManagerSession.ServiceGeneration != run.Manifest.Source.ServiceGeneration || receipt.ManagerSession.ProviderRouteDigest != run.Manifest.ProviderRouteDigest || receipt.ManagerSession.ManagerProfile != run.Manifest.ManagerProfile {
+		return nil, errors.New("manager session receipt changed authority")
+	}
+	switch receipt.Status {
+	case "recommended":
+		if receipt.ProposalDigest == nil || !digestPattern.MatchString(*receipt.ProposalDigest) || proposal.GuidanceDigest == nil || receipt.GuidanceReceipt == nil ||
+			receipt.GuidanceReceipt.FormatVersion != 1 || receipt.GuidanceReceipt.Mode != "recommend_only" ||
+			receipt.GuidanceReceipt.Status != "not_delivered" || receipt.GuidanceReceipt.PendingInputID != nil ||
+			receipt.GuidanceReceipt.AutoSteer || receipt.GuidanceReceipt.AtomicNativeGuard || receipt.GuidanceReceipt.GuidanceDigest == nil ||
+			*receipt.GuidanceReceipt.GuidanceDigest != *proposal.GuidanceDigest {
+			return nil, errors.New("manager recommendation receipt is invalid")
+		}
+	case "no_action":
+		if proposal.GuidanceDigest != nil || receipt.GuidanceReceipt != nil && receipt.GuidanceReceipt.GuidanceDigest != nil {
+			return nil, errors.New("manager no-action receipt carried guidance")
+		}
+	case "needs_owner":
+		if receipt.GuidanceReceipt != nil && receipt.GuidanceReceipt.GuidanceDigest != nil && proposal.GuidanceDigest != nil &&
+			*receipt.GuidanceReceipt.GuidanceDigest != *proposal.GuidanceDigest {
+			return nil, errors.New("manager owner-needed receipt changed guidance")
+		}
+	}
+	run.ManagerRegisteredSourceID = expectedSource
+	run.ManagerSession = receipt.ManagerSession
+	return &model.InsightsManagerProposalV1{RecipeID: proposal.RecipeID, Outcome: proposal.Outcome, RationaleCode: proposal.RationaleCode,
+		FirstSequence: proposal.FirstSequence, LastSequence: proposal.LastSequence, GuidanceDigest: proposal.GuidanceDigest}, nil
+}
+
+func managerSequenceBound(ctx context.Context, store *state.Store, run *state.LocalManagerRun) int64 {
+	if run.Manifest.FindingEvidence != nil {
+		return run.Manifest.FindingEvidence.LastSequence
+	}
+	if finding, _ := store.ManagerFinding(ctx, run.Manifest.FindingID); finding != nil {
+		return finding.Finding.LastSequence
+	}
+	return 0
+}
+
+func validProposalRationale(value string) bool {
+	switch value {
+	case "unchanged_failure_repeated", "repeated_call_detected", "query_refinement_available", "active_phase_stalled", "no_safe_action":
+		return true
+	}
+	return false
 }
 
 func (c *Coordinator) submitRunReport(ctx context.Context, run *state.LocalManagerRun) error {
@@ -690,17 +852,13 @@ func (c *Coordinator) ObserveAcknowledgedInsightBatch(ctx context.Context, batch
 	if strings.HasPrefix(batch.RegisteredSourceID, "manager_") {
 		return nil
 	}
-	policyState, err := c.Store.ManagerPolicy(ctx, batch.SandboxID)
-	if err != nil || policyState == nil {
-		return err
-	}
-	policy := policyState.Manifest
-	if policy.Mode != "recommend" || !c.now().Before(policy.ValidUntil) || policy.ValidUntil.Sub(c.now()) > 120*time.Second {
-		return nil
-	}
+	// Retain every genuine acknowledged open finding observation regardless of
+	// the current Off/not-current policy, allowed-rule eligibility or historical
+	// policy revision: the observation policy revision is provenance, not
+	// execution permission. Source identity stays exact.
 	source := model.InsightsManagerSourceV1{RegisteredSourceID: batch.RegisteredSourceID, WorkspaceEpoch: batch.WorkspaceEpoch, NativeSessionID: batch.NativeSessionID, ServiceRegistrationID: batch.ServiceRegistrationID, ServiceGeneration: batch.ServiceGeneration, SandboxGeneration: batch.SandboxGeneration}
 	continuitySource, err := c.Store.ContinuitySource(ctx, batch.RegisteredSourceID)
-	if err != nil || continuitySource == nil || continuitySource.Report.Availability != "available" || continuitySource.Lifecycle != "running" ||
+	if err != nil || continuitySource == nil ||
 		continuitySource.Report.ServiceRegistrationID != batch.ServiceRegistrationID || continuitySource.Report.ServiceGeneration != batch.ServiceGeneration ||
 		continuitySource.Report.SandboxID != batch.SandboxID || continuitySource.Report.SandboxGeneration != batch.SandboxGeneration ||
 		continuitySource.Report.WorkspaceEpoch != batch.WorkspaceEpoch || continuitySource.Report.NativeSessionID != batch.NativeSessionID {
@@ -708,13 +866,36 @@ func (c *Coordinator) ObserveAcknowledgedInsightBatch(ctx context.Context, batch
 	}
 	source.ProfileRevision = continuitySource.Report.ProfileRevision
 	source.InstructionRevision = continuitySource.Report.InstructionRevision
+	policyState, err := c.Store.ManagerPolicy(ctx, batch.SandboxID)
+	if err != nil {
+		return err
+	}
+	var provenance int64
+	if policyState != nil {
+		provenance = policyState.Manifest.PolicyRevision
+	}
+	for _, finding := range batch.Findings {
+		if finding.State != "open" {
+			continue
+		}
+		local := state.LocalManagerFinding{Finding: finding, Source: source, PolicyRevision: provenance, JournalGeneration: batch.JournalGeneration, Acknowledged: true}
+		if err := c.Store.PutManagerFinding(ctx, local); err != nil {
+			return err
+		}
+	}
+	// Automatic admission keeps every existing fence: a current recommend
+	// policy, fresh lease, allowed rule, episode/cooldown/limit eligibility and
+	// exact source/capability/descriptor identity.
+	if policyState == nil {
+		return nil
+	}
+	policy := policyState.Manifest
+	if policy.Mode != "recommend" || !c.now().Before(policy.ValidUntil) || policy.ValidUntil.Sub(c.now()) > 120*time.Second {
+		return nil
+	}
 	for _, finding := range batch.Findings {
 		if finding.State != "open" || !contains(policy.AllowedRules, finding.RuleID) {
 			continue
-		}
-		local := state.LocalManagerFinding{Finding: finding, Source: source, PolicyRevision: policy.PolicyRevision, JournalGeneration: batch.JournalGeneration, Acknowledged: true}
-		if err := c.Store.PutManagerFinding(ctx, local); err != nil {
-			return err
 		}
 		if !c.eligibleAutomatic(ctx, policy, source, finding) {
 			continue
@@ -895,11 +1076,11 @@ func (c *Coordinator) completeAutomaticReservation(ctx context.Context, intent *
 		}
 		return c.settleReservedWithoutExecution(ctx, intent, review, code)
 	}
-	capability, finding, err := c.reviewAuthority(ctx, review, true)
+	capability, evidence, err := c.reviewAuthority(ctx, review, true)
 	if err != nil {
 		return c.settleReservedWithoutExecution(ctx, intent, review, "source_stale")
 	}
-	run := state.LocalManagerRun{Manifest: review, ReservationRequest: &request, Reservation: &reservation, Phase: "dispatching", Capability: *capability, DispatchStarted: true, StartedAt: c.now()}
+	run := state.LocalManagerRun{Manifest: review, ReservationRequest: &request, Reservation: &reservation, Phase: "start_ack_pending", Capability: *capability, DispatchStarted: false, StartedAt: c.now()}
 	if err := c.Store.PutManagerRun(ctx, run); err != nil {
 		return err
 	}
@@ -907,7 +1088,7 @@ func (c *Coordinator) completeAutomaticReservation(ctx context.Context, intent *
 	if err := c.Store.PutManagerReservation(ctx, *intent); err != nil {
 		return err
 	}
-	return c.dispatchReview(ctx, &run, *finding, "start_review")
+	return c.startAcknowledgedReview(ctx, &run, evidence)
 }
 
 func (c *Coordinator) settleReservedWithoutExecution(ctx context.Context, intent *state.LocalManagerReservation, review model.InsightsManagerReviewManifestV1, code string) error {
@@ -943,7 +1124,7 @@ func (c *Coordinator) eligibleAutomatic(ctx context.Context, policy model.Insigh
 		if !run.StartedAt.IsZero() && age >= 0 && age <= time.Hour {
 			serverHourly++
 		}
-		if run.Phase == "dispatching" || run.Phase == "execution_unknown" || run.Phase == "reviewing" {
+		if run.Phase == "start_ack_pending" || run.Phase == "dispatching" || run.Phase == "execution_unknown" || run.Phase == "reviewing" {
 			active++
 		}
 		runSandbox := run.Capability.SandboxID
@@ -1058,7 +1239,10 @@ func (c *Coordinator) dispatchTakeover(ctx context.Context, value *state.LocalMa
 	payload, _ := json.Marshal(map[string]any{"formatVersion": 1, "action": action, "instance": instance, "manifest": value.Manifest})
 	output, _, err := c.Helper.ExecManager(ctx, sandboxID, payload)
 	if err != nil {
-		if action == "release_intervention_hold" {
+		// Preserve the effect class across every dispatch and observation
+		// failure: a Resume that may have been released stays release_unknown,
+		// never acquire_unknown, so recovery cannot relabel a lost release.
+		if value.Manifest.Action == "resume_manager_and_release_member" {
 			value.Phase = "release_unknown"
 		} else {
 			value.Phase = "acquire_unknown"
@@ -1156,20 +1340,16 @@ func recipeForRule(rule string) string {
 		return "inspect_active_phase@1"
 	}
 }
-func rationaleForRule(rule string) string {
-	switch rule {
-	case "repeated_identical_failure@1":
-		return "unchanged_failure_repeated"
-	case "repeated_identical_call@1":
-		return "repeated_call_detected"
-	case "empty_result_loop@1":
-		return "query_refinement_available"
-	default:
-		return "active_phase_stalled"
-	}
-}
 func managerFindingEvidence(value state.LocalManagerFinding) map[string]any {
 	return map[string]any{"findingId": value.Finding.FindingID, "findingRevision": value.Finding.Revision, "journalGeneration": value.JournalGeneration, "ruleId": value.Finding.RuleID, "nativeSessionId": value.Source.NativeSessionID, "firstSequence": value.Finding.FirstSequence, "lastSequence": value.Finding.LastSequence, "count": value.Finding.Count, "matchedCallIds": value.Finding.MatchedCallIDs, "coverage": value.Finding.Coverage, "firstObservedAt": value.Finding.FirstObservedAt, "lastObservedAt": value.Finding.LastObservedAt, "toolCategory": value.Finding.ToolCategory, "phase": value.Finding.Phase}
+}
+
+func managerFindingEvidenceV1(value model.InsightsManagerFindingEvidenceV1) map[string]any {
+	return map[string]any{"findingId": value.FindingID, "findingRevision": value.FindingRevision, "journalGeneration": value.JournalGeneration,
+		"ruleId": value.RuleID, "nativeSessionId": value.NativeSessionID, "firstSequence": value.FirstSequence,
+		"lastSequence": value.LastSequence, "count": value.Count, "matchedCallIds": value.MatchedCallIDs,
+		"coverage": value.Coverage, "firstObservedAt": value.FirstObservedAt, "lastObservedAt": value.LastObservedAt,
+		"toolCategory": value.ToolCategory, "phase": value.Phase}
 }
 func managerCapabilityWire(value state.LocalManagerCapability) map[string]any {
 	return map[string]any{"nativeVersion": value.NativeVersion, "nativeSourceRevision": value.NativeSourceRevision, "protocol": value.Protocol, "nativeProtocol": value.NativeProtocol, "providerId": value.ProviderID, "modelId": value.ModelID, "providerRouteDigest": value.ProviderRouteDigest, "recipeIds": value.RecipeIDs, "managerPluginDigest": value.ManagerPluginDigest, "maxInputTokens": value.MaxInputTokens, "maxOutputTokens": value.MaxOutputTokens, "finalRequestMaxBytes": value.FinalRequestMaxBytes, "toolsAllowed": value.ToolsAllowed, "mediaAllowed": value.MediaAllowed, "hardOutputTokenLimit": value.HardOutputTokenLimit, "available": value.Available, "reason": func() any {

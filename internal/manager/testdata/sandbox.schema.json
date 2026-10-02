@@ -70,18 +70,85 @@
       "required": ["modelRequests", "inputTokens", "outputTokens"]
     },
     "authority": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "formatVersion": {"const": 1}, "reservationId": {"$ref": "#/$defs/id"}, "runId": {"$ref": "#/$defs/id"}, "manual": {"const": true},
-        "findingId": {"$ref": "#/$defs/id"}, "findingRevision": {"$ref": "#/$defs/positive"},
-        "policyRevision": {"$ref": "#/$defs/positive"},
-        "ruleId": {"enum": ["repeated_identical_failure@1", "repeated_identical_call@1", "empty_result_loop@1", "suspected_stall@1"]},
-        "recipeId": {"enum": ["inspect_first_failure@1", "check_repeated_operation@1", "refine_query@1", "inspect_active_phase@1"]},
-        "providerRouteDigest": {"$ref": "#/$defs/digest"}, "managerProfile": {"$ref": "#/$defs/managerProfile"},
-        "source": {"$ref": "#/$defs/source"}, "target": {"$ref": "#/$defs/target"}, "budget": {"$ref": "#/$defs/budget"},
-        "validUntil": {"$ref": "#/$defs/dateTime"}
+        "formatVersion": {
+          "const": 1
+        },
+        "reservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "manual": {
+          "const": true
+        },
+        "findingId": {
+          "$ref": "#/$defs/id"
+        },
+        "findingRevision": {
+          "$ref": "#/$defs/positive"
+        },
+        "policyRevision": {
+          "$ref": "#/$defs/positive"
+        },
+        "ruleId": {
+          "enum": [
+            "repeated_identical_failure@1",
+            "repeated_identical_call@1",
+            "empty_result_loop@1",
+            "suspected_stall@1"
+          ]
+        },
+        "recipeId": {
+          "enum": [
+            "inspect_first_failure@1",
+            "check_repeated_operation@1",
+            "refine_query@1",
+            "inspect_active_phase@1"
+          ]
+        },
+        "providerRouteDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "managerProfile": {
+          "$ref": "#/$defs/managerProfile"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "budget": {
+          "$ref": "#/$defs/budget"
+        },
+        "validUntil": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "findingEvidence": {
+          "$ref": "#/$defs/findingEvidence"
+        }
       },
-      "required": ["formatVersion", "reservationId", "runId", "manual", "findingId", "findingRevision", "policyRevision", "ruleId", "recipeId", "providerRouteDigest", "managerProfile", "source", "target", "budget", "validUntil"]
+      "required": [
+        "formatVersion",
+        "reservationId",
+        "runId",
+        "manual",
+        "findingId",
+        "findingRevision",
+        "policyRevision",
+        "ruleId",
+        "recipeId",
+        "providerRouteDigest",
+        "managerProfile",
+        "source",
+        "target",
+        "budget",
+        "validUntil"
+      ]
     },
     "routeCapability": {
       "type": "object", "additionalProperties": false,
@@ -180,9 +247,110 @@
       "required": ["formatVersion", "action", "instance", "reservationId", "runId", "policyRevision", "runGeneration", "source"]
     },
     "reviewReceipt": {
-      "type": "object", "additionalProperties": false,
-      "properties": {"formatVersion": {"const": 1}, "action": {"type": "string"}, "status": {"enum": ["reviewing", "recommended", "needs_owner", "failed", "execution_unknown", "refused"]}, "reservationId": {"$ref": "#/$defs/id"}, "runId": {"$ref": "#/$defs/id"}, "modelRequests": {"type": "integer", "minimum": 0, "maximum": 2}, "reservedInputTokens": {"type": "integer", "minimum": 0, "maximum": 16000}, "reservedOutputTokens": {"type": "integer", "minimum": 0, "maximum": 2000}, "managerRegisteredSourceId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "managerSession": {"oneOf": [{"$ref": "#/$defs/managerSession"}, {"type": "null"}]}, "proposalDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}, "guidanceReceipt": {"$ref": "#/$defs/guidanceReceipt"}, "receiptDigest": {"$ref": "#/$defs/digest"}, "error": {"type": ["string", "null"]}},
-      "required": ["formatVersion", "action", "status", "reservationId", "runId", "modelRequests", "reservedInputTokens", "reservedOutputTokens", "managerRegisteredSourceId", "managerSession", "proposalDigest", "guidanceReceipt", "receiptDigest", "error"]
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "action": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "reviewing",
+            "recommended",
+            "no_action",
+            "needs_owner",
+            "failed",
+            "execution_unknown",
+            "refused"
+          ]
+        },
+        "reservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "modelRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "reservedInputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16000
+        },
+        "reservedOutputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000
+        },
+        "managerRegisteredSourceId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "managerSession": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/managerSession"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "proposalDigest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "guidanceReceipt": {
+          "$ref": "#/$defs/guidanceReceipt"
+        },
+        "receiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "proposal": {
+          "$ref": "#/$defs/proposalSummary"
+        }
+      },
+      "required": [
+        "formatVersion",
+        "action",
+        "status",
+        "reservationId",
+        "runId",
+        "modelRequests",
+        "reservedInputTokens",
+        "reservedOutputTokens",
+        "managerRegisteredSourceId",
+        "managerSession",
+        "proposalDigest",
+        "guidanceReceipt",
+        "receiptDigest",
+        "error",
+        "proposal"
+      ]
     },
     "holdManifest": {
       "type": "object", "additionalProperties": false,
@@ -198,6 +366,70 @@
       "type": "object", "additionalProperties": false,
       "properties": {"formatVersion": {"const": 1}, "action": {"enum": ["acquire_intervention_hold", "release_intervention_hold", "reconcile_intervention_hold"]}, "status": {"enum": ["active", "released", "unsettled"]}, "operationId": {"$ref": "#/$defs/id"}, "predecessorOperationId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "findingId": {"$ref": "#/$defs/id"}, "findingRevision": {"$ref": "#/$defs/positive"}, "holdId": {"$ref": "#/$defs/id"}, "holdRevision": {"$ref": "#/$defs/positive"}, "holdState": {"enum": ["active", "released"]}, "policyRevision": {"$ref": "#/$defs/positive"}, "runGeneration": {"$ref": "#/$defs/positive"}, "source": {"$ref": "#/$defs/source"}, "target": {"$ref": "#/$defs/target"}, "validUntil": {"$ref": "#/$defs/dateTime"}, "pendingInput": {"type": "object", "additionalProperties": false, "properties": {"state": {"enum": ["none_pending", "canceled", "already_available_to_worker", "unknown"]}, "alreadyConsumed": {"type": "boolean"}}, "required": ["state", "alreadyConsumed"]}, "receiptDigest": {"$ref": "#/$defs/digest"}, "errorCode": {"type": "null"}},
       "required": ["formatVersion", "action", "status", "operationId", "predecessorOperationId", "findingId", "findingRevision", "holdId", "holdRevision", "holdState", "policyRevision", "runGeneration", "source", "target", "validUntil", "pendingInput", "receiptDigest", "errorCode"]
+    },
+    "proposalSummary": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recipeId": {
+              "enum": [
+                "inspect_first_failure@1",
+                "check_repeated_operation@1",
+                "refine_query@1",
+                "inspect_active_phase@1"
+              ]
+            },
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "recommendation",
+                "no_action",
+                "needs_owner"
+              ]
+            },
+            "rationaleCode": {
+              "enum": [
+                "unchanged_failure_repeated",
+                "repeated_call_detected",
+                "query_refinement_available",
+                "active_phase_stalled",
+                "no_safe_action"
+              ]
+            },
+            "firstSequence": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "lastSequence": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "guidanceDigest": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/digest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "recipeId",
+            "outcome",
+            "rationaleCode",
+            "firstSequence",
+            "lastSequence",
+            "guidanceDigest"
+          ]
+        }
+      ]
     }
   }
 }
