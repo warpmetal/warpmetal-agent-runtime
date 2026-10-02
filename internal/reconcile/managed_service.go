@@ -527,9 +527,6 @@ func (r *Reconciler) registerManagedSource(ctx context.Context, desired model.Ma
 			},
 		},
 	}
-	if version := desired.RuntimeContractVersion; version != "" {
-		request["runtimeContractVersion"] = version
-	}
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return nil, err
@@ -680,9 +677,6 @@ func (r *Reconciler) runManagedWorkerBoundary(ctx context.Context, desired model
 		request := map[string]any{
 			"schemaVersion": 1, "command": string(action), "instance": desired.Identity.Instance,
 			"root": "/home/agent", "allowInsecureLoopback": false, "requestTimeoutSeconds": 30,
-		}
-		if version := desired.RuntimeContractVersion; version != "" {
-			request["runtimeContractVersion"] = version
 		}
 		payload, _ := json.Marshal(request)
 		receiptJSON, _, err := r.ManagedRuntime.ExecManagedWorker(ctx, desired.Identity.SandboxID, action, payload)

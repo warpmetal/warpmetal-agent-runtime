@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -1105,6 +1106,223 @@ func TestManagedServiceDecodesActualNegotiatedSandboxSupervisorReceipts(t *testi
 		!strings.Contains(err.Error(), `unknown field "nativeGuardX"`) {
 		t.Fatalf("unknown negotiated receipt field was not rejected: %v", err)
 	}
+}
+
+// wireContractConsumerRuntime decorates the existing producer fake so the
+// unmodified shipped Sandbox closed validators see the exact payload bytes the
+// Runtime producer emits. Only the physical sandbox root path is remapped to a
+// temporary directory (opaque path fixture); field names, body shape and
+// authority values are untouched. A validator refusal fails the production
+// call, so the same journey is RED while the two RF blocks emit the
+// un-negotiated field and GREEN once they stop, with no test edits in between.
+type wireContractConsumerRuntime struct {
+	*fakeManagedRuntime
+	python           string
+	workerScript     string
+	supervisorScript string
+	root             string
+}
+
+const wireWorkerValidatorAdapter = `
+import importlib.machinery
+import importlib.util
+import json
+import sys
+loader = importlib.machinery.SourceFileLoader("wire_worker_consumer", sys.argv[1])
+spec = importlib.util.spec_from_loader("wire_worker_consumer", loader)
+consumer = importlib.util.module_from_spec(spec)
+loader.exec_module(consumer)
+try:
+    normalized = consumer.validate_document(json.load(sys.stdin))
+except consumer.WorkerError as error:
+    print(str(error), file=sys.stderr)
+    sys.exit(1)
+json.dump({"command": normalized.get("command")}, sys.stdout, sort_keys=True)
+`
+
+const wireSupervisorValidatorAdapter = `
+import importlib.util
+import json
+import sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("wire_supervisor_consumer", sys.argv[1])
+consumer = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = consumer
+spec.loader.exec_module(consumer)
+try:
+    normalized = consumer.validate_request("register-source", json.load(sys.stdin), root=Path(sys.argv[2]))
+except consumer.RequestError as error:
+    print(str(error), file=sys.stderr)
+    sys.exit(1)
+json.dump({"registration": normalized.get("registration")}, sys.stdout, sort_keys=True)
+`
+
+func (runtime *wireContractConsumerRuntime) validateWorkerPayload(action string, payload []byte) error {
+	var document map[string]any
+	if err := json.Unmarshal(payload, &document); err != nil {
+		return err
+	}
+	document["root"] = runtime.root
+	remapped, err := json.Marshal(document)
+	if err != nil {
+		return err
+	}
+	command := exec.CommandContext(context.Background(), runtime.python, "-c", wireWorkerValidatorAdapter, runtime.workerScript)
+	command.Stdin = bytes.NewReader(remapped)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("actual Sandbox worker validator refused %s: %s", action, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func (runtime *wireContractConsumerRuntime) validateSupervisorRegisterSource(payload []byte) error {
+	command := exec.CommandContext(context.Background(), runtime.python, "-c", wireSupervisorValidatorAdapter, runtime.supervisorScript, runtime.root)
+	command.Stdin = bytes.NewReader(payload)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("actual Sandbox supervisor validator refused register-source: %s", strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func (runtime *wireContractConsumerRuntime) ExecManagedWorker(ctx context.Context, sandboxID string, action containers.ManagedWorkerAction, payload []byte) ([]byte, []byte, error) {
+	if err := runtime.validateWorkerPayload(string(action), payload); err != nil {
+		return nil, nil, err
+	}
+	return runtime.fakeManagedRuntime.ExecManagedWorker(ctx, sandboxID, action, payload)
+}
+
+func (runtime *wireContractConsumerRuntime) ExecManagedSupervisor(ctx context.Context, sandboxID string, action containers.ManagedSupervisorAction, payload []byte) ([]byte, []byte, error) {
+	if action == containers.ManagedSupervisorRegisterSource {
+		if err := runtime.validateSupervisorRegisterSource(payload); err != nil {
+			return nil, nil, err
+		}
+	}
+	return runtime.fakeManagedRuntime.ExecManagedSupervisor(ctx, sandboxID, action, payload)
+}
+
+// TestManagedServiceActualSandboxClosedContractsAcceptProductionWireRequests
+// extends the existing managed-service producer journey: the decorated runtime
+// hands the exact Runtime-emitted worker boundary and register-source payload
+// bytes to the unmodified shipped Sandbox validators. The empty-contract
+// baseline is the ordinary non-negotiated path and must pass; the negotiated
+// 0.1.32 path is the causal RED while the two RF blocks emit the field and
+// GREEN once the EXACT two removals land, with this test unchanged.
+func TestManagedServiceActualSandboxClosedContractsAcceptProductionWireRequests(t *testing.T) {
+	sandboxSource := os.Getenv("WARP_METAL_SANDBOX_SOURCE")
+	image := os.Getenv("WARP_METAL_SANDBOX_IMAGE")
+	var workerScript, supervisorScript string
+	switch {
+	case sandboxSource != "":
+		workerScript = filepath.Join(sandboxSource, "runner", "warpmetal_team_worker.py")
+		supervisorScript = filepath.Join(sandboxSource, "runner", "warpmetal_opencode_supervisor.py")
+	case image != "":
+		workerScript, supervisorScript = extractSandboxValidatorScriptsFromImage(t, image)
+	default:
+		if os.Getenv("WARPMETAL_WIRE_CONTRACT_EVIDENCE") != "" {
+			t.Fatal("WARP_METAL_SANDBOX_SOURCE or WARP_METAL_SANDBOX_IMAGE is required for real wire-contract evidence")
+		}
+		t.Skip("WARP_METAL_SANDBOX_SOURCE and WARP_METAL_SANDBOX_IMAGE are not set")
+	}
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newJourney := func(t *testing.T) (*wireContractConsumerRuntime, *fakeManagedRuntime, producerFixture) {
+		t.Helper()
+		fixture := loadProducerFixture(t)
+		// Bind the canonical 24-character sandbox identity the published
+		// Sandbox registration validator requires; every other fixture ID is
+		// already canonical.
+		fixture.ServiceManifest.Identity.SandboxID = "sbx_0123456789abcdef01234567"
+		store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = store.Close() })
+		base := &fakeManagedRuntime{store: store, serviceID: fixture.ServiceManifest.Identity.ServiceRegistrationID, fixture: fixture}
+		decorated := &wireContractConsumerRuntime{
+			fakeManagedRuntime: base, python: python, workerScript: workerScript,
+			supervisorScript: supervisorScript, root: t.TempDir(),
+		}
+		return decorated, base, fixture
+	}
+	desiredWithContract := func(fixture producerFixture, contract string) model.ManagedServiceV1 {
+		desired := fixture.ServiceManifest
+		desired.RuntimeContractVersion = contract
+		return desired
+	}
+	nativeReceipt := func() managedSupervisorReceipt {
+		return managedSupervisorReceipt{
+			SessionID:            "ses_0123456789abcdef01234567",
+			NativeProjectID:      strings.Repeat("c", 40),
+			NativeLocationDigest: "sha256:" + strings.Repeat("d", 64),
+		}
+	}
+	t.Run("worker_boundary_baseline_actual_rf_path", func(t *testing.T) {
+		decorated, base, fixture := newJourney(t)
+		reconciler := &Reconciler{Store: base.store, ManagedRuntime: decorated}
+		if _, err := reconciler.runManagedWorkerBoundary(context.Background(), desiredWithContract(fixture, "")); err != nil {
+			t.Fatalf("baseline worker boundary refused: %v", err)
+		}
+	})
+	t.Run("worker_boundary_negotiated_wire32", func(t *testing.T) {
+		decorated, base, fixture := newJourney(t)
+		reconciler := &Reconciler{Store: base.store, ManagedRuntime: decorated}
+		if _, err := reconciler.runManagedWorkerBoundary(context.Background(), desiredWithContract(fixture, "0.1.32")); err != nil {
+			t.Fatalf("RF worker boundary payload was refused by the shipped validator: %v", err)
+		}
+	})
+	t.Run("register_source_baseline_actual_rf_path", func(t *testing.T) {
+		decorated, _, fixture := newJourney(t)
+		reconciler := &Reconciler{ManagedRuntime: decorated}
+		desired := desiredWithContract(fixture, "")
+		if _, err := reconciler.registerManagedSource(context.Background(), desired, "source_0123456789abcdef01234567", nativeReceipt(), fixture.InstructionResponse); err != nil {
+			t.Fatalf("baseline register-source refused: %v", err)
+		}
+	})
+	t.Run("register_source_negotiated_wire32", func(t *testing.T) {
+		decorated, _, fixture := newJourney(t)
+		reconciler := &Reconciler{ManagedRuntime: decorated}
+		desired := desiredWithContract(fixture, "0.1.32")
+		if _, err := reconciler.registerManagedSource(context.Background(), desired, "source_0123456789abcdef01234567", nativeReceipt(), fixture.InstructionResponse); err != nil {
+			t.Fatalf("RF register-source payload was refused by the shipped validator: %v", err)
+		}
+	})
+}
+
+// extractSandboxValidatorScriptsFromImage reads the packaged closed helper
+// files out of the exact published Sandbox image with a stopped container
+// (docker create + docker cp). No process, provider or native code runs.
+func extractSandboxValidatorScriptsFromImage(t *testing.T, image string) (string, string) {
+	t.Helper()
+	directory := t.TempDir()
+	container := fmt.Sprintf("wire-contract-%d", time.Now().UnixNano())
+	run := func(args ...string) {
+		t.Helper()
+		command := exec.CommandContext(context.Background(), "docker", args...)
+		output, err := command.CombinedOutput()
+		if err != nil {
+			t.Fatalf("docker %s failed: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+		}
+	}
+	run("pull", "--platform", "linux/amd64", image)
+	run("create", "--platform", "linux/amd64", "--name", container, image)
+	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", container).Run() })
+	worker := filepath.Join(directory, "warpmetal_team_worker.py")
+	supervisor := filepath.Join(directory, "warpmetal_opencode_supervisor.py")
+	run("cp", container+":/usr/local/libexec/warpmetal-agent-teams/warpmetal_team_worker.py", worker)
+	run("cp", container+":/usr/local/bin/warpmetal-opencode-supervisor", supervisor)
+	run("rm", container)
+	for _, path := range []string{worker, supervisor} {
+		info, err := os.Stat(path)
+		if err != nil || info.Size() == 0 {
+			t.Fatalf("extracted Sandbox validator %s is unavailable: %v", path, err)
+		}
+	}
+	return worker, supervisor
 }
 
 func loadProducerFixture(t *testing.T) producerFixture {

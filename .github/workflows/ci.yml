@@ -18,6 +18,9 @@ jobs:
           go-version: "1.25.0"
           cache-dependency-path: go.sum
       - name: Verify and test
+        env:
+          WARP_METAL_SANDBOX_IMAGE: ghcr.io/warpmetal/warpmetal-agent-sandbox@sha256:749164405a43b8ce5f2ffe1d59f81992e091604f43dd7c003f787a55be02fd7f
+          WARPMETAL_WIRE_CONTRACT_EVIDENCE: "1"
         run: |
           set -eu
           test -z "$(gofmt -l .)"
