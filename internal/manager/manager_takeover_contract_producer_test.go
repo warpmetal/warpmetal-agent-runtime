@@ -506,7 +506,7 @@ type managerProcessHelper struct {
 
 func (helper *managerProcessHelper) ExecManager(ctx context.Context, _ string, payload []byte) ([]byte, []byte, error) {
 	var request struct {
-		Action    string                                 `json:"action"`
+		Action    string                                `json:"action"`
 		Authority model.InsightsManagerReviewManifestV1 `json:"authority"`
 	}
 	if err := json.Unmarshal(payload, &request); err != nil {

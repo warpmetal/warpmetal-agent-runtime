@@ -21,21 +21,21 @@ const (
 )
 
 var (
-	namePattern            = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
-	idPattern              = regexp.MustCompile(`^(?:sbx|grant)_[A-Za-z0-9_-]{8,60}$`)
-	setupIDPattern         = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`)
-	imagePattern           = regexp.MustCompile(`^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$`)
-	setupDigestPattern     = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
-	continuityIDPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+	namePattern              = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	idPattern                = regexp.MustCompile(`^(?:sbx|grant)_[A-Za-z0-9_-]{8,60}$`)
+	setupIDPattern           = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`)
+	imagePattern             = regexp.MustCompile(`^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$`)
+	setupDigestPattern       = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+	continuityIDPattern      = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
 	managerEvidenceIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{3,159}$`)
-	npmPackagePattern      = regexp.MustCompile(`^(?:@[a-z0-9][a-z0-9._-]{0,62}/)?[a-z0-9][a-z0-9._-]{0,62}$`)
-	npmBinPattern          = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
-	relativePathPattern    = regexp.MustCompile(`^[A-Za-z0-9._/-]{1,256}$`)
-	semverPattern          = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
-	environmentNamePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
-	providerIDPattern      = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
-	modelIDPattern         = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$`)
-	validDesired           = map[string]bool{"running": true, "stopped": true, "deleted": true}
+	npmPackagePattern        = regexp.MustCompile(`^(?:@[a-z0-9][a-z0-9._-]{0,62}/)?[a-z0-9][a-z0-9._-]{0,62}$`)
+	npmBinPattern            = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
+	relativePathPattern      = regexp.MustCompile(`^[A-Za-z0-9._/-]{1,256}$`)
+	semverPattern            = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
+	environmentNamePattern   = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
+	providerIDPattern        = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
+	modelIDPattern           = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$`)
+	validDesired             = map[string]bool{"running": true, "stopped": true, "deleted": true}
 )
 
 type Resources struct {
@@ -613,22 +613,22 @@ type InsightsManagerFindingEvidenceV1 struct {
 }
 
 type InsightsManagerReviewManifestV1 struct {
-	FormatVersion       int                                `json:"formatVersion"`
-	ReservationID       string                             `json:"reservationId"`
-	RunID               string                             `json:"runId"`
-	Manual              bool                               `json:"manual"`
-	FindingID           string                             `json:"findingId"`
-	FindingRevision     int64                              `json:"findingRevision"`
-	PolicyRevision      int64                              `json:"policyRevision"`
-	RuleID              string                             `json:"ruleId"`
-	RecipeID            string                             `json:"recipeId"`
-	ProviderRouteDigest string                             `json:"providerRouteDigest"`
-	ManagerProfile      InsightsManagerProfileV1           `json:"managerProfile"`
-	Source              InsightsManagerSourceV1            `json:"source"`
-	Target              InsightsManagerTargetV1            `json:"target"`
-	Budget              InsightsManagerBudgetV1            `json:"budget"`
-	FindingEvidence     *InsightsManagerFindingEvidenceV1  `json:"findingEvidence,omitempty"`
-	ValidUntil          time.Time                          `json:"validUntil"`
+	FormatVersion       int                               `json:"formatVersion"`
+	ReservationID       string                            `json:"reservationId"`
+	RunID               string                            `json:"runId"`
+	Manual              bool                              `json:"manual"`
+	FindingID           string                            `json:"findingId"`
+	FindingRevision     int64                             `json:"findingRevision"`
+	PolicyRevision      int64                             `json:"policyRevision"`
+	RuleID              string                            `json:"ruleId"`
+	RecipeID            string                            `json:"recipeId"`
+	ProviderRouteDigest string                            `json:"providerRouteDigest"`
+	ManagerProfile      InsightsManagerProfileV1          `json:"managerProfile"`
+	Source              InsightsManagerSourceV1           `json:"source"`
+	Target              InsightsManagerTargetV1           `json:"target"`
+	Budget              InsightsManagerBudgetV1           `json:"budget"`
+	FindingEvidence     *InsightsManagerFindingEvidenceV1 `json:"findingEvidence,omitempty"`
+	ValidUntil          time.Time                         `json:"validUntil"`
 }
 
 type InsightsManagerReservationRequestV1 struct {

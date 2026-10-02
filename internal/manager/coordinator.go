@@ -37,18 +37,18 @@ type Coordinator struct {
 }
 
 type reviewHelperReceipt struct {
-	FormatVersion             int                             `json:"formatVersion"`
-	Action                    string                          `json:"action"`
-	Status                    string                          `json:"status"`
-	ReservationID             string                          `json:"reservationId"`
-	RunID                     string                          `json:"runId"`
-	ModelRequests             int                             `json:"modelRequests"`
-	ReservedInputTokens       int64                           `json:"reservedInputTokens"`
-	ReservedOutputTokens      int64                           `json:"reservedOutputTokens"`
-	ManagerRegisteredSourceID string                          `json:"managerRegisteredSourceId"`
-	ManagerSession            *model.InsightsManagerSessionV1 `json:"managerSession"`
+	FormatVersion             int                              `json:"formatVersion"`
+	Action                    string                           `json:"action"`
+	Status                    string                           `json:"status"`
+	ReservationID             string                           `json:"reservationId"`
+	RunID                     string                           `json:"runId"`
+	ModelRequests             int                              `json:"modelRequests"`
+	ReservedInputTokens       int64                            `json:"reservedInputTokens"`
+	ReservedOutputTokens      int64                            `json:"reservedOutputTokens"`
+	ManagerRegisteredSourceID string                           `json:"managerRegisteredSourceId"`
+	ManagerSession            *model.InsightsManagerSessionV1  `json:"managerSession"`
 	Proposal                  *model.InsightsManagerProposalV1 `json:"proposal"`
-	ProposalDigest            *string                         `json:"proposalDigest"`
+	ProposalDigest            *string                          `json:"proposalDigest"`
 	GuidanceReceipt           *struct {
 		FormatVersion     int     `json:"formatVersion"`
 		Mode              string  `json:"mode"`
