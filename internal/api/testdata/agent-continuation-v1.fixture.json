@@ -1,0 +1,103 @@
+{
+  "continueRequest": {
+    "version": 1,
+    "operationId": "op_continue_example0001",
+    "requestId": "req_continue_example0001",
+    "expectedRevision": 1,
+    "expectedBindingRevision": 1,
+    "scopeRevision": 3,
+    "checkpointOperationId": "op_capture_example0001",
+    "targetMemberId": "tmem_continueexample0001",
+    "instruction": "Continue from the accepted checkpoint and finish the requested implementation.",
+    "turnLimit": 50,
+    "timeoutSeconds": 900
+  },
+  "continuationManifest": {
+    "formatVersion": 1,
+    "operationId": "op_continue_example0001",
+    "action": "prepare_continuation",
+    "desiredRevision": 12,
+    "identity": {"workId": "work_continueexample0001", "projectId": "project_continueexample0001", "sandboxId": "sbx_continueexample000001", "workspaceEpoch": "epoch_continueexample0001", "sandboxGeneration": 2, "expectedRevision": 1},
+    "binding": {"bindingId": "binding_continueexample0001", "bindingRevision": 1, "scopeRevision": 3, "serviceRegistrationId": "service_continueexample0001", "serviceGeneration": 1, "registeredSourceId": "source_continueexample0001", "nativeSessionId": "ses_continueexample0001", "nativeProjectId": "0123456789abcdef0123456789abcdef01234567", "nativeLocationDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+    "checkpoint": {"operationId": "op_capture_example0001", "checkpointId": "checkpoint_continueexample0001", "manifestDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "bytes": 4096, "objectCount": 12},
+    "target": {"teamId": "team_continueexample0001", "teamRevision": 2, "policyRevision": 1, "memberId": "tmem_continueexample0001", "sandboxId": "sbx_continueexample000001", "sandboxGeneration": 2, "serviceRegistrationId": "service_continueexample0001", "serviceGeneration": 1, "serviceDesiredRevision": 1, "serviceActionRevision": 2, "selectionId": "selection_continueexample0001", "projectId": "project_continueexample0001", "workspaceEpoch": "epoch_continueexample0001", "scopeRevision": 3, "rootAttestation": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "profileId": "opencode", "profileRevision": 1, "profileDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888", "instructionRevision": 1, "instructionDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999", "role": "worker"},
+    "context": {"digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "bytes": 2048, "tokenUpperBound": 2048}
+  },
+  "continuationReport": {
+    "formatVersion": 1,
+    "operationId": "op_continue_example0001",
+    "action": "prepare_continuation",
+    "status": "ready",
+    "desiredRevision": 12,
+    "identity": {"workId": "work_continueexample0001", "projectId": "project_continueexample0001", "sandboxId": "sbx_continueexample000001", "workspaceEpoch": "epoch_continueexample0001", "sandboxGeneration": 2, "expectedRevision": 1},
+    "binding": {"bindingId": "binding_continueexample0001", "bindingRevision": 1, "scopeRevision": 3, "serviceRegistrationId": "service_continueexample0001", "serviceGeneration": 1, "registeredSourceId": "source_continueexample0001", "nativeSessionId": "ses_continueexample0001", "nativeProjectId": "0123456789abcdef0123456789abcdef01234567", "nativeLocationDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+    "checkpoint": {"operationId": "op_capture_example0001", "checkpointId": "checkpoint_continueexample0001", "manifestDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "bytes": 4096, "objectCount": 12},
+    "target": {"teamId": "team_continueexample0001", "teamRevision": 2, "policyRevision": 1, "memberId": "tmem_continueexample0001", "sandboxId": "sbx_continueexample000001", "sandboxGeneration": 2, "serviceRegistrationId": "service_continueexample0001", "serviceGeneration": 1, "serviceDesiredRevision": 1, "serviceActionRevision": 2, "selectionId": "selection_continueexample0001", "projectId": "project_continueexample0001", "workspaceEpoch": "epoch_continueexample0001", "scopeRevision": 3, "rootAttestation": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "profileId": "opencode", "profileRevision": 1, "profileDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888", "instructionRevision": 1, "instructionDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999", "role": "worker"},
+    "contextDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "baseline": {"baselineId": "baseline_continueexample0001", "baselineDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "nativeSessionId": "ses_continueexample0001", "serviceGeneration": 1, "readyAt": "2026-09-27T18:00:00Z"},
+    "receiptDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "errorCode": null
+  },
+  "continuationReleaseManifest": {
+    "formatVersion": 1,
+    "operationId": "op_continue_example0001",
+    "action": "release_continuation",
+    "desiredRevision": 14,
+    "identity": {"workId": "work_continueexample0001", "projectId": "project_continueexample0001", "sandboxId": "sbx_continueexample000001", "workspaceEpoch": "epoch_continueexample0001", "sandboxGeneration": 2, "expectedRevision": 1},
+    "binding": {"bindingId": "binding_continueexample0001", "bindingRevision": 1, "scopeRevision": 3, "serviceRegistrationId": "service_continueexample0001", "serviceGeneration": 1, "registeredSourceId": "source_continueexample0001", "nativeSessionId": "ses_continueexample0001", "nativeProjectId": "0123456789abcdef0123456789abcdef01234567", "nativeLocationDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+    "checkpoint": {"operationId": "op_capture_example0001", "checkpointId": "checkpoint_continueexample0001", "manifestDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "bytes": 4096, "objectCount": 12},
+    "target": {"teamId": "team_continueexample0001", "teamRevision": 2, "policyRevision": 1, "memberId": "tmem_continueexample0001", "sandboxId": "sbx_continueexample000001", "sandboxGeneration": 2, "serviceRegistrationId": "service_continueexample0001", "serviceGeneration": 1, "serviceDesiredRevision": 1, "serviceActionRevision": 2, "selectionId": "selection_continueexample0001", "projectId": "project_continueexample0001", "workspaceEpoch": "epoch_continueexample0001", "scopeRevision": 3, "rootAttestation": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "profileId": "opencode", "profileRevision": 1, "profileDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888", "instructionRevision": 1, "instructionDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999", "role": "worker"},
+    "context": {"digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "bytes": 2048, "tokenUpperBound": 2048},
+    "reason": "superseded"
+  },
+  "continuationReleaseReport": {
+    "formatVersion": 1,
+    "operationId": "op_continue_example0001",
+    "action": "release_continuation",
+    "desiredRevision": 14,
+    "identity": {"workId": "work_continueexample0001", "projectId": "project_continueexample0001", "sandboxId": "sbx_continueexample000001", "workspaceEpoch": "epoch_continueexample0001", "sandboxGeneration": 2, "expectedRevision": 1},
+    "binding": {"bindingId": "binding_continueexample0001", "bindingRevision": 1, "scopeRevision": 3, "serviceRegistrationId": "service_continueexample0001", "serviceGeneration": 1, "registeredSourceId": "source_continueexample0001", "nativeSessionId": "ses_continueexample0001", "nativeProjectId": "0123456789abcdef0123456789abcdef01234567", "nativeLocationDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+    "checkpoint": {"operationId": "op_capture_example0001", "checkpointId": "checkpoint_continueexample0001", "manifestDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "bytes": 4096, "objectCount": 12},
+    "target": {"teamId": "team_continueexample0001", "teamRevision": 2, "policyRevision": 1, "memberId": "tmem_continueexample0001", "sandboxId": "sbx_continueexample000001", "sandboxGeneration": 2, "serviceRegistrationId": "service_continueexample0001", "serviceGeneration": 1, "serviceDesiredRevision": 1, "serviceActionRevision": 2, "selectionId": "selection_continueexample0001", "projectId": "project_continueexample0001", "workspaceEpoch": "epoch_continueexample0001", "scopeRevision": 3, "rootAttestation": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "profileId": "opencode", "profileRevision": 1, "profileDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888", "instructionRevision": 1, "instructionDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999", "role": "worker"},
+    "context": {"digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "bytes": 2048, "tokenUpperBound": 2048},
+    "reason": "superseded",
+    "status": "released",
+    "receiptDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "errorCode": null
+  },
+  "restoreRequest": {
+    "version": 1,
+    "operationId": "op_restore_example0001",
+    "requestId": "req_restore_example0001",
+    "expectedRevision": 1,
+    "expectedBindingRevision": 1,
+    "scopeRevision": 3,
+    "checkpointOperationId": "op_capture_example0001",
+    "targetMode": "create_new"
+  },
+  "restoreManifest": {
+    "formatVersion": 1,
+    "operationId": "op_restore_example0001",
+    "action": "restore_checkpoint",
+    "desiredRevision": 13,
+    "identity": {"workId": "work_continueexample0001", "projectId": "project_continueexample0001", "sandboxId": "sbx_continueexample000001", "workspaceEpoch": "epoch_continueexample0001", "sandboxGeneration": 2, "expectedRevision": 1},
+    "binding": {"bindingId": "binding_continueexample0001", "bindingRevision": 1, "scopeRevision": 3, "serviceRegistrationId": "service_continueexample0001", "serviceGeneration": 1, "registeredSourceId": "source_continueexample0001", "nativeSessionId": "ses_continueexample0001", "nativeProjectId": "0123456789abcdef0123456789abcdef01234567", "nativeLocationDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+    "checkpoint": {"operationId": "op_capture_example0001", "checkpointId": "checkpoint_continueexample0001", "manifestDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "bytes": 4096, "objectCount": 12},
+    "target": {"mode": "create_new", "sandboxId": "sbx_continueexample000001", "sandboxGeneration": 2}
+  },
+  "restoreReport": {
+    "formatVersion": 1,
+    "operationId": "op_restore_example0001",
+    "action": "restore_checkpoint",
+    "status": "accepted",
+    "desiredRevision": 13,
+    "identity": {"workId": "work_continueexample0001", "projectId": "project_continueexample0001", "sandboxId": "sbx_continueexample000001", "workspaceEpoch": "epoch_continueexample0001", "sandboxGeneration": 2, "expectedRevision": 1},
+    "binding": {"bindingId": "binding_continueexample0001", "bindingRevision": 1, "scopeRevision": 3, "serviceRegistrationId": "service_continueexample0001", "serviceGeneration": 1, "registeredSourceId": "source_continueexample0001", "nativeSessionId": "ses_continueexample0001", "nativeProjectId": "0123456789abcdef0123456789abcdef01234567", "nativeLocationDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+    "checkpoint": {"operationId": "op_capture_example0001", "checkpointId": "checkpoint_continueexample0001", "manifestDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "bytes": 4096, "objectCount": 12},
+    "target": {"selectionId": "selection_restoreexample0001", "projectId": "project_restoreexample0001", "workspaceEpoch": "epoch_restoreexample0001", "scopeRevision": 1, "rootAttestation": "sha256:5555555555555555555555555555555555555555555555555555555555555555"},
+    "dependencyStatus": "ready",
+    "exclusions": ["native_history", "credentials", "runtime_state", "external_side_effects"],
+    "receiptDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "errorCode": null
+  }
+}

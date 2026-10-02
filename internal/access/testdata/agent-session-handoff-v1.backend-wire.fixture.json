@@ -1,0 +1,95 @@
+{
+  "finding": {
+    "access": {
+      "requiresLocalOwnerCredential": true,
+      "requiresPinnedHostKey": true,
+      "requiresSandboxGrant": true,
+      "transport": "wm-team-control/1"
+    },
+    "capability": "exact_session",
+    "formatVersion": 1,
+    "handoff": {
+      "action": "open_session",
+      "expiresAt": "2026-09-27T17:12:53Z",
+      "formatVersion": 1,
+      "handoffId": "handoff_cddba80317e44ee1888ad752d2f458e4",
+      "identity": {
+        "instance": "default",
+        "instructionDigest": "sha256:3aec97c08482d69b3b00068bdb9c1e819e0b3b326cb7878c3ff137de0545458e",
+        "instructionRevision": 1,
+        "memberId": "tmem_7M0_PfkkcaisBh6klSPeSBfn",
+        "profileDigest": "sha256:7674bc210836302ce9ee570baa5670af17b72ebd547f0b87fadad56da8ca28e3",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "projectId": "project_insighthandoff",
+        "role": "worker",
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_70c2ee4729f3eb2f8e0b8149",
+        "serverId": "srv_p2c_insighthandoff",
+        "serviceGeneration": 3,
+        "serviceRegistrationId": "service_insighthandoff",
+        "teamId": "team_d6NXATHAmxNTxBXiHVZ4TdbQ",
+        "workspaceEpoch": "epoch_insighthandoff"
+      },
+      "issuedAt": "2026-09-27T17:10:53Z",
+      "source": {
+        "nativeLocationDigest": "sha256:a6cb1c63d3b834dcadf847533437eebf738f242a0ef18f242d4f95ab70e3111c",
+        "nativeProjectId": "588f992c91b06b7050d62a6115be670d57ddf86a",
+        "nativeSessionId": "ses_insighthandoff",
+        "registeredSourceId": "source_insighthandoff"
+      },
+      "task": null,
+      "work": null
+    },
+    "reason": null
+  },
+  "work": {
+    "access": {
+      "requiresLocalOwnerCredential": true,
+      "requiresPinnedHostKey": true,
+      "requiresSandboxGrant": true,
+      "transport": "wm-team-control/1"
+    },
+    "capability": "exact_session",
+    "formatVersion": 1,
+    "handoff": {
+      "action": "open_session",
+      "expiresAt": "2026-09-27T17:12:54Z",
+      "formatVersion": 1,
+      "handoffId": "handoff_f662280f75be4726a80d352661f8a3e1",
+      "identity": {
+        "instance": "default",
+        "instructionDigest": "sha256:93a519ab0ee98daa13e40bb04de18d153cacb99a69cf46364938095c233a0d87",
+        "instructionRevision": 1,
+        "memberId": "tmem_cyEMACB0xuj5Vm_c9Xs3hLZV",
+        "profileDigest": "sha256:8eca2dc41324ffe86e5f04ac0bbd310ddb772e53868585e3b6609346ae7e5cb9",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "projectId": "project_workhandoff",
+        "role": "worker",
+        "sandboxGeneration": 1,
+        "sandboxId": "sbx_32b527ee051c288a85b4e729",
+        "serverId": "srv_p2c_workhandoff",
+        "serviceGeneration": 3,
+        "serviceRegistrationId": "service_workhandoff",
+        "teamId": "team_2AwagmJpKyJck4CA9OzXQ6HT",
+        "workspaceEpoch": "epoch_workhandoff"
+      },
+      "issuedAt": "2026-09-27T17:10:54Z",
+      "source": {
+        "nativeLocationDigest": "sha256:c5024ee0b2864d9a1fd0b86b9b96b83b6743a9263372664a5e386295488ba504",
+        "nativeProjectId": "5a5a29e41b36a7046d69e2f12ead15b687a97332",
+        "nativeSessionId": "ses_workhandoff",
+        "registeredSourceId": "source_workhandoff"
+      },
+      "task": null,
+      "work": {
+        "bindingId": "binding_workhandoff",
+        "bindingRevision": 1,
+        "expectedRevision": 1,
+        "workId": "work_workhandoff"
+      }
+    },
+    "reason": null
+  }
+}

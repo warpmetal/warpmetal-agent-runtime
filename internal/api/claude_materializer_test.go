@@ -13,6 +13,11 @@ const apiClaudeLauncherMaterializer = `{"kind":"npm-package-set","artifacts":[{"
 
 const apiAntArchiveMaterializer = `{"kind":"archive-binary","artifact":{"id":"ant-linux-amd64","source":"https://github.com/anthropics/anthropic-cli/releases/download/v1.33.0/ant_1.33.0_linux_amd64.tar.gz","sha256":"sha256:937a93020b92260a9c1221fa25d79586245e67c368848a0b77b83e645da77f38","format":"tar-gz","sizeBytes":9471689},"bin":{"name":"ant","member":"ant"}}`
 
+// Exact backend/warpmetal/agent_setup.py archive shape for the approved
+// OpenCode 2.0.14 profile. This remains source-owned data rather than a
+// Runtime-invented service configuration.
+const apiOpenCodeArchiveMaterializer = `{"kind":"archive-binary","platform":"linux/amd64","artifact":{"id":"opencode-cli-linux-x64","source":"https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.14.tgz","sha256":"sha256:a3824cc0d080fd69e95c47ae751a8ba49b668f6492fcfe377f5c941c337e53a9","integrity":"sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==","format":"tar-gz","sizeBytes":88757774},"bin":{"name":"opencode","member":"package/bin/opencode","sha256":"sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb","version":"2.0.14","environment":{"OPENCODE_DISABLE_AUTOUPDATE":"1"}}}`
+
 func apiManifestWithMaterializer(profileID, materializer string) string {
 	return fmt.Sprintf(`{"serverId":"srv_example123","desiredRevision":1,"imageDigest":"registry.example/sandbox@sha256:%s","capacity":{"cpuMillicores":1000,"memoryMiB":2048,"workspaceDiskGiB":20,"pids":256},"sandboxes":[{"id":"sbx_test12345","name":"main","resources":{"cpuMillicores":500,"memoryMiB":1024,"workspaceDiskGiB":10,"pids":128},"lifetime":"persistent","expiresInSeconds":null,"startedAt":null,"expiresAt":null,"desiredState":"running","generation":1}],"accessGrants":[],"setupOperations":[{"id":"setup-test12345","schemaVersion":1,"sandboxId":"sbx_test12345","sandboxGeneration":1,"profileId":%q,"profileRevision":1,"profileDigest":"sha256:%s","materializer":%s}]}`, strings.Repeat("a", 64), profileID, strings.Repeat("b", 64), materializer)
 }
@@ -34,6 +39,7 @@ func TestClientStrictDecoderAcceptsClaudeLauncherAndAntArchiveContracts(t *testi
 	}{
 		{"Claude launcher", "claude-code", apiClaudeLauncherMaterializer},
 		{"ant archive", "claude-managed-ant", apiAntArchiveMaterializer},
+		{"OpenCode approved archive", "opencode", apiOpenCodeArchiveMaterializer},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

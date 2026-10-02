@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,15 +13,22 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"time"
+
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 )
 
 var grantID = regexp.MustCompile(`^grant_[A-Za-z0-9_-]{8,60}$`)
 var exitMarker = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
+const sessionHandoffCommand = "warpmetal-team-control"
+
 type request struct {
-	GrantID string `json:"grantId"`
-	Command string `json:"command"`
-	TTY     bool   `json:"tty"`
+	GrantID             string                  `json:"grantId"`
+	Command             string                  `json:"command"`
+	TTY                 bool                    `json:"tty"`
+	SessionHandoff      *model.SessionHandoffV1 `json:"sessionHandoff,omitempty"`
+	SessionHandoffHello []byte                  `json:"sessionHandoffHello,omitempty"`
 }
 
 type response struct {
@@ -53,6 +62,20 @@ func run() error {
 	if len(command) > 8192 {
 		return errors.New("remote_command_too_large")
 	}
+	input := io.Reader(os.Stdin)
+	var handoff *model.SessionHandoffV1
+	var handoffHello []byte
+	var err error
+	if command == sessionHandoffCommand {
+		buffered := bufio.NewReader(os.Stdin)
+		readContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		handoff, handoffHello, err = readSessionHandoffPreface(readContext, buffered)
+		cancel()
+		if err != nil {
+			return errors.New("handoff_invalid")
+		}
+		input = buffered
+	}
 	connection, err := net.Dial("unix", "/run/warpmetal/supervisor.sock")
 	if err != nil {
 		return errors.New("sandbox_gateway_unavailable")
@@ -62,11 +85,11 @@ func run() error {
 	if info, statErr := os.Stdin.Stat(); statErr == nil {
 		terminal = info.Mode()&os.ModeCharDevice != 0
 	}
-	if err := json.NewEncoder(connection).Encode(request{
-		GrantID: os.Args[1],
-		Command: command,
-		TTY:     terminal,
-	}); err != nil {
+	gatewayRequest := request{GrantID: os.Args[1], Command: command}
+	gatewayRequest.TTY = terminal
+	gatewayRequest.SessionHandoff = handoff
+	gatewayRequest.SessionHandoffHello = handoffHello
+	if err := json.NewEncoder(connection).Encode(gatewayRequest); err != nil {
 		return errors.New("sandbox_gateway_unavailable")
 	}
 	reader := bufio.NewReader(connection)
@@ -81,7 +104,7 @@ func run() error {
 		return errors.New("sandbox_gateway_unavailable")
 	}
 	go func() {
-		_, _ = io.Copy(connection, os.Stdin)
+		_, _ = io.Copy(connection, input)
 		if unix, ok := connection.(*net.UnixConn); ok {
 			_ = unix.CloseWrite()
 		}
@@ -94,6 +117,72 @@ func run() error {
 		return &remoteExitError{code: status}
 	}
 	return nil
+}
+
+type handoffPrefaceResult struct {
+	target *model.SessionHandoffV1
+	frame  []byte
+	err    error
+}
+
+func readSessionHandoffPreface(
+	ctx context.Context,
+	reader *bufio.Reader,
+) (*model.SessionHandoffV1, []byte, error) {
+	result := make(chan handoffPrefaceResult, 1)
+	go func() {
+		var header [4]byte
+		if _, err := io.ReadFull(reader, header[:]); err != nil {
+			result <- handoffPrefaceResult{err: err}
+			return
+		}
+		total := int(binary.BigEndian.Uint32(header[:]))
+		if total < 2 || total+4 > 64*1024 {
+			result <- handoffPrefaceResult{err: errors.New("invalid handoff frame length")}
+			return
+		}
+		frame := make([]byte, total+4)
+		copy(frame, header[:])
+		if _, err := io.ReadFull(reader, frame[4:]); err != nil {
+			result <- handoffPrefaceResult{err: err}
+			return
+		}
+		if frame[4] != 0x01 {
+			result <- handoffPrefaceResult{err: errors.New("invalid handoff frame type")}
+			return
+		}
+		var envelope struct {
+			Protocol string          `json:"protocol"`
+			Handoff  json.RawMessage `json:"handoff"`
+		}
+		if err := json.Unmarshal(frame[5:], &envelope); err != nil || envelope.Protocol != "wm-team-control/1" {
+			result <- handoffPrefaceResult{err: errors.New("invalid handoff HELLO")}
+			return
+		}
+		if len(envelope.Handoff) == 0 || bytes.Equal(envelope.Handoff, []byte("null")) {
+			result <- handoffPrefaceResult{frame: frame}
+			return
+		}
+		decoder := json.NewDecoder(bytes.NewReader(envelope.Handoff))
+		decoder.DisallowUnknownFields()
+		var target model.SessionHandoffV1
+		if err := decoder.Decode(&target); err != nil {
+			result <- handoffPrefaceResult{err: errors.New("invalid handoff target")}
+			return
+		}
+		var trailing any
+		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+			result <- handoffPrefaceResult{err: errors.New("invalid handoff target")}
+			return
+		}
+		result <- handoffPrefaceResult{target: &target, frame: frame}
+	}()
+	select {
+	case value := <-result:
+		return value.target, value.frame, value.err
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	}
 }
 
 func copySessionOutput(reader io.Reader, writer io.Writer, marker string) (int, error) {

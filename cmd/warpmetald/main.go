@@ -20,10 +20,14 @@ import (
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/capacity"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/config"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/continuity"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/insights"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/manager"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/reconcile"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/storage"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/workspacecatalog"
 )
 
 var version = "dev"
@@ -124,26 +128,21 @@ func serve(arguments []string) error {
 	if err != nil {
 		return fmt.Errorf("detect host capacity: %w", err)
 	}
-	engine := containers.Podman{RuntimeUser: "warpmetal-runtime"}
-	gateway := &access.Gateway{Store: store, Engine: engine}
-	reconciler := &reconcile.Reconciler{
-		Store:        store,
-		Engine:       engine,
-		Workspaces:   storage.Workspace{Root: *workspaceRoot, Owner: "warpmetal-runtime"},
-		Access:       access.Renderer{Path: *accessPath},
-		Sessions:     gateway,
-		HostCapacity: hostCapacity,
-		ServerID:     settings.ServerID,
-	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	gatewayErrors := make(chan error, 1)
-	go func() { gatewayErrors <- gateway.Serve(ctx, *socketPath) }()
-	client := control.Client{Origin: settings.APIOrigin, NodeToken: settings.NodeToken}
 	hostKeys, err := readHostKeys()
 	if err != nil {
 		return err
 	}
+	gateway, err := newAccessGateway(store, containers.Podman{RuntimeUser: "warpmetal-runtime"}, hostKeys)
+	if err != nil {
+		return err
+	}
+	engine := containers.Podman{RuntimeUser: "warpmetal-runtime"}
+	client := control.Client{Origin: settings.APIOrigin, NodeToken: settings.NodeToken}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	reconciler := newRuntimeReconciler(store, engine, *workspaceRoot, *accessPath, gateway, hostCapacity, settings.ServerID, *stateRoot, client, ctx)
+	gatewayErrors := make(chan error, 1)
+	go func() { gatewayErrors <- gateway.Serve(ctx, *socketPath) }()
 	ticker := time.NewTicker(maxDuration(*poll, 2*time.Second))
 	defer ticker.Stop()
 	for {
@@ -169,6 +168,11 @@ func serve(arguments []string) error {
 				err = reconciler.Reconcile(reconcileContext, manifest)
 				cancelReconcile()
 			}
+			if err == nil && reconciler.Insights != nil {
+				insightContext, cancelInsights := context.WithTimeout(ctx, controlPlaneTimeout)
+				err = reconciler.Insights.RunOnce(insightContext)
+				cancelInsights()
+			}
 			reportContext, cancelReport := context.WithTimeout(ctx, controlPlaneTimeout)
 			report, reportErr := reconciler.Report(reportContext, settings.ServerID, version)
 			report.HostKeys = hostKeys
@@ -190,6 +194,57 @@ func serve(arguments []string) error {
 			}
 		}
 	}
+}
+
+func newAccessGateway(store *state.Store, engine containers.Podman, hostKeys []model.HostKey) (*access.Gateway, error) {
+	hostKeyFingerprint, err := access.Ed25519HostKeyFingerprint(hostKeys)
+	if err != nil {
+		return nil, err
+	}
+	return &access.Gateway{
+		Store: store, Engine: engine, SessionHandoffEngine: engine,
+		HostKeyFingerprint: hostKeyFingerprint,
+	}, nil
+}
+
+func newRuntimeReconciler(store *state.Store, engine containers.Podman, workspaceRoot, accessPath string, sessions reconcile.Sessions, hostCapacity model.Resources, serverID, stateRoot string, managedControl control.Client, lifecycle context.Context) *reconcile.Reconciler {
+	registry := continuity.StateRegistry{Store: store}
+	checkpointObjects := storage.CheckpointStore{Root: filepath.Join(stateRoot, "continuity")}
+	continuityService := &continuity.Service{State: store, Objects: checkpointObjects, Engine: engine, Registry: registry}
+	continuityCoordinator := &continuity.Coordinator{Store: store, Service: continuityService, Helper: engine, Registry: registry}
+	managedCatalog := &workspacecatalog.Catalog{State: store}
+	workspaceStore := storage.Workspace{Root: workspaceRoot, Owner: "warpmetal-runtime"}
+	continuationRestoreController := &continuity.S2Controller{
+		Store: store, ServerID: serverID, Objects: checkpointObjects, Catalog: managedCatalog, Helper: engine,
+		HandoffSupervisor: engine,
+	}
+	managerCoordinator := &manager.Coordinator{Store: store, Control: managedControl, Helper: engine}
+	runtimeReconciler := &reconcile.Reconciler{
+		Store:             store,
+		Engine:            engine,
+		Workspaces:        workspaceStore,
+		Access:            access.Renderer{Path: accessPath},
+		Sessions:          sessions,
+		HostCapacity:      hostCapacity,
+		ServerID:          serverID,
+		Continuity:        continuityCoordinator,
+		ContinuityControl: continuityCoordinator,
+		ContinuityLifecycle: &continuity.CheckpointLifecycle{
+			State: store, Objects: checkpointObjects, GracePeriod: time.Hour, MaxPerPass: 32,
+		},
+		ContinuationRestore:     continuationRestoreController,
+		ContinuationHandoff:     continuationRestoreController,
+		ManagedCatalog:          managedCatalog,
+		ManagedControl:          managedControl,
+		ManagedRuntime:          engine,
+		ManagedExecutionContext: lifecycle,
+		Manager:                 managerCoordinator,
+	}
+	continuationRestoreController.HandoffAdmission = runtimeReconciler
+	runtimeReconciler.Insights = &insights.Collector{
+		Store: store, Control: managedControl, Monitor: engine, Lifecycle: runtimeReconciler, Manager: managerCoordinator,
+	}
+	return runtimeReconciler
 }
 
 func readHostKeys() ([]model.HostKey, error) {

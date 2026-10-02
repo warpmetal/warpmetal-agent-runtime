@@ -121,6 +121,8 @@ type gatewayExecCall struct {
 
 type gatewayTestEngine struct {
 	calls               chan gatewayExecCall
+	readInputBytes      int
+	inputBytes          chan []byte
 	waitForCancellation bool
 	executionEnded      chan struct{}
 }
@@ -147,11 +149,16 @@ func (e *gatewayTestEngine) Exec(
 	sandboxID string,
 	command string,
 	tty bool,
-	_ containers.SessionInput,
+	input containers.SessionInput,
 	_ io.Writer,
 	_ io.Writer,
 ) error {
 	e.calls <- gatewayExecCall{sandboxID: sandboxID, command: command, tty: tty}
+	if e.readInputBytes > 0 {
+		value := make([]byte, e.readInputBytes)
+		_, _ = io.ReadFull(input, value)
+		e.inputBytes <- value
+	}
 	if !e.waitForCancellation {
 		return nil
 	}

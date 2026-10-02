@@ -3,6 +3,7 @@ package containers
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -28,11 +29,72 @@ type Engine interface {
 	Exec(context.Context, string, string, bool, SessionInput, io.Writer, io.Writer) error
 }
 
+type ManagedSupervisorAction string
+
+const (
+	ManagedSupervisorEnroll                   ManagedSupervisorAction = "enroll"
+	ManagedSupervisorStart                    ManagedSupervisorAction = "start"
+	ManagedSupervisorRestart                  ManagedSupervisorAction = "restart"
+	ManagedSupervisorRebind                   ManagedSupervisorAction = "rebind"
+	ManagedSupervisorStatus                   ManagedSupervisorAction = "status"
+	ManagedSupervisorRegisterSource           ManagedSupervisorAction = "register-source"
+	ManagedSupervisorRegisterHandoffWorkspace ManagedSupervisorAction = "register-handoff-workspace"
+	ManagedSupervisorDrain                    ManagedSupervisorAction = "drain"
+	ManagedSupervisorStop                     ManagedSupervisorAction = "stop"
+)
+
+type ManagedWorkerAction string
+
+const (
+	ManagedWorkerExecute   ManagedWorkerAction = "execute"
+	ManagedWorkerReconcile ManagedWorkerAction = "reconcile"
+	ManagedWorkerStatus    ManagedWorkerAction = "status"
+)
+
+type SessionBridgeEngineV1 struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
+type SessionBridgeGrantV1 struct {
+	SchemaVersion      int                   `json:"schemaVersion"`
+	GrantID            string                `json:"grantId"`
+	ServerID           string                `json:"serverId"`
+	SandboxID          string                `json:"sandboxId"`
+	Generation         int64                 `json:"generation"`
+	Instance           string                `json:"instance"`
+	ProfileID          string                `json:"profileId"`
+	ProfileDigest      string                `json:"profileDigest"`
+	HostKeyFingerprint string                `json:"hostKeyFingerprint"`
+	Engine             SessionBridgeEngineV1 `json:"engine"`
+	AllowedPaths       []string              `json:"allowedPaths"`
+	AllowedMethods     []string              `json:"allowedMethods"`
+	IssuedAt           time.Time             `json:"issuedAt"`
+	ExpiresAt          time.Time             `json:"expiresAt"`
+}
+
+type SessionHandoffLaunch struct {
+	Grant      SessionBridgeGrantV1
+	HelloFrame []byte
+}
+
+type SessionHandoffEngine interface {
+	ExecSessionHandoff(context.Context, string, SessionHandoffLaunch, SessionInput, io.Writer, io.Writer) error
+}
+
 type SessionInput interface {
 	io.Reader
 	// InterruptRead must guarantee that a currently blocked Read returns.
 	InterruptRead() error
 }
+
+type ContainerState string
+
+const (
+	ContainerRunning ContainerState = "running"
+	ContainerPaused  ContainerState = "paused"
+	ContainerStopped ContainerState = "stopped"
+)
 
 var (
 	ErrImagePullFailed     = errors.New("sandbox image pull failed")
@@ -55,6 +117,18 @@ const (
 	maxSetupReceiptBytes         = 64 * 1024
 	maxSetupDiagnosticBytes      = 16 * 1024
 	setupOperationTimeout        = 10 * time.Minute
+	continuityHelperTimeout      = 30 * time.Second
+	maxContinuityRequestBytes    = 64 * 1024
+	maxContinuityReceiptBytes    = 64 * 1024
+	maxContinuityDiagnosticBytes = 16 * 1024
+	monitorHelperTimeout         = 5 * time.Second
+	maxMonitorRequestBytes       = 64 * 1024
+	maxMonitorReceiptBytes       = 256 * 1024
+	maxMonitorDiagnosticBytes    = 16 * 1024
+	managerHelperTimeout         = 4 * time.Minute
+	maxManagerRequestBytes       = 64 * 1024
+	maxManagerReceiptBytes       = 64 * 1024
+	maxManagerDiagnosticBytes    = 16 * 1024
 	nestedPreflightTimeout       = 30 * time.Second
 	nestedSandboxPreflightMarker = "warpmetal-nested-sandbox-preflight-v1"
 	capabilityLauncherPath       = "/usr/local/libexec/warpmetal-capability-launcher"
@@ -100,7 +174,7 @@ func (p Podman) Ensure(
 }
 
 // Replace changes only the immutable container root filesystem. The workspace
-// remains mounted from the same host path. The desired image is pulled before
+// remains mounted from the same host path. The exact immutable image is ensured before
 // the current workload is stopped, and the old container is retained under a
 // deterministic backup name until the replacement reaches its desired state.
 // The deterministic names also make every crash boundary safe to resume.
@@ -113,8 +187,10 @@ func (p Podman) Replace(
 ) error {
 	name := containerName(sandbox.ID)
 	backup := name + "-image-backup"
-	if err := p.run(ctx, nil, "pull", imageDigest); err != nil {
-		return fmt.Errorf("%w: %v", ErrImagePullFailed, err)
+	if err := p.run(ctx, nil, "image", "exists", imageDigest); err != nil {
+		if err := p.run(ctx, nil, "pull", imageDigest); err != nil {
+			return fmt.Errorf("%w: %v", ErrImagePullFailed, err)
+		}
 	}
 
 	currentExists := p.containerExists(ctx, name)
@@ -272,6 +348,36 @@ func (p Podman) Restart(ctx context.Context, id string) error {
 	return p.runRemote(ctx, "restart", "--time", "10", containerName(id))
 }
 
+// InspectState, Pause, and Unpause form the deliberately closed lifecycle
+// seam used by continuity capture. They accept only a validated sandbox ID and
+// always use the private rootless Podman service.
+func (p Podman) InspectState(ctx context.Context, id string) (ContainerState, error) {
+	output, err := p.runOutput(
+		ctx, true, "container", "inspect", "--format", "{{.State.Status}}", containerName(id),
+	)
+	if err != nil {
+		return "", err
+	}
+	switch strings.TrimSpace(output) {
+	case "running":
+		return ContainerRunning, nil
+	case "paused":
+		return ContainerPaused, nil
+	case "created", "configured", "exited", "stopped":
+		return ContainerStopped, nil
+	default:
+		return "", errors.New("podman returned an unknown container state")
+	}
+}
+
+func (p Podman) Pause(ctx context.Context, id string) error {
+	return p.runRemote(ctx, "pause", containerName(id))
+}
+
+func (p Podman) Unpause(ctx context.Context, id string) error {
+	return p.runRemote(ctx, "unpause", containerName(id))
+}
+
 func (p Podman) Remove(ctx context.Context, id string) error {
 	return p.removeContainer(ctx, containerName(id))
 }
@@ -328,6 +434,61 @@ func (p Podman) Exec(
 	return p.runCommandStreams(ctx, true, stdin, stdout, stderr, args...)
 }
 
+type prefixedSessionInput struct {
+	io.Reader
+	input SessionInput
+}
+
+func (i prefixedSessionInput) InterruptRead() error { return i.input.InterruptRead() }
+
+// ExecSessionHandoff is the only Runtime path to the managed Team bridge. Its
+// typed launch is entirely host-generated; neither an owner command nor shell
+// text can influence the executable or argv.
+func (p Podman) ExecSessionHandoff(
+	ctx context.Context,
+	id string,
+	launch SessionHandoffLaunch,
+	input SessionInput,
+	stdout io.Writer,
+	stderr io.Writer,
+) error {
+	grant := launch.Grant
+	wantMethods := []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+	if len(launch.HelloFrame) < 5 || len(launch.HelloFrame) > 64*1024 ||
+		grant.SchemaVersion != 1 || grant.SandboxID != id || grant.Generation < 1 ||
+		grant.GrantID == "" || grant.ServerID == "" || grant.Instance == "" ||
+		grant.ProfileID != "opencode" || grant.ProfileDigest == "" ||
+		grant.HostKeyFingerprint == "" || grant.Engine.Host != "127.0.0.1" ||
+		grant.Engine.Port < 1 || grant.Engine.Port > 65535 || grant.IssuedAt.IsZero() ||
+		grant.ExpiresAt.IsZero() || !grant.ExpiresAt.After(grant.IssuedAt) ||
+		len(grant.AllowedPaths) != 1 || grant.AllowedPaths[0] != "/api" ||
+		len(grant.AllowedMethods) != len(wantMethods) {
+		return errors.New("invalid session handoff launch")
+	}
+	for index := range wantMethods {
+		if grant.AllowedMethods[index] != wantMethods[index] {
+			return errors.New("invalid session handoff method policy")
+		}
+	}
+	grantJSON, err := json.Marshal(grant)
+	if err != nil || len(grantJSON) > 16*1024 {
+		return errors.New("invalid session handoff grant")
+	}
+	executionContext, cancel := context.WithDeadline(ctx, grant.ExpiresAt)
+	defer cancel()
+	stdin := prefixedSessionInput{
+		Reader: io.MultiReader(bytes.NewReader(launch.HelloFrame), input),
+		input:  input,
+	}
+	args := []string{
+		"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent",
+		"--env", "WM_TEAM_BRIDGE_GRANT=" + string(grantJSON), containerName(id),
+		capabilityLauncherPath, "/usr/bin/python3",
+		"/usr/local/libexec/warpmetal-agent-teams/warpmetal_team_bridge.py", "helper",
+	}
+	return p.runCommandStreams(executionContext, true, stdin, stdout, stderr, args...)
+}
+
 func execArguments(id, command string, tty bool) []string {
 	args := []string{"exec", "-i"}
 	if tty {
@@ -372,6 +533,119 @@ func (p Podman) ExecSetup(
 	)
 	if receipt.overflow || diagnostic.overflow {
 		err = errors.Join(err, errors.New("setup runner output exceeds the allowed size"))
+	}
+	if err != nil {
+		return receipt.Bytes(), diagnostic.Bytes(), err
+	}
+	return receipt.Bytes(), diagnostic.Bytes(), nil
+}
+
+func (p Podman) ExecContinuity(ctx context.Context, id string, request []byte) ([]byte, []byte, error) {
+	if len(request) == 0 || len(request) > maxContinuityRequestBytes {
+		return nil, nil, errors.New("continuity request exceeds the allowed size")
+	}
+	executionContext, cancel := context.WithTimeout(ctx, continuityHelperTimeout)
+	defer cancel()
+	receipt := &boundedBuffer{maximum: maxContinuityReceiptBytes}
+	diagnostic := &boundedBuffer{maximum: maxContinuityDiagnosticBytes}
+	err := p.runRemoteStreams(executionContext, bytes.NewReader(request), receipt, diagnostic,
+		"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent",
+		containerName(id), "/usr/local/libexec/warpmetal-capability-launcher",
+		"/usr/local/bin/warpmetal-continuity")
+	if receipt.overflow || diagnostic.overflow {
+		err = errors.Join(err, errors.New("continuity helper output exceeds the allowed size"))
+	}
+	return receipt.Bytes(), diagnostic.Bytes(), err
+}
+
+// ExecMonitor is the only Runtime path to the packaged metadata exporter.
+func (p Podman) ExecMonitor(ctx context.Context, id string, request []byte) ([]byte, []byte, error) {
+	if len(request) == 0 || len(request) > maxMonitorRequestBytes {
+		return nil, nil, errors.New("monitor request exceeds the allowed size")
+	}
+	executionContext, cancel := context.WithTimeout(ctx, monitorHelperTimeout)
+	defer cancel()
+	receipt := &boundedBuffer{maximum: maxMonitorReceiptBytes}
+	diagnostic := &boundedBuffer{maximum: maxMonitorDiagnosticBytes}
+	err := p.runRemoteStreams(executionContext, bytes.NewReader(request), receipt, diagnostic,
+		"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent",
+		containerName(id), capabilityLauncherPath, "/usr/local/bin/warpmetal-monitor")
+	if receipt.overflow || diagnostic.overflow {
+		err = errors.Join(err, errors.New("monitor exporter output exceeds the allowed size"))
+	}
+	return receipt.Bytes(), diagnostic.Bytes(), err
+}
+
+// ExecManager is the only Runtime path to the packaged manager helper. The
+// sandbox ID and bounded JSON stdin are the only caller-controlled inputs;
+// executable, argv, uid, working directory, deadline, and output bounds are
+// fixed here.
+func (p Podman) ExecManager(ctx context.Context, id string, request []byte) ([]byte, []byte, error) {
+	if len(request) == 0 || len(request) > maxManagerRequestBytes {
+		return nil, nil, errors.New("manager request exceeds the allowed size")
+	}
+	executionContext, cancel := context.WithTimeout(ctx, managerHelperTimeout)
+	defer cancel()
+	receipt := &boundedBuffer{maximum: maxManagerReceiptBytes}
+	diagnostic := &boundedBuffer{maximum: maxManagerDiagnosticBytes}
+	err := p.runRemoteStreams(executionContext, bytes.NewReader(request), receipt, diagnostic,
+		"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent",
+		containerName(id), "/usr/local/libexec/warpmetal-capability-launcher", "/usr/local/bin/warpmetal-manager")
+	if receipt.overflow || diagnostic.overflow {
+		err = errors.Join(err, errors.New("manager helper output exceeds the allowed size"))
+	}
+	return receipt.Bytes(), diagnostic.Bytes(), err
+}
+
+func (p Podman) ExecManagedSupervisor(ctx context.Context, id string, action ManagedSupervisorAction, request []byte) ([]byte, []byte, error) {
+	switch action {
+	case ManagedSupervisorEnroll, ManagedSupervisorStart, ManagedSupervisorRestart, ManagedSupervisorRebind, ManagedSupervisorStatus,
+		ManagedSupervisorRegisterSource, ManagedSupervisorRegisterHandoffWorkspace, ManagedSupervisorDrain, ManagedSupervisorStop:
+	default:
+		return nil, nil, errors.New("unsupported managed supervisor action")
+	}
+	if len(request) == 0 || len(request) > 64*1024 {
+		return nil, nil, errors.New("managed supervisor request exceeds the allowed size")
+	}
+	executionContext, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+	receipt := &boundedBuffer{maximum: 64 * 1024}
+	diagnostic := &boundedBuffer{maximum: 16 * 1024}
+	args := []string{"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent", containerName(id), "/usr/local/libexec/warpmetal-capability-launcher", "/usr/local/bin/warpmetal-opencode-supervisor", string(action)}
+	err := p.runRemoteStreams(executionContext, bytes.NewReader(request), receipt, diagnostic, args...)
+	if receipt.overflow || diagnostic.overflow {
+		err = errors.Join(err, errors.New("managed supervisor output exceeds the allowed size"))
+	}
+	if err != nil {
+		return receipt.Bytes(), diagnostic.Bytes(), err
+	}
+	return receipt.Bytes(), diagnostic.Bytes(), nil
+}
+
+func (p Podman) ExecManagedWorker(ctx context.Context, id string, action ManagedWorkerAction, request []byte) ([]byte, []byte, error) {
+	var envelope struct {
+		Command string `json:"command"`
+	}
+	if len(request) == 0 || len(request) > 256*1024 || json.Unmarshal(request, &envelope) != nil || envelope.Command != string(action) {
+		return nil, nil, errors.New("managed worker request is invalid")
+	}
+	var timeout time.Duration
+	switch action {
+	case ManagedWorkerExecute:
+		timeout = 35 * time.Minute
+	case ManagedWorkerReconcile, ManagedWorkerStatus:
+		timeout = 2 * time.Minute
+	default:
+		return nil, nil, errors.New("unsupported managed worker action")
+	}
+	executionContext, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	receipt := &boundedBuffer{maximum: 64 * 1024}
+	diagnostic := &boundedBuffer{maximum: 16 * 1024}
+	args := []string{"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent", containerName(id), "/usr/local/libexec/warpmetal-capability-launcher", "/usr/bin/python3", "/usr/local/libexec/warpmetal-agent-teams/warpmetal_team_worker.py"}
+	err := p.runRemoteStreams(executionContext, bytes.NewReader(request), receipt, diagnostic, args...)
+	if receipt.overflow || diagnostic.overflow {
+		err = errors.Join(err, errors.New("managed worker output exceeds the allowed size"))
 	}
 	if err != nil {
 		return receipt.Bytes(), diagnostic.Bytes(), err

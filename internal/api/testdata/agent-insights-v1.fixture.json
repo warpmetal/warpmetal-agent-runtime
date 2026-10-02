@@ -1,0 +1,60 @@
+{
+  "batch": {
+    "formatVersion": 1,
+    "batchId": "batch_insights0001",
+    "sandboxId": "sbx_insights0001",
+    "sandboxGeneration": 1,
+    "policyRevision": 2,
+    "registeredSourceId": "source_insights0001",
+    "serviceRegistrationId": "service_insights0001",
+    "serviceGeneration": 1,
+    "workspaceEpoch": "epoch_insights0001",
+    "nativeSessionId": "ses_insights0001",
+    "journalGeneration": "journal_insights0001",
+    "throughSequence": 8,
+    "observedAt": "2026-09-27T12:00:00Z",
+    "status": "ready",
+    "gapReason": null,
+    "findings": [
+      {
+        "findingId": "finding_insights0001",
+        "ruleId": "repeated_identical_failure@1",
+        "state": "open",
+        "revision": 1,
+        "firstSequence": 1,
+        "lastSequence": 8,
+        "count": 4,
+        "threshold": 4,
+        "matchedCallIds": [
+          "call_insights0001",
+          "call_insights0002",
+          "call_insights0003",
+          "call_insights0004"
+        ],
+        "firstObservedAt": "2026-09-27T11:59:00Z",
+        "lastObservedAt": "2026-09-27T12:00:00Z",
+        "coverage": "complete",
+        "toolCategory": "shell",
+        "phase": "running_model",
+        "phaseStartedAt": null,
+        "lastProgressAt": null,
+        "healthObservedAt": null,
+        "stallThresholdMs": null,
+        "recovery": null
+      }
+    ]
+  },
+  "settings": {
+    "version": 1,
+    "requestId": "req_monitor_enable0001",
+    "expectedRevision": 1,
+    "enabled": true
+  },
+  "action": {
+    "version": 1,
+    "requestId": "req_monitor_ack0001",
+    "expectedRevision": 1,
+    "action": "acknowledge",
+    "snoozeSeconds": null
+  }
+}

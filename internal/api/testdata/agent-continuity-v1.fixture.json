@@ -1,0 +1,135 @@
+{
+  "sourceReport": {
+    "formatVersion": 1,
+    "registeredSourceId": "source_continuity0001",
+    "serviceRegistrationId": "service_continuity0001",
+    "serviceGeneration": 3,
+    "projectId": "project_continuity0001",
+    "sandboxId": "sbx_continuity000000000001",
+    "sandboxGeneration": 4,
+    "workspaceEpoch": "epoch_continuity0001",
+    "nativeSessionId": "ses_continuity0001",
+    "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+    "nativeLocationDigest": "sha256:0a140d9b2c5d284aeafdea20882132053ead68ba70d64115e7b359ec325f4c07",
+    "scopeRevision": 2,
+    "role": "worker",
+    "profileRevision": 5,
+    "instructionRevision": 7,
+    "availability": "available",
+    "reason": null,
+    "lastObservedAt": "2026-09-27T16:00:00Z"
+  },
+  "registrationManifest": {
+    "formatVersion": 1,
+    "desiredState": "active",
+    "continuityEnabled": true,
+    "scopeRevision": 2,
+    "identity": {
+      "workId": "work_continuity0001",
+      "projectId": "project_continuity0001",
+      "sandboxId": "sbx_continuity000000000001",
+      "workspaceEpoch": "epoch_continuity0001",
+      "sandboxGeneration": 4,
+      "taskId": null,
+      "taskAttempt": null,
+      "expectedRevision": 1
+    },
+    "binding": {
+      "bindingId": "binding_continuity0001",
+      "bindingRevision": 1,
+      "registeredSourceId": "source_continuity0001",
+      "serviceRegistrationId": "service_continuity0001",
+      "nativeSessionId": "ses_continuity0001",
+      "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+      "nativeLocationDigest": "sha256:0a140d9b2c5d284aeafdea20882132053ead68ba70d64115e7b359ec325f4c07"
+    }
+  },
+  "registrationReport": {
+    "formatVersion": 1,
+    "desiredState": "active",
+    "continuityEnabled": true,
+    "scopeRevision": 2,
+    "identity": {
+      "workId": "work_continuity0001",
+      "projectId": "project_continuity0001",
+      "sandboxId": "sbx_continuity000000000001",
+      "workspaceEpoch": "epoch_continuity0001",
+      "sandboxGeneration": 4,
+      "taskId": null,
+      "taskAttempt": null,
+      "expectedRevision": 1
+    },
+    "binding": {
+      "bindingId": "binding_continuity0001",
+      "bindingRevision": 1,
+      "registeredSourceId": "source_continuity0001",
+      "serviceRegistrationId": "service_continuity0001",
+      "nativeSessionId": "ses_continuity0001",
+      "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+      "nativeLocationDigest": "sha256:0a140d9b2c5d284aeafdea20882132053ead68ba70d64115e7b359ec325f4c07"
+    },
+    "observedStatus": "verified",
+    "serviceGeneration": 3,
+    "receiptDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "operationManifest": {
+    "formatVersion": 1,
+    "operationId": "op_continuity_capture_0001",
+    "action": "capture_checkpoint",
+    "requestDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "scopeRevision": 2,
+    "boundaryKind": "initial",
+    "identity": {
+      "workId": "work_continuity0001",
+      "projectId": "project_continuity0001",
+      "sandboxId": "sbx_continuity000000000001",
+      "workspaceEpoch": "epoch_continuity0001",
+      "sandboxGeneration": 4,
+      "taskId": null,
+      "taskAttempt": null,
+      "expectedRevision": 1
+    },
+    "binding": {
+      "bindingId": "binding_continuity0001",
+      "bindingRevision": 1,
+      "registeredSourceId": "source_continuity0001",
+      "serviceRegistrationId": "service_continuity0001",
+      "nativeSessionId": "ses_continuity0001",
+      "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+      "nativeLocationDigest": "sha256:0a140d9b2c5d284aeafdea20882132053ead68ba70d64115e7b359ec325f4c07"
+    }
+  },
+  "operationReport": {
+    "formatVersion": 1,
+    "operationId": "op_continuity_capture_0001",
+    "action": "capture_checkpoint",
+    "scopeRevision": 2,
+    "boundaryKind": "initial",
+    "identity": {
+      "workId": "work_continuity0001",
+      "projectId": "project_continuity0001",
+      "sandboxId": "sbx_continuity000000000001",
+      "workspaceEpoch": "epoch_continuity0001",
+      "sandboxGeneration": 4,
+      "taskId": null,
+      "taskAttempt": null,
+      "expectedRevision": 1
+    },
+    "binding": {
+      "bindingId": "binding_continuity0001",
+      "bindingRevision": 1,
+      "registeredSourceId": "source_continuity0001",
+      "serviceRegistrationId": "service_continuity0001",
+      "nativeSessionId": "ses_continuity0001",
+      "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+      "nativeLocationDigest": "sha256:0a140d9b2c5d284aeafdea20882132053ead68ba70d64115e7b359ec325f4c07"
+    },
+    "status": "accepted",
+    "checkpointId": "checkpoint_continuity0001",
+    "captureId": "capture_continuity0001",
+    "manifestDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "bytes": 4096,
+    "objectCount": 12,
+    "receiptDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+  }
+}

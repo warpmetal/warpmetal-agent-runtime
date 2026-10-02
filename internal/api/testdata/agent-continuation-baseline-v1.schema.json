@@ -1,0 +1,796 @@
+{
+  "$defs": {
+    "binding": {
+      "additionalProperties": false,
+      "properties": {
+        "bindingId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "bindingRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "nativeLocationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "nativeProjectId": {
+          "pattern": "^(?:global|[a-f0-9]{40})$",
+          "type": "string"
+        },
+        "nativeSessionId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "registeredSourceId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "scopeRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "serviceGeneration": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "serviceRegistrationId": {
+          "$ref": "#/$defs/safeId"
+        }
+      },
+      "required": [
+        "bindingId",
+        "bindingRevision",
+        "scopeRevision",
+        "serviceRegistrationId",
+        "serviceGeneration",
+        "registeredSourceId",
+        "nativeSessionId",
+        "nativeProjectId",
+        "nativeLocationDigest"
+      ],
+      "type": "object"
+    },
+    "brokerContinuationBaseline": {
+      "additionalProperties": false,
+      "properties": {
+        "baselineDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "baselineId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "contextDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "desiredRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "nativeSessionId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "operationId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "receiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "serviceGeneration": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "serviceRegistrationId": {
+          "$ref": "#/$defs/safeId"
+        }
+      },
+      "required": [
+        "operationId",
+        "desiredRevision",
+        "baselineId",
+        "baselineDigest",
+        "receiptDigest",
+        "contextDigest",
+        "nativeSessionId",
+        "serviceRegistrationId",
+        "serviceGeneration"
+      ],
+      "type": "object"
+    },
+    "checkpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "maximum": 268435456,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "checkpointId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "manifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "objectCount": {
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operationId": {
+          "$ref": "#/$defs/safeId"
+        }
+      },
+      "required": [
+        "operationId",
+        "checkpointId",
+        "manifestDigest",
+        "bytes",
+        "objectCount"
+      ],
+      "type": "object"
+    },
+    "consumption": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "consumedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "fence": {
+          "$ref": "#/$defs/safeId"
+        },
+        "messageId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "taskId": {
+          "$ref": "#/$defs/safeId"
+        }
+      },
+      "required": [
+        "taskId",
+        "messageId",
+        "attempt",
+        "fence",
+        "consumedAt"
+      ],
+      "type": "object"
+    },
+    "digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "identity": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "projectId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "sandboxGeneration": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "sandboxId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "workId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "workspaceEpoch": {
+          "$ref": "#/$defs/safeId"
+        }
+      },
+      "required": [
+        "workId",
+        "projectId",
+        "sandboxId",
+        "workspaceEpoch",
+        "sandboxGeneration",
+        "expectedRevision"
+      ],
+      "type": "object"
+    },
+    "prepareManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "prepare_continuation"
+        },
+        "binding": {
+          "$ref": "#/$defs/binding"
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/checkpoint"
+        },
+        "context": {
+          "additionalProperties": false,
+          "properties": {
+            "bytes": {
+              "maximum": 32768,
+              "type": "integer"
+            },
+            "digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "tokenUpperBound": {
+              "maximum": 8192,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "digest",
+            "bytes",
+            "tokenUpperBound"
+          ],
+          "type": "object"
+        },
+        "desiredRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "formatVersion": {
+          "const": 1
+        },
+        "identity": {
+          "$ref": "#/$defs/identity"
+        },
+        "operationId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        }
+      },
+      "required": [
+        "formatVersion",
+        "operationId",
+        "action",
+        "desiredRevision",
+        "identity",
+        "binding",
+        "checkpoint",
+        "target",
+        "context"
+      ],
+      "type": "object"
+    },
+    "prepareReport": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ready"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "baseline": {
+                "type": "object"
+              },
+              "errorCode": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "failed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "baseline": {
+                "type": "null"
+              },
+              "errorCode": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$",
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "action": {
+          "const": "prepare_continuation"
+        },
+        "baseline": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "baselineDigest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "baselineId": {
+                  "$ref": "#/$defs/safeId"
+                },
+                "nativeSessionId": {
+                  "$ref": "#/$defs/safeId"
+                },
+                "readyAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "serviceGeneration": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "baselineId",
+                "baselineDigest",
+                "nativeSessionId",
+                "serviceGeneration",
+                "readyAt"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "binding": {
+          "$ref": "#/$defs/binding"
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/checkpoint"
+        },
+        "contextDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "desiredRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "errorCode": {
+          "maxLength": 80,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "formatVersion": {
+          "const": 1
+        },
+        "identity": {
+          "$ref": "#/$defs/identity"
+        },
+        "operationId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "receiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "failed"
+          ],
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        }
+      },
+      "required": [
+        "formatVersion",
+        "operationId",
+        "action",
+        "status",
+        "desiredRevision",
+        "identity",
+        "binding",
+        "checkpoint",
+        "target",
+        "contextDigest",
+        "baseline",
+        "receiptDigest",
+        "errorCode"
+      ],
+      "type": "object"
+    },
+    "prepareRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "prepare_continuation"
+        },
+        "binding": {
+          "$ref": "#/$defs/binding"
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/checkpoint"
+        },
+        "context": {
+          "additionalProperties": false,
+          "properties": {
+            "bytes": {
+              "maximum": 32768,
+              "type": "integer"
+            },
+            "digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "tokenUpperBound": {
+              "maximum": 8192,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "digest",
+            "bytes",
+            "tokenUpperBound"
+          ],
+          "type": "object"
+        },
+        "desiredRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "formatVersion": {
+          "const": 1
+        },
+        "identity": {
+          "$ref": "#/$defs/identity"
+        },
+        "instance": {
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "type": "string"
+        },
+        "operationId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        }
+      },
+      "required": [
+        "formatVersion",
+        "operationId",
+        "action",
+        "desiredRevision",
+        "identity",
+        "binding",
+        "checkpoint",
+        "target",
+        "context",
+        "instance"
+      ],
+      "type": "object"
+    },
+    "record": {
+      "additionalProperties": false,
+      "properties": {
+        "consumption": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/consumption"
+            }
+          ]
+        },
+        "formatVersion": {
+          "const": 1
+        },
+        "instance": {
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "type": "string"
+        },
+        "manifest": {
+          "$ref": "#/$defs/prepareManifest"
+        },
+        "nativeBaseline": {
+          "additionalProperties": false,
+          "properties": {
+            "lastMessageId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "messageCount": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "messageCount",
+            "lastMessageId"
+          ],
+          "type": "object"
+        },
+        "release": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/release"
+            }
+          ]
+        },
+        "report": {
+          "$ref": "#/$defs/prepareReport"
+        },
+        "requestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "state": {
+          "enum": [
+            "prepared",
+            "consumed",
+            "released"
+          ]
+        }
+      },
+      "required": [
+        "formatVersion",
+        "state",
+        "instance",
+        "requestDigest",
+        "manifest",
+        "nativeBaseline",
+        "report",
+        "consumption",
+        "release"
+      ],
+      "type": "object"
+    },
+    "release": {
+      "additionalProperties": false,
+      "properties": {
+        "releasedAt": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "releasedAt"
+      ],
+      "type": "object"
+    },
+    "safeId": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+      "type": "string"
+    },
+    "target": {
+      "additionalProperties": false,
+      "properties": {
+        "instructionDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "instructionRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "memberId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "policyRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "profileDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "profileId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "profileRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "projectId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "role": {
+          "enum": [
+            "worker",
+            "reviewer"
+          ],
+          "type": "string"
+        },
+        "rootAttestation": {
+          "$ref": "#/$defs/digest"
+        },
+        "sandboxGeneration": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "sandboxId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "scopeRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "selectionId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "serviceActionRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "serviceDesiredRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "serviceGeneration": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "serviceRegistrationId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "teamId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "teamRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "workspaceEpoch": {
+          "$ref": "#/$defs/safeId"
+        }
+      },
+      "required": [
+        "teamId",
+        "teamRevision",
+        "policyRevision",
+        "memberId",
+        "sandboxId",
+        "sandboxGeneration",
+        "serviceRegistrationId",
+        "serviceGeneration",
+        "serviceDesiredRevision",
+        "serviceActionRevision",
+        "selectionId",
+        "projectId",
+        "workspaceEpoch",
+        "scopeRevision",
+        "rootAttestation",
+        "profileId",
+        "profileRevision",
+        "profileDigest",
+        "instructionRevision",
+        "instructionDigest",
+        "role"
+      ],
+      "type": "object"
+    },
+    "wrapper": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "reconcile_continuation",
+            "release_continuation"
+          ]
+        },
+        "consumption": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/consumption"
+            }
+          ]
+        },
+        "formatVersion": {
+          "const": 1
+        },
+        "release": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/release"
+            }
+          ]
+        },
+        "report": {
+          "$ref": "#/$defs/prepareReport"
+        },
+        "state": {
+          "enum": [
+            "prepared",
+            "consumed",
+            "released"
+          ]
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "consumed",
+            "released"
+          ]
+        }
+      },
+      "required": [
+        "formatVersion",
+        "action",
+        "status",
+        "state",
+        "report",
+        "consumption",
+        "release"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://warpmetal.invalid/contracts/agent-continuation-baseline-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "brokerContinuationBaseline": {
+      "$ref": "#/$defs/brokerContinuationBaseline"
+    },
+    "claimSelector": {
+      "additionalProperties": false,
+      "properties": {
+        "baselineId": {
+          "$ref": "#/$defs/safeId"
+        },
+        "operationId": {
+          "$ref": "#/$defs/safeId"
+        }
+      },
+      "required": [
+        "operationId",
+        "baselineId"
+      ],
+      "type": "object"
+    },
+    "formatVersion": {
+      "const": 1
+    },
+    "prepareReport": {
+      "$ref": "#/$defs/prepareReport"
+    },
+    "prepareRequest": {
+      "$ref": "#/$defs/prepareRequest"
+    },
+    "preparedRecord": {
+      "$ref": "#/$defs/record"
+    },
+    "reconcileConsumed": {
+      "$ref": "#/$defs/wrapper"
+    },
+    "reconcilePrepared": {
+      "$ref": "#/$defs/wrapper"
+    },
+    "releaseReceipt": {
+      "$ref": "#/$defs/wrapper"
+    }
+  },
+  "required": [
+    "formatVersion",
+    "prepareRequest",
+    "prepareReport",
+    "claimSelector",
+    "brokerContinuationBaseline",
+    "preparedRecord",
+    "reconcilePrepared",
+    "reconcileConsumed",
+    "releaseReceipt"
+  ],
+  "title": "WarpMetal sandbox continuation baseline v1 canonical fixture",
+  "type": "object"
+}

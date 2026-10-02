@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.invalid/contracts/agent-continuation-handoff-sandbox-v1.schema.json",
+  "title": "AgentContinuationHandoffSandboxV1",
+  "anyOf": [
+    {"$ref": "#/$defs/workspaceRegistrationRequest"},
+    {"$ref": "#/$defs/targetRegistrationRequest"},
+    {"$ref": "#/$defs/targetRegistrationReceipt"},
+    {"$ref": "#/$defs/prepareRequest"},
+    {"$ref": "#/$defs/reconcileRequest"},
+    {"$ref": "#/$defs/releaseRequest"},
+    {"$ref": "#/$defs/readyReport"},
+    {"$ref": "#/$defs/reconcileResponse"}
+  ],
+  "$defs": {
+    "safeId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{3,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "positive": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selectionId", "projectId", "workspaceEpoch", "scopeRevision", "rootAttestation"],
+      "properties": {
+        "selectionId": {"$ref": "#/$defs/safeId"},
+        "projectId": {"$ref": "#/$defs/safeId"},
+        "workspaceEpoch": {"$ref": "#/$defs/safeId"},
+        "scopeRevision": {"$ref": "#/$defs/positive"},
+        "rootAttestation": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "workspaceRegistrationRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "sandboxId", "instance", "profileId", "registration"],
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "sandboxId": {"type": "string", "pattern": "^sbx_[A-Za-z0-9_-]{24}$"},
+        "instance": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "profileId": {"const": "opencode"},
+        "registration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["formatVersion", "operationId", "desiredRevision", "mappingId", "targetWorkId", "targetWorkspace", "projectRoot"],
+          "properties": {
+            "formatVersion": {"const": 1},
+            "operationId": {"$ref": "#/$defs/safeId"},
+            "desiredRevision": {"$ref": "#/$defs/positive"},
+            "mappingId": {"$ref": "#/$defs/safeId"},
+            "targetWorkId": {"$ref": "#/$defs/safeId"},
+            "targetWorkspace": {"$ref": "#/$defs/workspace"},
+            "projectRoot": {"type": "string", "minLength": 1, "maxLength": 512}
+          }
+        }
+      }
+    },
+    "continuityBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bindingId", "bindingRevision", "registeredSourceId", "serviceRegistrationId", "nativeSessionId", "nativeProjectId", "nativeLocationDigest"],
+      "properties": {
+        "bindingId": {"$ref": "#/$defs/safeId"},
+        "bindingRevision": {"$ref": "#/$defs/positive"},
+        "registeredSourceId": {"$ref": "#/$defs/safeId"},
+        "serviceRegistrationId": {"$ref": "#/$defs/safeId"},
+        "nativeSessionId": {"type": "string", "pattern": "^ses_[A-Za-z0-9_-]{4,64}$"},
+        "nativeProjectId": {"type": "string", "pattern": "^(global|[a-f0-9]{40})$"},
+        "nativeLocationDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "targetRegistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formatVersion", "workId", "projectId", "sandboxId", "workspaceEpoch", "sandboxGeneration", "taskId", "taskAttempt", "expectedRevision", "backgroundWriterState", "lastAcceptedExecutionId", "binding"],
+      "properties": {
+        "formatVersion": {"const": 1},
+        "workId": {"$ref": "#/$defs/safeId"},
+        "projectId": {"$ref": "#/$defs/safeId"},
+        "sandboxId": {"type": "string", "pattern": "^sbx_[A-Za-z0-9_-]{4,72}$"},
+        "workspaceEpoch": {"$ref": "#/$defs/safeId"},
+        "sandboxGeneration": {"$ref": "#/$defs/positive"},
+        "taskId": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^task_[A-Za-z0-9_-]{4,72}$"}]},
+        "taskAttempt": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/positive"}]},
+        "expectedRevision": {"$ref": "#/$defs/positive"},
+        "backgroundWriterState": {"const": "idle"},
+        "lastAcceptedExecutionId": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/safeId"}]},
+        "binding": {"$ref": "#/$defs/continuityBinding"}
+      },
+      "oneOf": [
+        {"properties": {"taskId": {"type": "null"}, "taskAttempt": {"type": "null"}}},
+        {"properties": {"taskId": {"type": "string"}, "taskAttempt": {"$ref": "#/$defs/positive"}}}
+      ]
+    },
+    "targetRegistrationRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formatVersion", "action", "instance", "operationId", "prepareDesiredRevision", "registration"],
+      "properties": {
+        "formatVersion": {"const": 1},
+        "action": {"const": "register_continuation_target"},
+        "instance": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "operationId": {"$ref": "#/$defs/safeId"},
+        "prepareDesiredRevision": {"$ref": "#/$defs/positive"},
+        "registration": {"$ref": "#/$defs/targetRegistration"}
+      }
+    },
+    "targetRegistrationReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formatVersion", "action", "status", "operationId", "workId", "expectedRevision", "binding", "receiptDigest"],
+      "properties": {
+        "formatVersion": {"const": 1},
+        "action": {"const": "register_continuation_target"},
+        "status": {"enum": ["registered", "unchanged"]},
+        "operationId": {"$ref": "#/$defs/safeId"},
+        "workId": {"$ref": "#/$defs/safeId"},
+        "expectedRevision": {"$ref": "#/$defs/positive"},
+        "binding": {"$ref": "#/$defs/continuityBinding"},
+        "receiptDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["workId", "projectId", "sandboxId", "workspaceEpoch", "sandboxGeneration", "expectedRevision"],
+      "properties": {
+        "workId": {"$ref": "#/$defs/safeId"}, "projectId": {"$ref": "#/$defs/safeId"},
+        "sandboxId": {"type": "string"}, "workspaceEpoch": {"$ref": "#/$defs/safeId"},
+        "sandboxGeneration": {"$ref": "#/$defs/positive"}, "expectedRevision": {"$ref": "#/$defs/positive"}
+      }
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["bindingId", "bindingRevision", "scopeRevision", "serviceRegistrationId", "serviceGeneration", "registeredSourceId", "nativeSessionId", "nativeProjectId", "nativeLocationDigest"],
+      "properties": {
+        "bindingId": {"$ref": "#/$defs/safeId"}, "bindingRevision": {"$ref": "#/$defs/positive"},
+        "scopeRevision": {"$ref": "#/$defs/positive"}, "serviceRegistrationId": {"$ref": "#/$defs/safeId"},
+        "serviceGeneration": {"$ref": "#/$defs/positive"}, "registeredSourceId": {"$ref": "#/$defs/safeId"},
+        "nativeSessionId": {"type": "string", "pattern": "^ses_[A-Za-z0-9_-]{4,64}$"},
+        "nativeProjectId": {"type": "string", "pattern": "^(global|[a-f0-9]{40})$"},
+        "nativeLocationDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "checkpoint": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operationId", "checkpointId", "manifestDigest", "bytes", "objectCount"],
+      "properties": {
+        "operationId": {"$ref": "#/$defs/safeId"}, "checkpointId": {"$ref": "#/$defs/safeId"},
+        "manifestDigest": {"$ref": "#/$defs/digest"},
+        "bytes": {"type": "integer", "minimum": 0, "maximum": 268435456},
+        "objectCount": {"type": "integer", "minimum": 0, "maximum": 10000}
+      }
+    },
+    "lineage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourceWorkId", "sourceRevision", "sourceTaskId", "checkpointOperationId", "restoreOperationId"],
+      "properties": {
+        "sourceWorkId": {"$ref": "#/$defs/safeId"}, "sourceRevision": {"$ref": "#/$defs/positive"},
+        "sourceTaskId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]},
+        "checkpointOperationId": {"$ref": "#/$defs/safeId"},
+        "restoreOperationId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}
+      }
+    },
+    "targetPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["teamId", "teamRevision", "policyRevision", "memberId", "role", "sandboxId", "sandboxGeneration", "serviceRegistrationId", "serviceGeneration", "serviceDesiredRevision", "serviceActionRevision", "profileId", "profileRevision", "profileDigest", "instructionRevision", "instructionDigest"],
+      "properties": {
+        "teamId": {"$ref": "#/$defs/safeId"}, "teamRevision": {"$ref": "#/$defs/positive"},
+        "policyRevision": {"$ref": "#/$defs/positive"}, "memberId": {"$ref": "#/$defs/safeId"},
+        "role": {"enum": ["worker", "reviewer"]}, "sandboxId": {"type": "string"},
+        "sandboxGeneration": {"$ref": "#/$defs/positive"}, "serviceRegistrationId": {"$ref": "#/$defs/safeId"},
+        "serviceGeneration": {"$ref": "#/$defs/positive"}, "serviceDesiredRevision": {"$ref": "#/$defs/positive"},
+        "serviceActionRevision": {"$ref": "#/$defs/positive"}, "profileId": {"const": "opencode"},
+        "profileRevision": {"$ref": "#/$defs/positive"}, "profileDigest": {"$ref": "#/$defs/digest"},
+        "instructionRevision": {"$ref": "#/$defs/positive"}, "instructionDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "workspaceRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "restoreOperationId", "selectionId", "projectId", "workspaceEpoch", "scopeRevision", "rootAttestation"],
+      "properties": {
+        "mode": {"enum": ["allocate_and_materialize", "accepted_restore"]},
+        "restoreOperationId": {}, "selectionId": {}, "projectId": {}, "workspaceEpoch": {}, "scopeRevision": {}, "rootAttestation": {}
+      }
+    },
+    "context": {
+      "type": "object", "additionalProperties": false,
+      "required": ["digest", "bytes", "tokenUpperBound"],
+      "properties": {
+        "digest": {"$ref": "#/$defs/digest"}, "bytes": {"type": "integer", "minimum": 0, "maximum": 32768},
+        "tokenUpperBound": {"type": "integer", "minimum": 0, "maximum": 8192}
+      }
+    },
+    "prepareBase": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "operationId", "action", "desiredRevision", "handoffKind", "sessionMode", "targetWorkId", "mappingId", "identity", "binding", "checkpoint", "lineage", "targetPolicy", "workspace", "context", "instance", "targetWorkspace"],
+      "properties": {
+        "formatVersion": {"const": 1}, "operationId": {"$ref": "#/$defs/safeId"},
+        "action": {"enum": ["prepare_handoff", "reconcile_handoff"]}, "desiredRevision": {"$ref": "#/$defs/positive"},
+        "handoffKind": {"enum": ["reviewer", "restored_target"]}, "sessionMode": {"const": "create_separate"},
+        "targetWorkId": {"$ref": "#/$defs/safeId"}, "mappingId": {"$ref": "#/$defs/safeId"},
+        "identity": {"$ref": "#/$defs/identity"}, "binding": {"$ref": "#/$defs/binding"},
+        "checkpoint": {"$ref": "#/$defs/checkpoint"}, "lineage": {"$ref": "#/$defs/lineage"},
+        "targetPolicy": {"$ref": "#/$defs/targetPolicy"}, "workspace": {"$ref": "#/$defs/workspaceRequest"},
+        "context": {"$ref": "#/$defs/context"}, "instance": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "targetWorkspace": {"$ref": "#/$defs/workspace"}
+      }
+    },
+    "prepareRequest": {"allOf": [{"$ref": "#/$defs/prepareBase"}, {"properties": {"action": {"const": "prepare_handoff"}}}]},
+    "reconcileRequest": {"allOf": [{"$ref": "#/$defs/prepareBase"}, {"properties": {"action": {"const": "reconcile_handoff"}}}]},
+    "releaseRequest": {
+      "type": "object",
+      "description": "The backend release_handoff manifest plus instance; exact fields are frozen by agent-continuation-handoff-v1.schema.json."
+    },
+    "session": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mappingId", "registeredSourceId", "nativeSessionId", "nativeProjectId", "nativeLocationDigest", "instructionRevision", "instructionDigest", "instructionApplied"],
+      "properties": {
+        "mappingId": {"$ref": "#/$defs/safeId"}, "registeredSourceId": {"$ref": "#/$defs/safeId"},
+        "nativeSessionId": {"type": "string"}, "nativeProjectId": {"type": "string"},
+        "nativeLocationDigest": {"$ref": "#/$defs/digest"}, "instructionRevision": {"$ref": "#/$defs/positive"},
+        "instructionDigest": {"$ref": "#/$defs/digest"}, "instructionApplied": {"const": true}
+      }
+    },
+    "baseline": {
+      "type": "object", "additionalProperties": false,
+      "required": ["baselineId", "baselineDigest", "nativeSessionId", "serviceGeneration", "readyAt"],
+      "properties": {
+        "baselineId": {"type": "string"}, "baselineDigest": {"$ref": "#/$defs/digest"},
+        "nativeSessionId": {"type": "string"}, "serviceGeneration": {"$ref": "#/$defs/positive"}, "readyAt": {"type": "string"}
+      }
+    },
+    "readyReport": {
+      "type": "object",
+      "description": "Exact ready report from agent-continuation-handoff-v1.schema.json; no local-only instance or path fields."
+    },
+    "reconcileResponse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "action", "status", "state", "report", "consumption", "release"],
+      "properties": {
+        "formatVersion": {"const": 1}, "action": {"const": "reconcile_handoff"},
+        "status": {"enum": ["ready", "consumed", "released", "refused"]},
+        "state": {"enum": ["prepared", "consumed", "released", "creation_unknown"]},
+        "report": {"type": ["object", "null"]}, "consumption": {"type": ["object", "null"]},
+        "release": {"type": ["object", "null"]}
+      }
+    }
+  }
+}

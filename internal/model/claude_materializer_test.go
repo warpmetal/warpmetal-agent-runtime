@@ -126,7 +126,7 @@ func TestValidateManifestRejectsArchiveHooksAndNonExactMemberPaths(t *testing.T)
 	}
 	mutations := []func(map[string]any){
 		func(value map[string]any) { value["bin"].(map[string]any)["member"] = "../ant" },
-		func(value map[string]any) { value["bin"].(map[string]any)["member"] = "bin/ant" },
+		func(value map[string]any) { value["bin"].(map[string]any)["member"] = "/bin/ant" },
 	}
 	for index, mutate := range mutations {
 		var candidate map[string]any
@@ -139,6 +139,24 @@ func TestValidateManifestRejectsArchiveHooksAndNonExactMemberPaths(t *testing.T)
 		manifest := manifestWithMaterializerJSON(t, "claude-managed-ant", string(materializer))
 		if err := ValidateManifest(manifest, manifest.ServerID, 0); err == nil {
 			t.Fatalf("unsafe archive-binary mutation %d was accepted: %s", index, materializer)
+		}
+	}
+}
+
+func TestValidateManifestRejectsIncompleteVerifiedArchiveContract(t *testing.T) {
+	const verified = `{"kind":"archive-binary","platform":"linux/amd64","artifact":{"id":"opencode-cli-linux-x64","source":"https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.14.tgz","sha256":"sha256:a3824cc0d080fd69e95c47ae751a8ba49b668f6492fcfe377f5c941c337e53a9","integrity":"sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==","format":"tar-gz","sizeBytes":88757774},"bin":{"name":"opencode","member":"package/bin/opencode","sha256":"sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb","version":"2.0.14","environment":{"OPENCODE_DISABLE_AUTOUPDATE":"1"}}}`
+	mutations := []string{
+		strings.Replace(verified, `"platform":"linux/amd64"`, `"platform":"darwin/arm64"`, 1),
+		strings.Replace(verified, `"platform":"linux/amd64",`, "", 1),
+		strings.Replace(verified, `"integrity":"sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==",`, "", 1),
+		strings.Replace(verified, `"sha256":"sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb",`, "", 1),
+		strings.Replace(verified, `"OPENCODE_DISABLE_AUTOUPDATE":"1"`, `"bad-name":"1"`, 1),
+		strings.Replace(verified, `"member":"package/bin/opencode"`, `"member":"package/../opencode"`, 1),
+	}
+	for index, materializer := range mutations {
+		manifest := manifestWithMaterializerJSON(t, "opencode", materializer)
+		if err := ValidateManifest(manifest, manifest.ServerID, 0); err == nil {
+			t.Fatalf("unsafe verified archive mutation %d was accepted: %s", index, materializer)
 		}
 	}
 }

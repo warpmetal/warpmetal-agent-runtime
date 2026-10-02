@@ -15,6 +15,8 @@ const transportClaudeLauncher = `{"kind":"npm-package-set","artifacts":[{"id":"c
 
 const transportAntArchive = `{"kind":"archive-binary","artifact":{"id":"ant-linux-amd64","source":"https://github.com/anthropics/anthropic-cli/releases/download/v1.33.0/ant_1.33.0_linux_amd64.tar.gz","sha256":"sha256:937a93020b92260a9c1221fa25d79586245e67c368848a0b77b83e645da77f38","format":"tar-gz","sizeBytes":9471689},"bin":{"name":"ant","member":"ant"}}`
 
+const transportOpenCodeArchive = `{"kind":"archive-binary","platform":"linux/amd64","artifact":{"id":"opencode-cli-linux-x64","source":"https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.14.tgz","sha256":"sha256:a3824cc0d080fd69e95c47ae751a8ba49b668f6492fcfe377f5c941c337e53a9","integrity":"sha512-YFGnck40hBmD8S785zHi1sCZMVodoyxy615SrEo+YXJj/i92I8ViETodsY6Yde0H0VJk/ZuLu8mrllOA4wbAlQ==","format":"tar-gz","sizeBytes":88757774},"bin":{"name":"opencode","member":"package/bin/opencode","sha256":"sha256:78accad0f9fa61f681c4e0342ce4960ab784d27ddf34796ce12d156f9b5c3abb","version":"2.0.14","environment":{"OPENCODE_DISABLE_AUTOUPDATE":"1"}}}`
+
 func TestClaudeMaterializersReachTheExistingClosedSetupExecutionUnchanged(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -23,6 +25,7 @@ func TestClaudeMaterializersReachTheExistingClosedSetupExecutionUnchanged(t *tes
 	}{
 		{"Claude launcher", "claude-code", transportClaudeLauncher},
 		{"ant archive", "claude-managed-ant", transportAntArchive},
+		{"OpenCode approved archive", "opencode", transportOpenCodeArchive},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

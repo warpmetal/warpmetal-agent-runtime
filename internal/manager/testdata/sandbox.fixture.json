@@ -1,0 +1,427 @@
+{
+  "startReviewRequest": {
+    "formatVersion": 1,
+    "action": "start_review",
+    "instance": "worker-monitor",
+    "authority": {
+      "formatVersion": 1,
+      "reservationId": "mgrres_example_0001",
+      "runId": "mgrrun_example_0001",
+      "manual": true,
+      "findingId": "finding_example_0001",
+      "findingRevision": 3,
+      "policyRevision": 7,
+      "ruleId": "repeated_identical_failure@1",
+      "recipeId": "inspect_first_failure@1",
+      "providerRouteDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "managerProfile": {
+        "profileId": "warpmetal-insights-manager",
+        "profileRevision": 1,
+        "profileDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "source": {
+        "registeredSourceId": "source_worker_example",
+        "workspaceEpoch": "epoch_worker_example",
+        "nativeSessionId": "ses_monitor12345",
+        "serviceRegistrationId": "service_worker_example",
+        "serviceGeneration": 5,
+        "sandboxGeneration": 2,
+        "profileRevision": 4,
+        "instructionRevision": 6
+      },
+      "target": {
+        "teamId": "team_example_0001",
+        "memberId": "member_example_0001",
+        "taskId": "task_example_0001",
+        "taskAttempt": 2,
+        "workId": "work_example_0001",
+        "workRevision": 9,
+        "bindingId": "binding_example_0001",
+        "bindingRevision": 3
+      },
+      "budget": {
+        "modelRequests": 2,
+        "inputTokens": 16000,
+        "outputTokens": 2000
+      },
+      "validUntil": "2026-09-27T18:02:00Z"
+    },
+    "finding": {
+      "findingId": "finding_example_0001",
+      "findingRevision": 3,
+      "journalGeneration": "journal_example_0001",
+      "ruleId": "repeated_identical_failure@1",
+      "nativeSessionId": "ses_monitor12345",
+      "firstSequence": 40,
+      "lastSequence": 47,
+      "count": 4,
+      "matchedCallIds": [
+        "call_example_0001",
+        "call_example_0004"
+      ],
+      "coverage": "complete",
+      "firstObservedAt": "2026-09-27T18:00:01Z",
+      "lastObservedAt": "2026-09-27T18:00:08Z",
+      "toolCategory": "shell",
+      "phase": "tool"
+    },
+    "capability": {
+      "nativeVersion": "2.0.14",
+      "nativeSourceRevision": "08462140ec0de1e4b17d4a353d8d5827f53cf7b0",
+      "protocol": "opencode-supervisor/1",
+      "nativeProtocol": "openai_chat",
+      "providerId": "deepseek",
+      "modelId": "deepseek-chat",
+      "providerRouteDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "recipeIds": [
+        "inspect_first_failure@1",
+        "check_repeated_operation@1",
+        "refine_query@1",
+        "inspect_active_phase@1"
+      ],
+      "managerPluginDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "maxInputTokens": 8000,
+      "maxOutputTokens": 1000,
+      "finalRequestMaxBytes": 7000,
+      "toolsAllowed": false,
+      "mediaAllowed": false,
+      "hardOutputTokenLimit": true,
+      "available": true,
+      "reason": null
+    }
+  },
+  "continueReviewRequest": {
+    "formatVersion": 1,
+    "action": "continue_review",
+    "instance": "worker-monitor",
+    "reservationId": "mgrres_example_0001",
+    "runId": "mgrrun_example_0001",
+    "policyRevision": 7,
+    "runGeneration": 2,
+    "source": {
+      "registeredSourceId": "source_worker_example",
+      "workspaceEpoch": "epoch_worker_example",
+      "nativeSessionId": "ses_monitor12345",
+      "serviceRegistrationId": "service_worker_example",
+      "serviceGeneration": 5,
+      "sandboxGeneration": 2,
+      "profileRevision": 4,
+      "instructionRevision": 6
+    }
+  },
+  "reconcileReviewRequest": {
+    "formatVersion": 1,
+    "action": "reconcile_review",
+    "instance": "worker-monitor",
+    "reservationId": "mgrres_example_0001",
+    "runId": "mgrrun_example_0001",
+    "policyRevision": 7,
+    "runGeneration": 2,
+    "source": {
+      "registeredSourceId": "source_worker_example",
+      "workspaceEpoch": "epoch_worker_example",
+      "nativeSessionId": "ses_monitor12345",
+      "serviceRegistrationId": "service_worker_example",
+      "serviceGeneration": 5,
+      "sandboxGeneration": 2,
+      "profileRevision": 4,
+      "instructionRevision": 6
+    }
+  },
+  "lookupManagerSessionRequest": {
+    "formatVersion": 1,
+    "action": "lookup_manager_session",
+    "instance": "worker-monitor",
+    "reservationId": "mgrres_example_0001",
+    "runId": "mgrrun_example_0001",
+    "policyRevision": 7,
+    "runGeneration": 2,
+    "source": {
+      "registeredSourceId": "source_worker_example",
+      "workspaceEpoch": "epoch_worker_example",
+      "nativeSessionId": "ses_monitor12345",
+      "serviceRegistrationId": "service_worker_example",
+      "serviceGeneration": 5,
+      "sandboxGeneration": 2,
+      "profileRevision": 4,
+      "instructionRevision": 6
+    }
+  },
+  "reviewReceipt": {
+    "formatVersion": 1,
+    "action": "start_review",
+    "status": "recommended",
+    "reservationId": "mgrres_example_0001",
+    "runId": "mgrrun_example_0001",
+    "modelRequests": 1,
+    "reservedInputTokens": 8000,
+    "reservedOutputTokens": 1000,
+    "managerRegisteredSourceId": "manager_947371ad57e10099eb29e28c",
+    "managerSession": {
+      "nativeSessionId": "ses_manager_example",
+      "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+      "nativeLocationDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "serviceRegistrationId": "service_worker_example",
+      "serviceGeneration": 5,
+      "providerRouteDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "managerProfile": {
+        "profileId": "warpmetal-insights-manager",
+        "profileRevision": 1,
+        "profileDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    },
+    "proposalDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "guidanceReceipt": {
+      "formatVersion": 1,
+      "mode": "recommend_only",
+      "status": "not_delivered",
+      "atomicNativeGuard": false,
+      "autoSteer": false,
+      "guidanceDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "pendingInputId": null
+    },
+    "receiptDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    "error": null,
+    "proposal": {
+      "recipeId": "inspect_first_failure@1",
+      "outcome": "recommendation",
+      "rationaleCode": "unchanged_failure_repeated",
+      "firstSequence": 40,
+      "lastSequence": 40,
+      "guidanceDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    }
+  },
+  "findingEvidence": {
+    "findingId": "finding_example_0001",
+    "findingRevision": 3,
+    "journalGeneration": "journal_example_0001",
+    "ruleId": "repeated_identical_failure@1",
+    "nativeSessionId": "ses_monitor12345",
+    "firstSequence": 40,
+    "lastSequence": 47,
+    "count": 4,
+    "matchedCallIds": [
+      "call_example_0001",
+      "call_example_0004"
+    ],
+    "coverage": "complete",
+    "firstObservedAt": "2026-09-27T18:00:01Z",
+    "lastObservedAt": "2026-09-27T18:00:08Z",
+    "toolCategory": "shell",
+    "phase": "tool"
+  },
+  "managerEvidencePacket": {
+    "formatVersion": 1,
+    "runId": "mgrrun_example_0001",
+    "recipeId": "inspect_first_failure@1",
+    "finding": {
+      "findingId": "finding_example_0001",
+      "findingRevision": 3,
+      "journalGeneration": "journal_example_0001",
+      "ruleId": "repeated_identical_failure@1",
+      "nativeSessionId": "ses_monitor12345",
+      "firstSequence": 40,
+      "lastSequence": 47,
+      "count": 4,
+      "matchedCallIds": [
+        "call_example_0001",
+        "call_example_0004"
+      ],
+      "coverage": "complete",
+      "firstObservedAt": "2026-09-27T18:00:01Z",
+      "lastObservedAt": "2026-09-27T18:00:08Z",
+      "toolCategory": "shell",
+      "phase": "tool"
+    },
+    "selections": [
+      {
+        "selectionId": "selection_example_0001",
+        "kind": "tool_result",
+        "nativeSessionId": "ses_monitor12345",
+        "messageId": "msg_example_0001",
+        "callId": "call_example_0001",
+        "sequence": 40,
+        "contentDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+        "byteCount": 28,
+        "truncated": false,
+        "redacted": true,
+        "excerpt": "command failed: exit code 7"
+      }
+    ],
+    "selectionDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "contentBytes": 28,
+    "tokenUpperBound": 28,
+    "nativeReadCount": 1,
+    "nativeReadBytes": 512,
+    "fallbackPages": 0,
+    "fallbackMessages": 0
+  },
+  "managerEvidenceRequest": {
+    "formatVersion": 1,
+    "type": "request_evidence",
+    "recipeId": "inspect_first_failure@1",
+    "references": [
+      {
+        "kind": "tool_result",
+        "messageId": "msg_example_0004",
+        "callId": "call_example_0004",
+        "sequence": 47
+      }
+    ]
+  },
+  "managerSelectionEvent": {
+    "selectionId": "selection_example_0001",
+    "kind": "tool_result",
+    "nativeSessionId": "ses_monitor12345",
+    "messageId": "msg_example_0001",
+    "callId": "call_example_0001",
+    "sequence": 40,
+    "contentDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+    "byteCount": 28,
+    "truncated": false,
+    "redacted": true,
+    "excerpt": "command failed: exit code 7"
+  },
+  "correctionProposal": {
+    "formatVersion": 1,
+    "type": "correction_proposal",
+    "recipeId": "inspect_first_failure@1",
+    "outcome": "recommendation",
+    "rationaleCode": "unchanged_failure_repeated",
+    "citations": [
+      {
+        "selectionId": "selection_example_0001",
+        "sequence": 40
+      }
+    ],
+    "guidance": "Inspect the first failing operation before retrying it."
+  },
+  "guidanceReceipt": {
+    "formatVersion": 1,
+    "mode": "recommend_only",
+    "status": "not_delivered",
+    "atomicNativeGuard": false,
+    "autoSteer": false,
+    "guidanceDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "pendingInputId": null
+  },
+  "acquireHoldRequest": {
+    "formatVersion": 1,
+    "action": "acquire_intervention_hold",
+    "instance": "worker-monitor",
+    "manifest": {
+      "formatVersion": 1,
+      "operationId": "takeover_example_0001",
+      "predecessorOperationId": null,
+      "action": "pause_manager_and_hold_member",
+      "findingId": "finding_example_0001",
+      "findingRevision": 3,
+      "policyRevision": 7,
+      "runGeneration": 2,
+      "holdId": "hold_example_0001",
+      "holdRevision": 1,
+      "holdState": "active",
+      "source": {
+        "registeredSourceId": "source_worker_example",
+        "workspaceEpoch": "epoch_worker_example",
+        "nativeSessionId": "ses_monitor12345",
+        "serviceRegistrationId": "service_worker_example",
+        "serviceGeneration": 5,
+        "sandboxGeneration": 2,
+        "profileRevision": 4,
+        "instructionRevision": 6
+      },
+      "target": {
+        "teamId": "team_example_0001",
+        "memberId": "member_example_0001",
+        "taskId": "task_example_0001",
+        "taskAttempt": 2,
+        "workId": "work_example_0001",
+        "workRevision": 9,
+        "bindingId": "binding_example_0001",
+        "bindingRevision": 3
+      },
+      "validUntil": "2026-09-27T18:02:00Z"
+    }
+  },
+  "releaseHoldRequest": {
+    "formatVersion": 1,
+    "action": "release_intervention_hold",
+    "instance": "worker-monitor",
+    "manifest": {
+      "formatVersion": 1,
+      "operationId": "resume_example_0001",
+      "predecessorOperationId": "takeover_example_0001",
+      "action": "resume_manager_and_release_member",
+      "findingId": "finding_example_0001",
+      "findingRevision": 3,
+      "policyRevision": 8,
+      "runGeneration": 3,
+      "holdId": "hold_example_0001",
+      "holdRevision": 2,
+      "holdState": "released",
+      "source": {
+        "registeredSourceId": "source_worker_example",
+        "workspaceEpoch": "epoch_worker_example",
+        "nativeSessionId": "ses_monitor12345",
+        "serviceRegistrationId": "service_worker_example",
+        "serviceGeneration": 5,
+        "sandboxGeneration": 2,
+        "profileRevision": 4,
+        "instructionRevision": 6
+      },
+      "target": {
+        "teamId": "team_example_0001",
+        "memberId": "member_example_0001",
+        "taskId": "task_example_0001",
+        "taskAttempt": 2,
+        "workId": "work_example_0001",
+        "workRevision": 9,
+        "bindingId": "binding_example_0001",
+        "bindingRevision": 3
+      },
+      "validUntil": "2026-09-27T18:04:00Z"
+    }
+  },
+  "holdReceipt": {
+    "formatVersion": 1,
+    "action": "acquire_intervention_hold",
+    "status": "active",
+    "operationId": "takeover_example_0001",
+    "predecessorOperationId": null,
+    "findingId": "finding_example_0001",
+    "findingRevision": 3,
+    "holdId": "hold_example_0001",
+    "holdRevision": 1,
+    "holdState": "active",
+    "policyRevision": 7,
+    "runGeneration": 2,
+    "source": {
+      "registeredSourceId": "source_worker_example",
+      "workspaceEpoch": "epoch_worker_example",
+      "nativeSessionId": "ses_monitor12345",
+      "serviceRegistrationId": "service_worker_example",
+      "serviceGeneration": 5,
+      "sandboxGeneration": 2,
+      "profileRevision": 4,
+      "instructionRevision": 6
+    },
+    "target": {
+      "teamId": "team_example_0001",
+      "memberId": "member_example_0001",
+      "taskId": "task_example_0001",
+      "taskAttempt": 2,
+      "workId": "work_example_0001",
+      "workRevision": 9,
+      "bindingId": "binding_example_0001",
+      "bindingRevision": 3
+    },
+    "validUntil": "2026-09-27T18:02:00Z",
+    "pendingInput": {
+      "state": "none_pending",
+      "alreadyConsumed": false
+    },
+    "receiptDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "errorCode": null
+  }
+}

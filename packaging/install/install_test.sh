@@ -60,12 +60,19 @@ grep -Fq 'fail_install runtime_workload_state_unverifiable' "$script"
 grep -Fq 'fail_install runtime_workload_drift_detected' "$script"
 grep -Fq 'flock -n 9 || fail_install runtime_install_in_progress' "$script"
 grep -Fq -- "--format '{{.Id}} {{.State.Pid}} {{.State.StartedAt}} {{.State.Running}}'" "$script"
+grep -Fq -- "--format '{{.ID}}|{{.State.Pid}}|{{.State.ConmonPid}}|{{.State.StartedAt}}|{{.State.Running}}'" "$script"
 reject_match -Eq '\{\{\.(Name|Config|Image|Mounts)' "$script"
 test "$(grep -Ec '^[[:space:]]*assert_host_workloads_unchanged$' "$script")" -eq 4
 grep -Fq 'systemctl show --property MainPID --value warpmetal-podman.service' "$script"
-grep -Fq 'is_warpmetal_podman_service_process "$process_id" && continue' "$script"
+grep -Fq 'is_warpmetal_runtime_service_process "$process_id"' "$script"
+grep -Fq '! is_persistent_private_conmon "$process_id"' "$script"
 grep -Fq "grep -Eq '^0::/system[.]slice/warpmetal-podman[.]service(/|$)'" "$script"
+grep -Fq "process_in_cgroup \"\$1\" '^0::/system[.]slice/warpmetald[.]service(/|$)'" "$script"
 grep -Fq '"/proc/$process_id/cgroup"' "$script"
+grep -Fq 'HOME=/var/lib/warpmetal-runtime' "$script"
+grep -Fq 'XDG_RUNTIME_DIR=/run/warpmetal-podman' "$script"
+grep -Fq 'podman --remote --url unix:///run/warpmetal-podman/podman.sock' "$script"
+grep -Fq 'cmp -s "$install_state_dir/private-podman.before"' "$script"
 grep -Fq 'xargs -n 128' "$script"
 grep -Fq 'package_apply_status=$?' "$script"
 test "$(grep -Fc 'package_apply_status=$?' "$script")" -eq 2
@@ -134,6 +141,9 @@ grep -Fq -- '--nested-private-procfs)' "$script"
 grep -Eq 'preserve\|enable\|disable' "$script"
 grep -Fq 'invalid_nested_private_procfs_mode' "$script"
 test "$(grep -Fc -- '--nested-private-procfs)' "$script")" -eq 1
+grep -Fq 'apparmor_policy_legacy_state=/var/lib/warpmetal/apparmor-policy-state' "$script"
+grep -Fq 'apparmor_policy_durable_state=/var/lib/warpmetal-apparmor-policy-state' "$script"
+grep -Fq 'warpmetal_adopt_legacy_apparmor_policy_state' "$script"
 
 # The signed release bundle, rather than cloud-init or a mutable download,
 # carries the policy, transactional lifecycle library, and metadata verifier.

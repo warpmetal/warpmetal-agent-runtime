@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"regexp"
 	"sync"
 	"time"
@@ -16,8 +17,10 @@ import (
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/access"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/continuity"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/workspacecatalog"
 )
 
 type Workspaces interface {
@@ -30,22 +33,174 @@ type Sessions interface {
 	TerminateSandbox(context.Context, string) error
 }
 
-type Reconciler struct {
-	Store        *state.Store
-	Engine       containers.Engine
-	Workspaces   Workspaces
-	Access       access.Renderer
-	Sessions     Sessions
-	HostCapacity model.Resources
-	ServerID     string
-	Now          func() time.Time
-
-	mu sync.Mutex
+type ContinuityRecovery interface {
+	Recover(context.Context) error
 }
 
-func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) error {
+type ContinuityControl interface {
+	Apply(context.Context, model.Manifest) error
+	// Acknowledge is the pre-failure acknowledgement phase: it applies only
+	// the continuity registration state the same fresh manifest carries and
+	// retires only the terminal operation echoes that manifest no longer
+	// carries, before any failure-prone managed-service enrollment can abort
+	// the pass.
+	Acknowledge(context.Context, model.Manifest) error
+	Reports(context.Context) ([]model.ContinuitySourceReportV1, []model.ContinuityRegistrationReportV1, []model.ContinuityOperationReportV1, error)
+}
+
+type ContinuationRestoreControl interface {
+	Recover(context.Context) error
+	Apply(context.Context, []model.ContinuationManifestV1, []model.RestoreManifestV1) error
+	ApplyReleases(context.Context, []model.ContinuationReleaseManifestV1) error
+	Reports(context.Context) ([]model.ContinuationReportV1, []model.RestoreReportV1, error)
+	ReleaseReports(context.Context) ([]model.ContinuationReleaseReportV1, error)
+}
+
+type ContinuationHandoffControl interface {
+	RecoverHandoffs(context.Context) error
+	ApplyHandoffs(context.Context, []model.ContinuationHandoffManifestV1) error
+	ApplyHandoffTargetRegistrations(context.Context, []model.ContinuityRegistrationV1) error
+	ApplyHandoffReleases(context.Context, []model.ContinuationHandoffReleaseManifestV1) error
+	HandoffReports(context.Context) ([]model.ContinuationHandoffReportV1, []model.ContinuationHandoffReleaseReportV1, error)
+}
+
+type ManagedWorkspaceCatalog interface {
+	EnsureDefault(context.Context, workspacecatalog.DefaultProjectRequest) (workspacecatalog.RegisteredProject, error)
+	Resolve(context.Context, workspacecatalog.ResolveProjectRequest) (workspacecatalog.RegisteredProject, error)
+	Reports(context.Context) ([]model.ProjectCatalogReportV1, error)
+	// ReobserveRemountedRoots re-attests host-private records whose live root
+	// identity differs solely by the loop device of the documented workspace
+	// remount, before any managed service resolves its project.
+	ReobserveRemountedRoots(context.Context) error
+}
+
+type ManagedServiceControl interface {
+	ManagedServiceEnrollment(context.Context, string, model.ManagedServiceFetchRequestV1) (model.ManagedServiceEnrollmentV1, error)
+	ManagedServiceInstructions(context.Context, string, model.ManagedServiceFetchRequestV1) (model.ManagedServiceInstructionV1, error)
+	ManagedServiceEndpoint() string
+}
+
+type ManagedSandboxRuntime interface {
+	ExecManagedSupervisor(context.Context, string, containers.ManagedSupervisorAction, []byte) ([]byte, []byte, error)
+	ExecManagedWorker(context.Context, string, containers.ManagedWorkerAction, []byte) ([]byte, []byte, error)
+}
+
+type InsightCollector interface {
+	RunOnce(context.Context) error
+}
+
+type CheckpointLifecycle interface {
+	Run(context.Context) error
+}
+
+type ManagerControl interface {
+	RenewPendingTakeovers(context.Context, model.Manifest) error
+	Recover(context.Context) error
+	ApplyPolicies(context.Context, model.Manifest) error
+	Apply(context.Context, model.Manifest) error
+	Reports(context.Context, continuity.StaleSourceSet) ([]model.InsightsManagerPolicyReportV1, []model.InsightsManagerRunReportV1, []model.InsightsTakeoverReportV1, error)
+}
+
+type managedWorkerExecution struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+	mu     sync.Mutex
+	idle   bool
+}
+
+type Reconciler struct {
+	Store               *state.Store
+	Engine              containers.Engine
+	Workspaces          Workspaces
+	Access              access.Renderer
+	Sessions            Sessions
+	HostCapacity        model.Resources
+	ServerID            string
+	Now                 func() time.Time
+	Continuity          ContinuityRecovery
+	ContinuityControl   ContinuityControl
+	ContinuationRestore ContinuationRestoreControl
+	ContinuationHandoff ContinuationHandoffControl
+	ManagedCatalog      ManagedWorkspaceCatalog
+	ManagedControl      ManagedServiceControl
+	ManagedRuntime      ManagedSandboxRuntime
+	Insights            InsightCollector
+	ContinuityLifecycle CheckpointLifecycle
+	Manager             ManagerControl
+	// ManagedExecutionContext is the daemon lifecycle, not a poll/reconcile
+	// context. Worker one-shots may outlive one control-plane poll but are
+	// cancelled by daemon shutdown and explicit pause/stop policy.
+	ManagedExecutionContext context.Context
+
+	mu                sync.Mutex
+	managedWorkerMu   sync.Mutex
+	managedExecutions map[string]*managedWorkerExecution
+}
+
+func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) (err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.Continuity != nil {
+		if err := r.Continuity.Recover(ctx); err != nil {
+			return fmt.Errorf("recover continuity operations: %w", err)
+		}
+	}
+	if r.ContinuationRestore != nil {
+		if err := r.ContinuationRestore.Recover(ctx); err != nil {
+			return fmt.Errorf("recover continuation/restore operations: %w", err)
+		}
+	}
+	// A ready continuation handoff whose source or target supervisor probe did
+	// not complete is a bounded, retryable condition: its record stays
+	// fail-closed and unadvanced, but the probe failure must not abort the
+	// manifest, sandbox, managed-service, workspace and report work of this pass
+	// (that work is what restores the probe precondition, and the pass still
+	// advances the applied revision when everything else succeeds). The
+	// dedicated wrapped probe error is returned only when nothing else in the
+	// pass could proceed, so it stays visible alongside any unrelated abort.
+	var deferredHandoffProbe error
+	if r.ContinuationHandoff != nil {
+		if err := r.ContinuationHandoff.RecoverHandoffs(ctx); err != nil {
+			var succession *continuity.HandoffSourceSuccessionDeferral
+			switch {
+			case errors.As(err, &succession):
+				// The one owner-authorized monotonic succession is deferred
+				// exactly like the handoff-probe condition, but only when the
+				// same fresh authenticated, schema-valid manifest carries the
+				// byte-for-field effective successor registration for that
+				// binding. Every other shape keeps the existing fatal recovery
+				// error.
+				if !r.handoffSourceSuccessionConfirmed(ctx, manifest, succession.BindingID) {
+					return fmt.Errorf("recover continuation handoffs: %w", err)
+				}
+				deferredHandoffProbe = fmt.Errorf("recover continuation handoffs: %w", err)
+			case errors.Is(err, continuity.ErrHandoffProbeUnknown):
+				deferredHandoffProbe = fmt.Errorf("recover continuation handoffs: %w", err)
+			default:
+				return fmt.Errorf("recover continuation handoffs: %w", err)
+			}
+		}
+	}
+	// A managed service whose project root was re-mounted onto a new loop device
+	// is a bounded, retryable condition too: the service stays fail-closed and
+	// unadvanced, but the pass still re-observes the root, publishes the
+	// re-attested root through the ordinary workspace report for backend
+	// ratification, and finishes its sandbox, managed-service and workspace work
+	// so a later manifest carrying that ratified authority can let the service
+	// proceed. The dedicated remount reason is returned only when nothing else in
+	// the pass could proceed, so it stays visible alongside any unrelated abort.
+	var deferredManagedProjectRemount error
+	defer func() {
+		if err == nil {
+			return
+		}
+		if deferredHandoffProbe != nil {
+			err = errors.Join(deferredHandoffProbe, err)
+		}
+		if deferredManagedProjectRemount != nil {
+			err = errors.Join(deferredManagedProjectRemount, err)
+		}
+	}()
 	lastRevision, err := r.Store.Revision(ctx)
 	if err != nil {
 		return err
@@ -55,6 +210,19 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) err
 	}
 	if !requested(manifest.Sandboxes).Fits(r.HostCapacity) {
 		return errors.New("desired sandboxes exceed detected host capacity")
+	}
+	// The authenticated manifest must pass the existing complete identity,
+	// schema, revision and capacity gates before its fresh lease may prepare an
+	// exact pending protective Pause. This phase stores only that operation's
+	// deadline. Bounded exact-operation reconciliation follows immediately, and
+	// reservation, review, release and unrelated recovery errors remain fatal.
+	if r.Manager != nil {
+		if err := r.Manager.RenewPendingTakeovers(ctx, manifest); err != nil {
+			return fmt.Errorf("renew pending manager takeovers: %w", err)
+		}
+		if err := r.Manager.Recover(ctx); err != nil {
+			return fmt.Errorf("recover manager operations: %w", err)
+		}
 	}
 	setupSandboxes := make(map[string]bool, len(manifest.SetupOperations))
 	for _, operation := range manifest.SetupOperations {
@@ -78,7 +246,222 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) err
 	if !setupReady {
 		return nil
 	}
+	// Apply only the freshly fetched manager policy manifests here, after the
+	// sandbox/grant/setup prerequisites and before the failure-prone managed
+	// service, handoff and continuity steps: a renewed policy lease must be
+	// stored even when a later step aborts. Reviews, takeovers, run execution
+	// and every other action-bearing manager apply remain at the existing
+	// end-of-pass position, and a failed pass never advances the applied
+	// revision.
+	if r.Manager != nil {
+		if err := r.Manager.ApplyPolicies(ctx, manifest); err != nil {
+			return fmt.Errorf("apply manager policies: %w", err)
+		}
+	}
+	if r.ManagedCatalog != nil {
+		// Re-observe the host-private roots before any project is resolved: a
+		// workspace image that an authorized re-mount moved onto a new loop
+		// device is re-attested here, and the ordinary report publishes that
+		// observation for backend ratification. Only the documented remount
+		// qualifies; every other difference stays as it was and keeps failing
+		// closed on the ordinary paths.
+		if err := r.ManagedCatalog.ReobserveRemountedRoots(ctx); err != nil {
+			return fmt.Errorf("reobserve managed workspace roots: %w", err)
+		}
+		if err := r.reconcileManagedWorkspaceRequests(ctx, manifest); err != nil {
+			return fmt.Errorf("apply managed workspace requests: %w", err)
+		}
+	}
+	// The pre-failure acknowledgement phase runs after every manifest,
+	// revision, capacity, sandbox, setup, policy and workspace authority
+	// validation but before the failure-prone managed-service enrollment. A
+	// managed-service failure still leaves the applied revision unchanged,
+	// while the current registration observations are adopted/revoked exactly
+	// once and the terminal operation echoes the fresh manifest no longer
+	// carries are retired locally, so the next report is conflict-free instead
+	// of re-emitting revoked tuples and acknowledged echoes.
+	if r.ContinuityControl != nil {
+		if err := r.ContinuityControl.Acknowledge(ctx, manifest); err != nil {
+			return fmt.Errorf("acknowledge continuity manifest: %w", err)
+		}
+	}
+	// The pre-failure source observation phase runs after every manifest,
+	// revision, capacity, sandbox, setup, workspace and continuity-registration
+	// authority check and after the acknowledgement phase, but before the
+	// failure-prone managed-service enrollment. A managed-service failure (or a
+	// deferred handoff) can no longer skip the genuine re-observation of every
+	// source that currently backs an active registration, so the next report
+	// carries current source availability instead of a stale one.
+	if err := r.observeContinuitySources(ctx, manifest); err != nil {
+		return fmt.Errorf("observe continuity sources: %w", err)
+	}
+	if r.ManagedControl != nil || r.ManagedRuntime != nil {
+		if r.ManagedControl == nil || r.ManagedRuntime == nil || r.ManagedCatalog == nil {
+			return errors.New("managed service producer is incompletely configured")
+		}
+		deferred, fatal := r.reconcileManagedServices(ctx, manifest)
+		if deferred != nil {
+			deferredManagedProjectRemount = fmt.Errorf("apply managed services: %w", deferred)
+		}
+		if fatal != nil {
+			return fmt.Errorf("apply managed services: %w", fatal)
+		}
+	}
+	if r.ContinuationHandoff != nil {
+		if err := r.ContinuationHandoff.ApplyHandoffs(ctx, manifest.ContinuityHandoffs); err != nil {
+			return fmt.Errorf("apply continuation handoffs: %w", err)
+		}
+		if err := r.ContinuationHandoff.ApplyHandoffTargetRegistrations(ctx, manifest.ContinuityRegistrations); err != nil {
+			return fmt.Errorf("apply continuation handoff registrations: %w", err)
+		}
+		if err := r.ContinuationHandoff.ApplyHandoffReleases(ctx, manifest.ContinuityHandoffReleases); err != nil {
+			return fmt.Errorf("apply continuation handoff releases: %w", err)
+		}
+	}
+	if r.ContinuityControl != nil {
+		if err := r.ContinuityControl.Apply(ctx, manifest); err != nil {
+			return fmt.Errorf("apply continuity manifest: %w", err)
+		}
+	}
+	if r.ContinuationRestore != nil {
+		if err := r.ContinuationRestore.Apply(ctx, manifest.ContinuityContinuations, manifest.ContinuityRestores); err != nil {
+			return fmt.Errorf("apply continuation/restore manifest: %w", err)
+		}
+		if err := r.ContinuationRestore.ApplyReleases(ctx, manifest.ContinuityContinuationReleases); err != nil {
+			return fmt.Errorf("apply continuation release manifest: %w", err)
+		}
+	}
+	if r.Manager != nil {
+		if err := r.Manager.Apply(ctx, manifest); err != nil {
+			return fmt.Errorf("apply manager manifest: %w", err)
+		}
+	}
 	return r.Store.SetRevision(ctx, manifest.DesiredRevision)
+}
+
+// handoffSourceSuccessionConfirmed confirms the manifest-dependent half of the
+// one owner-authorized monotonic handoff succession deferral. The same fresh
+// authenticated manifest must still be schema-valid for the current applied
+// revision and must resolve exactly one effective registration for the binding
+// the way ValidateManifest resolves a valid succession: the single active
+// entry, or the active successor of the one exact revoked-predecessor /
+// active-successor pair the backend re-lists when it reactivates a binding
+// (same binding ID, successor binding revision exactly predecessor + 1,
+// successor scope exactly the journey-proven predecessor + 1, identical
+// identity and binding fences). That effective successor must be
+// byte-for-field equal to the durable local successor, and exactly one ready
+// handoff preparation must own the binding, so an ambiguous duplicate stays
+// fatal. Anything else leaves the existing fatal recovery error untouched, and
+// nothing is written here.
+func (r *Reconciler) handoffSourceSuccessionConfirmed(ctx context.Context, manifest model.Manifest, bindingID string) bool {
+	applied, err := r.Store.Revision(ctx)
+	if err != nil {
+		return false
+	}
+	if err := model.ValidateManifest(manifest, r.ServerID, applied); err != nil {
+		return false
+	}
+	preparations, err := r.Store.ContinuationHandoffPreparations(ctx)
+	if err != nil {
+		return false
+	}
+	ready := 0
+	for _, preparation := range preparations {
+		if preparation.Report != nil && preparation.Report.Status == "ready" &&
+			preparation.Manifest.Binding.BindingID == bindingID {
+			ready++
+		}
+	}
+	if ready != 1 {
+		return false
+	}
+	local, err := r.Store.ContinuityRegistration(ctx, bindingID)
+	if err != nil || local == nil {
+		return false
+	}
+	effective, ok := effectiveHandoffSuccessionRegistration(manifest, bindingID)
+	if !ok {
+		return false
+	}
+	return reflect.DeepEqual(effective, local.Manifest)
+}
+
+// effectiveHandoffSuccessionRegistration resolves the manifest's effective
+// registration for one binding exactly the way ValidateManifest resolves a
+// valid succession: a single structurally valid entry, or the active successor
+// of the one revoked-predecessor / active-successor pair the backend emits when
+// it reactivates a durable binding. The pair must advance the binding revision
+// by exactly one, advance the workspace scope by exactly the journey-proven one
+// step, keep the predecessor revoked and continuity-disabled with the successor
+// active and continuity-enabled, and keep every other identity and binding
+// field identical. Every other shape - no successor, an extra or ambiguous
+// entry, a non-succession duplicate, a reversed or skipped relation, an inexact
+// scope step or any inconsistent fence - returns false so the caller keeps the
+// fatal recovery path.
+func effectiveHandoffSuccessionRegistration(manifest model.Manifest, bindingID string) (model.ContinuityRegistrationV1, bool) {
+	var group []model.ContinuityRegistrationV1
+	for _, registration := range manifest.ContinuityRegistrations {
+		if registration.Binding.BindingID == bindingID {
+			group = append(group, registration)
+		}
+	}
+	switch len(group) {
+	case 1:
+		registration := group[0]
+		if registration.DesiredState != "active" || !registration.ContinuityEnabled {
+			return model.ContinuityRegistrationV1{}, false
+		}
+		return registration, true
+	case 2:
+		var revoked, active *model.ContinuityRegistrationV1
+		for index := range group {
+			switch group[index].DesiredState {
+			case "revoked":
+				if revoked != nil {
+					return model.ContinuityRegistrationV1{}, false
+				}
+				revoked = &group[index]
+			case "active":
+				if active != nil {
+					return model.ContinuityRegistrationV1{}, false
+				}
+				active = &group[index]
+			default:
+				return model.ContinuityRegistrationV1{}, false
+			}
+		}
+		if revoked == nil || active == nil || revoked.ContinuityEnabled || !active.ContinuityEnabled {
+			return model.ContinuityRegistrationV1{}, false
+		}
+		if active.Binding.BindingRevision != revoked.Binding.BindingRevision+1 ||
+			active.ScopeRevision != revoked.ScopeRevision+1 {
+			return model.ContinuityRegistrationV1{}, false
+		}
+		if !model.SameContinuityWorkFence(revoked.Identity, active.Identity) {
+			return model.ContinuityRegistrationV1{}, false
+		}
+		revokedBinding, activeBinding := revoked.Binding, active.Binding
+		revokedBinding.BindingRevision, activeBinding.BindingRevision = 0, 0
+		if revokedBinding != activeBinding {
+			return model.ContinuityRegistrationV1{}, false
+		}
+		return *active, true
+	default:
+		return model.ContinuityRegistrationV1{}, false
+	}
+}
+
+func (r *Reconciler) reconcileContinuationRestore(ctx context.Context, manifest model.Manifest) error {
+	if r.ContinuationRestore == nil {
+		return nil
+	}
+	if err := r.ContinuationRestore.Recover(ctx); err != nil {
+		return err
+	}
+	if err := r.ContinuationRestore.Apply(ctx, manifest.ContinuityContinuations, manifest.ContinuityRestores); err != nil {
+		return err
+	}
+	return r.ContinuationRestore.ApplyReleases(ctx, manifest.ContinuityContinuationReleases)
 }
 
 func (r *Reconciler) reconcileMissingSandboxes(
@@ -112,6 +495,11 @@ func (r *Reconciler) reconcileMissingSandboxes(
 }
 
 func (r *Reconciler) Expire(ctx context.Context) error {
+	if r.ContinuityLifecycle != nil {
+		if err := r.ContinuityLifecycle.Run(ctx); err != nil {
+			return fmt.Errorf("collect continuity checkpoints: %w", err)
+		}
+	}
 	values, err := r.Store.Sandboxes(ctx)
 	if err != nil {
 		return err
@@ -144,12 +532,25 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 		return model.Report{}, err
 	}
 	report := model.Report{
-		ServerID:          serverID,
-		AppliedRevision:   revision,
-		SupervisorVersion: version,
-		Sandboxes:         make([]model.SandboxReport, 0),
-		AccessGrants:      make([]model.GrantReport, 0),
-		SetupOperations:   make([]model.SetupOperationReport, 0),
+		ServerID:                       serverID,
+		AppliedRevision:                revision,
+		SupervisorVersion:              version,
+		Sandboxes:                      make([]model.SandboxReport, 0),
+		AccessGrants:                   make([]model.GrantReport, 0),
+		SetupOperations:                make([]model.SetupOperationReport, 0),
+		ContinuitySources:              make([]model.ContinuitySourceReportV1, 0),
+		ContinuityRegistrations:        make([]model.ContinuityRegistrationReportV1, 0),
+		ContinuityOperations:           make([]model.ContinuityOperationReportV1, 0),
+		ManagedWorkspaceSelections:     make([]model.ProjectCatalogReportV1, 0),
+		ManagedServices:                make([]model.ManagedServiceReportV1, 0),
+		ContinuityContinuations:        make([]model.ContinuationReportV1, 0),
+		ContinuityContinuationReleases: make([]model.ContinuationReleaseReportV1, 0),
+		ContinuityRestores:             make([]model.RestoreReportV1, 0),
+		ContinuityHandoffs:             make([]model.ContinuationHandoffReportV1, 0),
+		ContinuityHandoffReleases:      make([]model.ContinuationHandoffReleaseReportV1, 0),
+		InsightsManagerPolicies:        make([]model.InsightsManagerPolicyReportV1, 0),
+		InsightsManagerReviews:         make([]model.InsightsManagerRunReportV1, 0),
+		InsightsTakeovers:              make([]model.InsightsTakeoverReportV1, 0),
 	}
 	for _, value := range sandboxes {
 		item := model.SandboxReport{
@@ -191,6 +592,78 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 			item.LastError = &model.ItemError{Code: value.ErrorCode, Message: value.ErrorMessage}
 		}
 		report.SetupOperations = append(report.SetupOperations, item)
+	}
+	if r.ContinuityControl != nil {
+		sources, registrations, operations, err := r.ContinuityControl.Reports(ctx)
+		if err != nil {
+			return model.Report{}, err
+		}
+		report.ContinuitySources, report.ContinuityRegistrations, report.ContinuityOperations = sources, registrations, operations
+	}
+	// ONE freshness decision for this report. A continuity source whose
+	// authentic stored observation is older than the shared freshness contract
+	// is serialized as unavailable while its real observation timestamp and
+	// identity are preserved, and every manager capability item that references
+	// the same source derives the fail-closed unavailable pair from the same
+	// decision below. A genuinely fresh re-observation is inside the contract
+	// and keeps ordinary available reporting.
+	staleSources := continuity.DecideStaleSourceSet(report.ContinuitySources, r.now())
+	for index := range report.ContinuitySources {
+		report.ContinuitySources[index] = staleSources.DeriveSourceReport(report.ContinuitySources[index])
+	}
+	if r.ContinuationRestore != nil {
+		continuations, restores, err := r.ContinuationRestore.Reports(ctx)
+		if err != nil {
+			return model.Report{}, err
+		}
+		report.ContinuityContinuations, report.ContinuityRestores = continuations, restores
+		releases, err := r.ContinuationRestore.ReleaseReports(ctx)
+		if err != nil {
+			return model.Report{}, err
+		}
+		report.ContinuityContinuationReleases = releases
+	}
+	if r.ContinuationHandoff != nil {
+		handoffs, releases, err := r.ContinuationHandoff.HandoffReports(ctx)
+		if err != nil {
+			return model.Report{}, err
+		}
+		report.ContinuityHandoffs, report.ContinuityHandoffReleases = handoffs, releases
+	}
+	if r.ManagedCatalog != nil {
+		selections, err := r.ManagedCatalog.Reports(ctx)
+		if err != nil {
+			return model.Report{}, err
+		}
+		// Catalog rows are durable provenance. Only the current, observed
+		// sandbox generation is an admissible live selection for the node API.
+		for _, selection := range selections {
+			for _, sandbox := range sandboxes {
+				if sandbox.ID == selection.SandboxID && sandbox.Generation == selection.SandboxGeneration &&
+					sandbox.ObservedGeneration == selection.SandboxGeneration && sandbox.ObservedState != "deleted" {
+					report.ManagedWorkspaceSelections = append(report.ManagedWorkspaceSelections, selection)
+					break
+				}
+			}
+		}
+	}
+	services, err := r.Store.ManagedServices(ctx)
+	if err != nil {
+		return model.Report{}, err
+	}
+	for _, service := range services {
+		if service.Report.FormatVersion == 1 {
+			report.ManagedServices = append(report.ManagedServices, service.Report)
+		}
+	}
+	if r.Manager != nil {
+		policies, reviews, takeovers, err := r.Manager.Reports(ctx, staleSources)
+		if err != nil {
+			return model.Report{}, err
+		}
+		report.InsightsManagerPolicies = policies
+		report.InsightsManagerReviews = reviews
+		report.InsightsTakeovers = takeovers
 	}
 	return report, nil
 }
@@ -570,15 +1043,17 @@ func (r *Reconciler) reconcileSandbox(
 		}
 	}
 	// Pin a sandbox to the image used when it was first created. A new default
-	// applies only to new sandboxes. Existing sandboxes change images only when
-	// the control plane supplies an explicit per-sandbox digest and advances its
-	// generation.
+	// applies only to new sandboxes: when the control plane omits the explicit
+	// per-sandbox digest the pinned local digest wins, so the default never
+	// moves an existing sandbox. An explicit per-sandbox digest patches the
+	// image in place at the current generation; a higher generation advances
+	// the incarnation as before. A backwards generation is refused.
 	if local.ImageDigest == "" {
 		local.ImageDigest = targetImageDigest
 	}
 	refreshImage := local.ImageDigest != targetImageDigest
-	if refreshImage && desired.Generation <= local.ObservedGeneration {
-		return errors.New("sandbox image change requires a generation advance")
+	if refreshImage && desired.Generation < local.ObservedGeneration {
+		return errors.New("sandbox generation moved backwards")
 	}
 	if local.StartedAt == nil && desired.StartedAt != nil {
 		local.StartedAt = desired.StartedAt

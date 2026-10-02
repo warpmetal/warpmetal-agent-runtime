@@ -1,0 +1,215 @@
+{
+  "registerSourceRequest": {
+    "schemaVersion": 1,
+    "sandboxId": "sbx_P4Aaaaa_Bbbbb_Ccccc_Dddd",
+    "instance": "p4a-manager",
+    "profileId": "opencode",
+    "registration": {
+      "formatVersion": 1,
+      "identity": {
+        "serverId": "srv_p4a_unit_server",
+        "teamId": "team_p2h_exact_session",
+        "memberId": "tmem_p2h_exact_session",
+        "sandboxId": "sbx_P4Aaaaa_Bbbbb_Ccccc_Dddd",
+        "sandboxGeneration": 3,
+        "serviceRegistrationId": "service_p2h_exact_session",
+        "serviceGeneration": 2,
+        "instance": "p4a-manager",
+        "role": "worker",
+        "projectId": "project_p2h_exact_session",
+        "workspaceEpoch": "epoch_p2h_exact_session",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "profileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "instructionRevision": 1,
+        "instructionDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "source": {
+        "registeredSourceId": "source_p2h_exact_session",
+        "nativeSessionId": "ses_p4a_manager",
+        "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+        "nativeLocationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    }
+  },
+  "registerSourceReceipt": {
+    "schemaVersion": 1,
+    "command": "register-source",
+    "status": "registered",
+    "instance": "p4a-manager",
+    "sandboxId": "sbx_P4Aaaaa_Bbbbb_Ccccc_Dddd",
+    "profileId": "opencode",
+    "serviceRegistrationId": "service_p2h_exact_session",
+    "serviceGeneration": 2,
+    "registeredSourceId": "source_p2h_exact_session",
+    "workspaceEpoch": "epoch_p2h_exact_session",
+    "nativeSessionId": "ses_p4a_manager",
+    "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+    "nativeLocationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "profileRevision": 1,
+    "profileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "instructionRevision": 1,
+    "instructionDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "ready": false
+  },
+  "findingHandoff": {
+    "request": {
+      "formatVersion": 1,
+      "action": "open_session",
+      "handoffId": "handoff_p2h_finding",
+      "issuedAt": "2026-09-27T18:00:00Z",
+      "expiresAt": "2026-09-27T18:02:00Z",
+      "identity": {
+        "serverId": "srv_p4a_unit_server",
+        "teamId": "team_p2h_exact_session",
+        "memberId": "tmem_p2h_exact_session",
+        "sandboxId": "sbx_P4Aaaaa_Bbbbb_Ccccc_Dddd",
+        "sandboxGeneration": 3,
+        "serviceRegistrationId": "service_p2h_exact_session",
+        "serviceGeneration": 2,
+        "instance": "p4a-manager",
+        "role": "worker",
+        "projectId": "project_p2h_exact_session",
+        "workspaceEpoch": "epoch_p2h_exact_session",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "profileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "instructionRevision": 1,
+        "instructionDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "source": {
+        "registeredSourceId": "source_p2h_exact_session",
+        "nativeSessionId": "ses_p4a_manager",
+        "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+        "nativeLocationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "task": {"taskId": "task_p2h_exact_session", "taskAttempt": 1},
+      "work": null
+    },
+    "response": {
+      "formatVersion": 1,
+      "action": "open_session",
+      "status": "ready",
+      "capability": "exact_session",
+      "handoffId": "handoff_p2h_finding",
+      "target": {
+        "formatVersion": 1,
+        "action": "open_session",
+        "handoffId": "handoff_p2h_finding",
+        "issuedAt": "2026-09-27T18:00:00Z",
+        "expiresAt": "2026-09-27T18:02:00Z",
+        "identity": {
+          "serverId": "srv_p4a_unit_server",
+          "teamId": "team_p2h_exact_session",
+          "memberId": "tmem_p2h_exact_session",
+          "sandboxId": "sbx_P4Aaaaa_Bbbbb_Ccccc_Dddd",
+          "sandboxGeneration": 3,
+          "serviceRegistrationId": "service_p2h_exact_session",
+          "serviceGeneration": 2,
+          "instance": "p4a-manager",
+          "role": "worker",
+          "projectId": "project_p2h_exact_session",
+          "workspaceEpoch": "epoch_p2h_exact_session",
+          "profileId": "opencode",
+          "profileRevision": 1,
+          "profileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "instructionRevision": 1,
+          "instructionDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "source": {
+          "registeredSourceId": "source_p2h_exact_session",
+          "nativeSessionId": "ses_p4a_manager",
+          "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+          "nativeLocationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "task": {"taskId": "task_p2h_exact_session", "taskAttempt": 1},
+        "work": null
+      }
+    }
+  },
+  "workHandoff": {
+    "request": {
+      "formatVersion": 1,
+      "action": "open_session",
+      "handoffId": "handoff_p2h_work",
+      "issuedAt": "2026-09-27T18:00:00Z",
+      "expiresAt": "2026-09-27T18:02:00Z",
+      "identity": {
+        "serverId": "srv_p4a_unit_server",
+        "teamId": "team_p2h_exact_session",
+        "memberId": "tmem_p2h_exact_session",
+        "sandboxId": "sbx_P4Aaaaa_Bbbbb_Ccccc_Dddd",
+        "sandboxGeneration": 3,
+        "serviceRegistrationId": "service_p2h_exact_session",
+        "serviceGeneration": 2,
+        "instance": "p4a-manager",
+        "role": "worker",
+        "projectId": "project_p2h_exact_session",
+        "workspaceEpoch": "epoch_p2h_exact_session",
+        "profileId": "opencode",
+        "profileRevision": 1,
+        "profileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "instructionRevision": 1,
+        "instructionDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "source": {
+        "registeredSourceId": "source_p2h_exact_session",
+        "nativeSessionId": "ses_p4a_manager",
+        "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+        "nativeLocationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "task": {"taskId": "task_p2h_exact_session", "taskAttempt": 1},
+      "work": {
+        "workId": "work_p2h_exact_session",
+        "expectedRevision": 9,
+        "bindingId": "binding_p2h_exact_session",
+        "bindingRevision": 7
+      }
+    },
+    "response": {
+      "formatVersion": 1,
+      "action": "open_session",
+      "status": "ready",
+      "capability": "exact_session",
+      "handoffId": "handoff_p2h_work",
+      "target": {
+        "formatVersion": 1,
+        "action": "open_session",
+        "handoffId": "handoff_p2h_work",
+        "issuedAt": "2026-09-27T18:00:00Z",
+        "expiresAt": "2026-09-27T18:02:00Z",
+        "identity": {
+          "serverId": "srv_p4a_unit_server",
+          "teamId": "team_p2h_exact_session",
+          "memberId": "tmem_p2h_exact_session",
+          "sandboxId": "sbx_P4Aaaaa_Bbbbb_Ccccc_Dddd",
+          "sandboxGeneration": 3,
+          "serviceRegistrationId": "service_p2h_exact_session",
+          "serviceGeneration": 2,
+          "instance": "p4a-manager",
+          "role": "worker",
+          "projectId": "project_p2h_exact_session",
+          "workspaceEpoch": "epoch_p2h_exact_session",
+          "profileId": "opencode",
+          "profileRevision": 1,
+          "profileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "instructionRevision": 1,
+          "instructionDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "source": {
+          "registeredSourceId": "source_p2h_exact_session",
+          "nativeSessionId": "ses_p4a_manager",
+          "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
+          "nativeLocationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "task": {"taskId": "task_p2h_exact_session", "taskAttempt": 1},
+        "work": {
+          "workId": "work_p2h_exact_session",
+          "expectedRevision": 9,
+          "bindingId": "binding_p2h_exact_session",
+          "bindingRevision": 7
+        }
+      }
+    }
+  }
+}

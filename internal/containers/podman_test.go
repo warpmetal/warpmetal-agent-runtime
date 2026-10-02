@@ -215,7 +215,17 @@ func TestReplacePrePullsAndSwapsContainerAfterTargetStarts(t *testing.T) {
 		containers: map[string]fakeContainer{name: {digest: original, running: true}},
 		failOnce:   map[string]int{},
 	}
-	podman := Podman{runCommand: fake.run}
+	podman := Podman{runCommand: func(ctx context.Context, remote bool, args ...string) (string, error) {
+		// The exact immutable target is cached while its registry is offline.
+		if slices.Equal(args, []string{"image", "exists", target}) {
+			fake.calls = append(fake.calls, strings.Join(args, " "))
+			return "", nil
+		}
+		if len(args) > 0 && args[0] == "pull" {
+			return "", errors.New("registry unavailable despite cached immutable image")
+		}
+		return fake.run(ctx, remote, args...)
+	}}
 	if err := podman.Replace(
 		context.Background(),
 		replacementSandbox(),
@@ -232,7 +242,7 @@ func TestReplacePrePullsAndSwapsContainerAfterTargetStarts(t *testing.T) {
 	if _, exists := fake.containers[name+"-image-backup"]; exists {
 		t.Fatalf("completed backup was not removed: %#v", fake.containers)
 	}
-	pullIndex := slices.Index(fake.calls, "pull "+target)
+	pullIndex := slices.Index(fake.calls, "image exists "+target)
 	stopIndex := slices.Index(fake.calls, "stop --time 10 "+name)
 	if pullIndex < 0 || stopIndex < 0 || pullIndex > stopIndex {
 		t.Fatalf("source was stopped before target pull: %#v", fake.calls)
@@ -253,8 +263,54 @@ func TestReplacePullFailureLeavesSourceRunning(t *testing.T) {
 	if !errors.Is(err, ErrImagePullFailed) {
 		t.Fatalf("pull failure was not classified: %v", err)
 	}
-	if !fake.containers[name].running || len(fake.calls) != 1 {
+	if !fake.containers[name].running || len(fake.calls) != 2 {
 		t.Fatalf("pull failure disrupted source: %#v %#v", fake.containers, fake.calls)
+	}
+}
+
+func TestCheckpointPauseUsesClosedRemotePodmanOperations(t *testing.T) {
+	var calls []string
+	podman := Podman{runCommand: func(_ context.Context, remote bool, args ...string) (string, error) {
+		if !remote {
+			t.Fatalf("checkpoint lifecycle operation did not use the private Podman service: %v", args)
+		}
+		calls = append(calls, strings.Join(args, " "))
+		if len(args) > 1 && args[0] == "container" && args[1] == "inspect" {
+			return "running\n", nil
+		}
+		return "", nil
+	}}
+
+	state, err := podman.InspectState(context.Background(), "sbx_example123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state != ContainerRunning {
+		t.Fatalf("container state = %q, want %q", state, ContainerRunning)
+	}
+	if err := podman.Pause(context.Background(), "sbx_example123"); err != nil {
+		t.Fatal(err)
+	}
+	if err := podman.Unpause(context.Background(), "sbx_example123"); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{
+		"container inspect --format {{.State.Status}} warpmetal-sbx_example123",
+		"pause warpmetal-sbx_example123",
+		"unpause warpmetal-sbx_example123",
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("checkpoint lifecycle calls:\n got: %#v\nwant: %#v", calls, want)
+	}
+}
+
+func TestCheckpointContainerStateRejectsUnknownPodmanStatus(t *testing.T) {
+	podman := Podman{runCommand: func(_ context.Context, _ bool, _ ...string) (string, error) {
+		return "mystery\n", nil
+	}}
+	if _, err := podman.InspectState(context.Background(), "sbx_example123"); err == nil {
+		t.Fatal("unknown Podman state was accepted")
 	}
 }
 

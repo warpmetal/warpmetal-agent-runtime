@@ -79,6 +79,23 @@ seccomp, network, cgroup, and host-socket restrictions. Provider credentials
 remain user-owned files or process environment inside the workspace and must
 never be sent through desired state, registration, or runtime reports.
 
+## Agent continuity storage
+
+Runtime now has a host-side continuity storage and manifest consumer for
+immutable Git workspace capture, atomic checkpoint acceptance, fresh-destination
+materialization, operation-owned Podman pause, and fail-closed restart
+recovery. Checkpoint objects and their SQLite identities remain host-private;
+sandboxes cannot select roots, container IDs, or destinations. The ordinary
+Runtime constructor consumes and reports the frozen continuity records. Its
+managed-service producer now publishes a source only after the fixed supervisor
+returns an exact current native session/project receipt and Runtime matches that
+receipt to the host-private project catalog, service generation, profile, and
+instructions.
+
+See [`docs/AGENT_CONTINUITY_STORAGE.md`](docs/AGENT_CONTINUITY_STORAGE.md) for
+the exact identity, safe-boundary, quota, filesystem, recovery, and integration
+contracts.
+
 ## Standard SSH aliases use the forced gateway
 
 A WarpMetal CLI-managed OpenSSH alias is only a client-side view of an existing,
@@ -240,12 +257,19 @@ host capabilities, mount a runtime socket, or relax container AppArmor/seccomp
 globally. The signed candidate is parsed first, only
 `/etc/apparmor.d/warpmetal-agent-runtime-bwrap` is atomically replaced, and only
 that file is loaded. Root-only durable state under
-`/var/lib/warpmetal/apparmor-policy-state` preserves the exact pre-enable file
-and kernel-loaded state. A mutating operation is committed only after Runtime
-registration and service restart succeed; installer failure restores the
-snapshot, and a later explicit enable/disable recovers an interrupted
-transaction before applying a new one. Conflicting disk/kernel state and
-metadata, parse, load, architecture, or recovery failures fail closed.
+`/var/lib/warpmetal-apparmor-policy-state`, outside Runtime's systemd-managed
+`StateDirectory`, preserves the exact pre-enable file and kernel-loaded state.
+A host with the legacy `/var/lib/warpmetal/apparmor-policy-state` layout is
+adopted only when that state is the closed empty baseline and the installed
+candidate is already active; an atomic marker records the adoption while the
+legacy evidence is retained. A legacy nonempty backup or ambiguous state fails
+closed because systemd may already have rewritten its saved ownership and the
+original metadata cannot be reconstructed safely. A mutating operation is
+committed only after Runtime registration and service restart succeed;
+installer failure restores the snapshot, and a later explicit enable/disable
+recovers an interrupted transaction before applying a new one. Conflicting
+disk/kernel state and metadata, parse, load, architecture, or recovery failures
+fail closed.
 
 This is a host-scoped policy for the exact immutable helper path, not a
 per-sandbox grant or an image-digest verifier. The control plane remains
@@ -283,7 +307,7 @@ existing sandboxes remain pinned to their creation image.
 
 An existing sandbox changes images only when its authenticated manifest names
 an explicit immutable per-sandbox digest and advances that sandbox's
-generation. The runtime pulls the target before interruption, terminates active
+generation. The runtime ensures the exact immutable target is locally available (pulling only when missing) before interruption, terminates active
 gateway sessions, and replaces only the container root filesystem. The
 external `/home/agent` workspace, sandbox identity, lifetime, and original
 start time are preserved. Running sandboxes return to running and stopped
@@ -296,3 +320,89 @@ columns are treated as passive compatibility data: lifecycle reads and upserts
 do not reconcile, rewrite, or report their contents. Likewise, unrecognized
 fields in a legacy manifest do not prevent the remaining sandbox lifecycle
 contract from being decoded and reconciled.
+
+## Managed insights transport
+
+Managed monitoring remains off until the authenticated node policy enables it.
+The daemon accepts policies for at most 120 seconds and compares every sandbox,
+service generation, workspace epoch, registered source, and native session with
+its host-private registry before reading the packaged exporter. Enabling or
+disabling the monitor environment restarts the existing managed process only
+at its durable idle boundary, in `lookup_only` mode, with the pinned project,
+profile, instruction, port, and native session unchanged.
+
+The fixed exporter returns sanitized finding revisions rather than native event
+bodies. Runtime persists each bounded batch in SQLite before sending it and
+replays an uncertain request byte-for-byte after restart. The acknowledgement
+transaction removes the outbox record and advances its journal/change cursor
+together. Unchanged health polls are coalesced. Journal rotation first sends an
+empty explicit gap and installs the new generation floor only after the server
+acknowledges that batch.
+
+Before a managed source becomes visible, Runtime also sends the exact
+host-authoritative service, project, profile, instruction, and native tuple to
+the fixed supervisor `register-source` command. A missing or changed receipt
+keeps the source private. This source record does not create Work, a task, a
+prompt, or a new native session.
+
+Managed enrollment binds the sandbox generation. Its process instance and native service registration bind the independent service generation; refreshing a sandbox does not equate those counters. Recovery after any dispatched native creation remains lookup-only.
+
+Managed managers use idle status and native registration for readiness. Only worker and reviewer services run broker task reconciliation and execution; manager leases are never granted task.claim by Runtime.
+
+Lease renewal and fresh native checks refresh source health while retaining a semantically identical completed managed-service receipt for the same action. Backend observations do not rewrite that action’s desired session mode.
+
+Idle worker completion updates only the execution flag when the exact observed source and lifecycle still match, preserving newer readiness observations and lifecycle fences.
+
+### Managed review execution, findings and hold recovery
+
+Automatic and manual manager reviews follow one durable lifecycle. Runtime first
+persists a non-dispatched `start_ack_pending` intent and submits the exact
+canonical `reviewing` report for that reservation, run, finding, source, target
+and policy revision. Only after the backend acknowledges that exact identity does
+Runtime persist possible dispatch (`execution_unknown` with `DispatchStarted`) and
+invoke the helper. A refused or mismatched acknowledgement dispatches zero helper
+calls; a lost acknowledgement retries the same idempotent report while the
+original authority is valid. A run that never crossed possible dispatch settles
+as failed with `trusted_zero_start` and zero usage once its authority is gone; a
+possible or actual dispatch never claims trusted zero.
+
+`Continue` and `Reconcile` observe the stored native session and typed completed
+assistant for the same admitted run instead of replaying `start_review` or
+creating a new session. `Reconcile`, including `request_evidence` results, is
+GET-only; any permitted `Continue` second evidence prompt remains behind the
+helper's fresh original-authority checks and the existing two-request budget.
+Non-start recovery does not require a local finding row. Usage stays uncertain
+and conservative until a truthful terminal receipt arrives, and terminal reports
+are immutable and re-sent exactly.
+
+A terminal receipt carries the actual outcome. `recommended` requires bounded
+non-empty guidance, `no_action` carries null guidance, and `needs_owner` permits
+null or bounded guidance; an invalid completed answer settles as `needs_owner`
+with a null proposal under the existing closed error. Runtime passes through the
+actual proposal summary, rationale, cited sequence bounds and manager session; it
+never invents a recommendation, rationale or finding window, and raw guidance and
+citations remain private.
+
+Findings acknowledged by the backend while the manager is Off, or under an older
+policy, are retained as observation evidence whose policy revision is provenance,
+not execution permission. Automatic reviews still require the current recommend
+policy with its allowed-rule, cooldown, episode and limit fences. A manual review
+may instead consume the optional backend `findingEvidence` snapshot for a finding
+whose local batch record no longer exists, validated against the manifest
+id/revision/rule/native session and its bounded shape; retention or the snapshot
+alone never authorizes a review without the fresh current policy, source, target
+and capability fences.
+
+Protective Pause and Resume hold operations recover by exact persisted operation
+identity. Restart or lost-response recovery observes the same operation with
+`reconcile_intervention_hold`, including after the 120-second effect lease
+expires, and never replays an acquire or release. Acquisition and release unknown
+phases are preserved across read failures; a fresh observation never authorizes a
+new release or prompt, and a settled Resume keeps its local `released` phase with
+a canonical `ready` report.
+
+Protocol compatibility: the managed control protocol is planned to be required by
+the backend at admission from Runtime 0.1.31 or newer. The paired backend compatibility gate must deliver only the legacy seven-field
+manifest shape to nodes on the older strict 0.1.30 decoder; that gate is still
+pending. A signed 0.1.31 candidate remains qualification-pending; this
+section does not claim a released, deployed or live-verified state.

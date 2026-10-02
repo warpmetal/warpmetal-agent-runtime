@@ -1,0 +1,563 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/agent-manager-control-v1.schema.json",
+  "title": "WarpMetal Agent Manager control plane v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "policyPatch": {"$ref": "#/$defs/policyPatch"},
+    "policy": {"$ref": "#/$defs/policy"},
+    "managerTarget": {"$ref": "#/$defs/managerTarget"},
+    "reservationRequest": {"$ref": "#/$defs/reservationRequest"},
+    "recheckRequest": {"$ref": "#/$defs/recheckRequest"},
+    "reservation": {"$ref": "#/$defs/reservation"},
+    "runReport": {"$ref": "#/$defs/runReport"},
+    "activity": {"$ref": "#/$defs/activity"},
+    "activityList": {"$ref": "#/$defs/activityList"},
+    "takeoverRequest": {"$ref": "#/$defs/takeoverRequest"},
+    "resumeRequest": {"$ref": "#/$defs/resumeRequest"},
+    "takeover": {"$ref": "#/$defs/takeover"},
+    "takeoverList": {"$ref": "#/$defs/takeoverList"},
+    "policyManifest": {"$ref": "#/$defs/policyManifest"},
+    "policyReport": {"$ref": "#/$defs/policyReport"},
+    "reviewManifest": {"$ref": "#/$defs/reviewManifest"},
+    "takeoverManifest": {"$ref": "#/$defs/takeoverManifest"},
+    "takeoverReport": {"$ref": "#/$defs/takeoverReport"}
+  },
+  "required": [
+    "policyPatch", "policy", "managerTarget", "reservationRequest",
+    "recheckRequest", "reservation", "runReport", "activity", "activityList",
+    "takeoverRequest", "resumeRequest", "takeover", "takeoverList",
+    "policyManifest", "policyReport", "reviewManifest", "takeoverManifest",
+    "takeoverReport"
+  ],
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{3,159}$"},
+    "providerId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+    "modelId": {"type": "string", "pattern": "^(?!.*://)[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "rule": {"type": "string", "enum": ["repeated_identical_failure@1", "repeated_identical_call@1", "empty_result_loop@1", "suspected_stall@1"]},
+    "recipe": {"type": "string", "enum": ["inspect_first_failure@1", "check_repeated_operation@1", "refine_query@1", "inspect_active_phase@1"]},
+    "capabilityReason": {"type": ["string", "null"], "enum": [null, "native_guard_unqualified", "budget_isolation_unavailable", "source_unavailable", "policy_off", "policy_expired", "runtime_unavailable", "target_stale", "takeover_pending", "review_pending", "cooldown_active", "budget_exhausted", "binding_not_verified", "task_stale", "manager_session_pending", "manager_session_unavailable"]},
+    "rationaleCode": {"type": "string", "enum": ["unchanged_failure_repeated", "repeated_call_detected", "query_refinement_available", "active_phase_stalled", "no_safe_action"]},
+    "errorCode": {"type": ["string", "null"], "enum": [null, "policy_off", "policy_expired", "source_stale", "target_stale", "budget_exhausted", "capability_unavailable", "provider_failed", "provider_timeout", "usage_uncertain", "report_invalid", "superseded", "pending_input_unknown", "runtime_unavailable"]},
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"available": {"type": "boolean"}, "reason": {"$ref": "#/$defs/capabilityReason"}},
+      "required": ["available", "reason"]
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "modelRequests": {"type": "integer", "minimum": 1, "maximum": 2},
+        "inputTokens": {"type": "integer", "minimum": 1, "maximum": 16000},
+        "outputTokens": {"type": "integer", "minimum": 1, "maximum": 2000}
+      },
+      "required": ["modelRequests", "inputTokens", "outputTokens"]
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "modelRequests": {"type": "integer", "minimum": 0, "maximum": 2},
+        "inputTokens": {"type": "integer", "minimum": 0, "maximum": 16000},
+        "outputTokens": {"type": "integer", "minimum": 0, "maximum": 2000},
+        "usageCertain": {"type": "boolean"},
+        "unusedProof": {"type": "string", "enum": ["none", "trusted_zero_start", "trusted_exact_usage"]}
+      },
+      "required": ["modelRequests", "inputTokens", "outputTokens", "usageCertain", "unusedProof"]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "registeredSourceId": {"$ref": "#/$defs/id"},
+        "workspaceEpoch": {"$ref": "#/$defs/id"},
+        "nativeSessionId": {"$ref": "#/$defs/id"},
+        "serviceRegistrationId": {"$ref": "#/$defs/id"},
+        "serviceGeneration": {"type": "integer", "minimum": 1},
+        "sandboxGeneration": {"type": "integer", "minimum": 1},
+        "profileRevision": {"type": "integer", "minimum": 1},
+        "instructionRevision": {"type": "integer", "minimum": 1}
+      },
+      "required": ["registeredSourceId", "workspaceEpoch", "nativeSessionId", "serviceRegistrationId", "serviceGeneration", "sandboxGeneration", "profileRevision", "instructionRevision"]
+    },
+    "managerProfile": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"profileId": {"const": "warpmetal-insights-manager"}, "profileRevision": {"type": "integer", "minimum": 1}, "profileDigest": {"$ref": "#/$defs/digest"}},
+      "required": ["profileId", "profileRevision", "profileDigest"]
+    },
+    "managerSession": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object", "additionalProperties": false,
+          "properties": {"nativeSessionId": {"$ref": "#/$defs/id"}, "nativeProjectId": {"type": "string", "pattern": "^(global|[a-f0-9]{40})$"}, "nativeLocationDigest": {"$ref": "#/$defs/digest"}, "serviceRegistrationId": {"$ref": "#/$defs/id"}, "serviceGeneration": {"type": "integer", "minimum": 1}, "providerRouteDigest": {"$ref": "#/$defs/digest"}, "managerProfile": {"$ref": "#/$defs/managerProfile"}},
+          "required": ["nativeSessionId", "nativeProjectId", "nativeLocationDigest", "serviceRegistrationId", "serviceGeneration", "providerRouteDigest", "managerProfile"]
+        }
+      ]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "teamId": {"$ref": "#/$defs/id"},
+        "memberId": {"$ref": "#/$defs/id"},
+        "taskId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "taskAttempt": {"type": ["integer", "null"], "minimum": 1},
+        "workId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "workRevision": {"type": ["integer", "null"], "minimum": 1},
+        "bindingId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "bindingRevision": {"type": ["integer", "null"], "minimum": 1}
+      },
+      "required": ["teamId", "memberId", "taskId", "taskAttempt", "workId", "workRevision", "bindingId", "bindingRevision"],
+      "allOf": [
+        {"oneOf": [
+          {"properties": {"taskId": {"type": "null"}, "taskAttempt": {"type": "null"}}},
+          {"properties": {"taskId": {"$ref": "#/$defs/id"}, "taskAttempt": {"type": "integer", "minimum": 1}}}
+        ]},
+        {"oneOf": [
+          {"properties": {"workId": {"type": "null"}, "workRevision": {"type": "null"}, "bindingId": {"type": "null"}, "bindingRevision": {"type": "null"}}},
+          {"properties": {"workId": {"$ref": "#/$defs/id"}, "workRevision": {"type": "integer", "minimum": 1}, "bindingId": {"$ref": "#/$defs/id"}, "bindingRevision": {"type": "integer", "minimum": 1}}}
+        ]}
+      ]
+    },
+    "effectiveLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sandboxDailyRuns": {"const": 30},
+        "sandboxHourlyRuns": {"const": 10},
+        "sessionRuns24h": {"const": 3},
+        "sessionCooldownSeconds": {"const": 300},
+        "serverConcurrentRuns": {"const": 2},
+        "serverHourlyStarts": {"const": 20},
+        "perRunModelRequests": {"const": 2},
+        "perRunInputTokens": {"const": 16000},
+        "perRunOutputTokens": {"const": 2000}
+      },
+      "required": ["sandboxDailyRuns", "sandboxHourlyRuns", "sessionRuns24h", "sessionCooldownSeconds", "serverConcurrentRuns", "serverHourlyStarts", "perRunModelRequests", "perRunInputTokens", "perRunOutputTokens"]
+    },
+    "modelRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "registeredSourceId": {"$ref": "#/$defs/id"},
+        "providerRouteDigest": {"$ref": "#/$defs/digest"},
+        "providerId": {"$ref": "#/$defs/providerId"},
+        "modelId": {"$ref": "#/$defs/modelId"},
+        "protocol": {"const": "opencode-supervisor/1"},
+        "recipeIds": {"type": "array", "maxItems": 4, "uniqueItems": true, "items": {"$ref": "#/$defs/recipe"}},
+        "available": {"type": "boolean"},
+        "reason": {"$ref": "#/$defs/capabilityReason"}
+      },
+      "required": ["registeredSourceId", "providerRouteDigest", "providerId", "modelId", "protocol", "recipeIds", "available", "reason"]
+    },
+    "policyPatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {"const": 1},
+        "requestId": {"$ref": "#/$defs/id"},
+        "expectedRevision": {"type": "integer", "minimum": 1},
+        "mode": {"type": "string", "enum": ["off", "recommend", "auto_steer"]},
+        "allowedRules": {"type": "array", "maxItems": 4, "uniqueItems": true, "items": {"$ref": "#/$defs/rule"}},
+        "dailyRunLimit": {"type": "integer", "minimum": 0, "maximum": 30},
+        "dailyInputTokenLimit": {"type": "integer", "minimum": 0, "maximum": 480000},
+        "dailyOutputTokenLimit": {"type": "integer", "minimum": 0, "maximum": 60000},
+        "authorizationValidSeconds": {"type": "integer", "minimum": 30, "maximum": 120}
+      },
+      "required": ["version", "requestId", "expectedRevision", "mode", "allowedRules", "dailyRunLimit", "dailyInputTokenLimit", "dailyOutputTokenLimit", "authorizationValidSeconds"]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "formatVersion": {"const": 1},
+        "sandboxId": {"$ref": "#/$defs/id"},
+        "revision": {"type": "integer", "minimum": 1},
+        "mode": {"type": "string", "enum": ["off", "recommend", "auto_steer"]},
+        "allowedRules": {"type": "array", "maxItems": 4, "uniqueItems": true, "items": {"$ref": "#/$defs/rule"}},
+        "dailyRunLimit": {"type": "integer", "minimum": 0, "maximum": 30},
+        "dailyInputTokenLimit": {"type": "integer", "minimum": 0, "maximum": 480000},
+        "dailyOutputTokenLimit": {"type": "integer", "minimum": 0, "maximum": 60000},
+        "effectiveLimits": {"$ref": "#/$defs/effectiveLimits"},
+        "authorizationExpiresAt": {"type": ["string", "null"], "format": "date-time"},
+        "appliedRevision": {"type": ["integer", "null"], "minimum": 1},
+        "status": {"type": "string", "enum": ["awaiting_runtime", "applied", "expired", "unavailable"]},
+        "recommend": {"$ref": "#/$defs/capability"},
+        "modelRoutes": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/modelRoute"}},
+        "autoSteer": {"$ref": "#/$defs/capability"},
+        "updatedAt": {"type": "string", "format": "date-time"}
+      },
+      "required": ["formatVersion", "sandboxId", "revision", "mode", "allowedRules", "dailyRunLimit", "dailyInputTokenLimit", "dailyOutputTokenLimit", "effectiveLimits", "authorizationExpiresAt", "appliedRevision", "status", "recommend", "modelRoutes", "autoSteer", "updatedAt"]
+    },
+    "managerTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "formatVersion": {"const": 1},
+        "findingId": {"$ref": "#/$defs/id"},
+        "findingRevision": {"type": "integer", "minimum": 1},
+        "source": {"$ref": "#/$defs/source"},
+        "target": {"$ref": "#/$defs/target"},
+        "remaining": {"$ref": "#/$defs/remaining"},
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"recommend": {"$ref": "#/$defs/capability"}, "takeover": {"$ref": "#/$defs/capability"}, "autoSteer": {"$ref": "#/$defs/capability"}},
+          "required": ["recommend", "takeover", "autoSteer"]
+        }
+      },
+      "required": ["formatVersion", "findingId", "findingRevision", "source", "target", "remaining", "capabilities"]
+    },
+    "reservationRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "formatVersion": {"const": 1},
+        "reservationId": {"$ref": "#/$defs/id"},
+        "requestId": {"$ref": "#/$defs/id"},
+        "manual": {"const": false},
+        "findingId": {"$ref": "#/$defs/id"},
+        "findingRevision": {"type": "integer", "minimum": 1},
+        "policyRevision": {"type": "integer", "minimum": 1},
+        "ruleId": {"$ref": "#/$defs/rule"},
+        "recipeId": {"$ref": "#/$defs/recipe"},
+        "providerRouteDigest": {"$ref": "#/$defs/digest"},
+        "source": {"$ref": "#/$defs/source"},
+        "target": {"$ref": "#/$defs/target"},
+        "budget": {"$ref": "#/$defs/budget"},
+        "expiresInSeconds": {"type": "integer", "minimum": 30, "maximum": 120}
+      },
+      "required": ["formatVersion", "reservationId", "requestId", "manual", "findingId", "findingRevision", "policyRevision", "ruleId", "recipeId", "providerRouteDigest", "source", "target", "budget", "expiresInSeconds"]
+    },
+    "recheckRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {"const": 1},
+        "requestId": {"$ref": "#/$defs/id"},
+        "manual": {"const": true},
+        "expectedFindingRevision": {"type": "integer", "minimum": 1},
+        "expectedPolicyRevision": {"type": "integer", "minimum": 1},
+        "recipeId": {"$ref": "#/$defs/recipe"},
+        "source": {"$ref": "#/$defs/source"},
+        "target": {"$ref": "#/$defs/target"},
+        "budget": {"$ref": "#/$defs/budget"},
+        "expiresInSeconds": {"type": "integer", "minimum": 30, "maximum": 120}
+      },
+      "required": ["version", "requestId", "manual", "expectedFindingRevision", "expectedPolicyRevision", "recipeId", "source", "target", "budget", "expiresInSeconds"]
+    },
+    "remaining": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sandboxDailyRuns": {"type": "integer", "minimum": 0},
+        "sandboxHourlyRuns": {"type": "integer", "minimum": 0},
+        "sandboxDailyInputTokens": {"type": "integer", "minimum": 0},
+        "sandboxDailyOutputTokens": {"type": "integer", "minimum": 0},
+        "sessionRuns24h": {"type": "integer", "minimum": 0},
+        "sessionCooldownSeconds": {"type": "integer", "minimum": 0},
+        "serverConcurrentRuns": {"type": "integer", "minimum": 0},
+        "serverHourlyStarts": {"type": "integer", "minimum": 0}
+      },
+      "required": ["sandboxDailyRuns", "sandboxHourlyRuns", "sandboxDailyInputTokens", "sandboxDailyOutputTokens", "sessionRuns24h", "sessionCooldownSeconds", "serverConcurrentRuns", "serverHourlyStarts"]
+    },
+    "reservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "formatVersion": {"const": 1},
+        "reservationId": {"$ref": "#/$defs/id"},
+        "runId": {"$ref": "#/$defs/id"},
+        "requestId": {"$ref": "#/$defs/id"},
+        "manual": {"type": "boolean"},
+        "state": {"type": "string", "enum": ["reserved", "reviewing", "recommended", "no_action", "needs_owner", "failed", "expired"]},
+        "findingId": {"$ref": "#/$defs/id"},
+        "findingRevision": {"type": "integer", "minimum": 1},
+        "policyRevision": {"type": "integer", "minimum": 1},
+        "source": {"$ref": "#/$defs/source"},
+        "target": {"$ref": "#/$defs/target"},
+        "expiresAt": {"type": "string", "format": "date-time"},
+        "reservedBudget": {"$ref": "#/$defs/budget"},
+        "execution": {"type": "object", "additionalProperties": false, "properties": {"providerRouteDigest": {"$ref": "#/$defs/digest"}, "managerProfile": {"$ref": "#/$defs/managerProfile"}}, "required": ["providerRouteDigest", "managerProfile"]},
+        "remaining": {"$ref": "#/$defs/remaining"}
+      },
+      "required": ["formatVersion", "reservationId", "runId", "requestId", "manual", "state", "findingId", "findingRevision", "policyRevision", "source", "target", "expiresAt", "reservedBudget", "execution", "remaining"]
+    },
+    "proposal": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recipeId": {"$ref": "#/$defs/recipe"},
+            "outcome": {"type": "string", "enum": ["recommendation", "no_action", "needs_owner"]},
+            "rationaleCode": {"$ref": "#/$defs/rationaleCode"},
+            "firstSequence": {"type": "integer", "minimum": 1},
+            "lastSequence": {"type": "integer", "minimum": 1},
+            "guidanceDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}
+          },
+          "required": ["recipeId", "outcome", "rationaleCode", "firstSequence", "lastSequence", "guidanceDigest"]
+        }
+      ]
+    },
+    "runReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "formatVersion": {"const": 1},
+        "reservationId": {"$ref": "#/$defs/id"},
+        "runId": {"$ref": "#/$defs/id"},
+        "manual": {"type": "boolean"},
+        "state": {"type": "string", "enum": ["reviewing", "recommended", "no_action", "needs_owner", "failed"]},
+        "policyRevision": {"type": "integer", "minimum": 1},
+        "source": {"$ref": "#/$defs/source"},
+        "target": {"$ref": "#/$defs/target"},
+        "proposal": {"$ref": "#/$defs/proposal"},
+        "managerSession": {"$ref": "#/$defs/managerSession"},
+        "usage": {"$ref": "#/$defs/usage"},
+        "receiptDigest": {"$ref": "#/$defs/digest"},
+        "errorCode": {"$ref": "#/$defs/errorCode"}
+      },
+      "required": ["formatVersion", "reservationId", "runId", "manual", "state", "policyRevision", "source", "target", "proposal", "managerSession", "usage", "receiptDigest", "errorCode"]
+    },
+    "activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": {"$ref": "#/$defs/id"},
+        "reservationId": {"$ref": "#/$defs/id"},
+        "requestId": {"$ref": "#/$defs/id"},
+        "manual": {"type": "boolean"},
+        "findingId": {"$ref": "#/$defs/id"},
+        "ruleId": {"$ref": "#/$defs/rule"},
+        "recipeId": {"$ref": "#/$defs/recipe"},
+        "source": {"$ref": "#/$defs/source"},
+        "target": {"$ref": "#/$defs/target"},
+        "state": {"type": "string", "enum": ["reserved", "reviewing", "recommended", "no_action", "needs_owner", "failed", "expired"]},
+        "rationaleCode": {"oneOf": [{"$ref": "#/$defs/rationaleCode"}, {"type": "null"}]},
+        "errorCode": {"$ref": "#/$defs/errorCode"},
+        "modelRequests": {"type": "integer", "minimum": 0, "maximum": 2},
+        "inputTokens": {"type": "integer", "minimum": 0, "maximum": 16000},
+        "outputTokens": {"type": "integer", "minimum": 0, "maximum": 2000},
+        "managerSession": {"type": "object", "additionalProperties": false, "properties": {"capability": {"type": "string", "enum": ["exact_session", "unavailable"]}, "reason": {"$ref": "#/$defs/capabilityReason"}}, "required": ["capability", "reason"]},
+        "createdAt": {"type": "string", "format": "date-time"},
+        "updatedAt": {"type": "string", "format": "date-time"}
+      },
+      "required": ["runId", "reservationId", "requestId", "manual", "findingId", "ruleId", "recipeId", "source", "target", "state", "rationaleCode", "errorCode", "modelRequests", "inputTokens", "outputTokens", "managerSession", "createdAt", "updatedAt"]
+    },
+    "activityList": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"runs": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/activity"}}, "nextCursor": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}},
+      "required": ["runs", "nextCursor"]
+    },
+    "takeoverRequest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"version": {"const": 1}, "operationId": {"$ref": "#/$defs/id"}, "requestId": {"$ref": "#/$defs/id"}, "action": {"const": "pause_manager_and_hold_member"}, "expectedFindingRevision": {"type": "integer", "minimum": 1}, "expectedPolicyRevision": {"type": "integer", "minimum": 1}, "source": {"$ref": "#/$defs/source"}, "target": {"$ref": "#/$defs/target"}},
+      "required": ["version", "operationId", "requestId", "action", "expectedFindingRevision", "expectedPolicyRevision", "source", "target"]
+    },
+    "resumeRequest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"version": {"const": 1}, "resumeOperationId": {"$ref": "#/$defs/id"}, "requestId": {"$ref": "#/$defs/id"}, "action": {"const": "resume_manager_and_release_member"}, "expectedTakeoverRevision": {"type": "integer", "minimum": 1}, "expectedPolicyRevision": {"type": "integer", "minimum": 1}, "expectedHoldRevision": {"type": "integer", "minimum": 1}, "restoreMode": {"type": "string", "enum": ["off", "recommend"]}, "source": {"$ref": "#/$defs/source"}, "target": {"$ref": "#/$defs/target"}},
+      "required": ["version", "resumeOperationId", "requestId", "action", "expectedTakeoverRevision", "expectedPolicyRevision", "expectedHoldRevision", "restoreMode", "source", "target"]
+    },
+    "takeover": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "formatVersion": {"const": 1}, "operationId": {"$ref": "#/$defs/id"}, "predecessorOperationId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "requestId": {"$ref": "#/$defs/id"}, "revision": {"type": "integer", "minimum": 1}, "action": {"type": "string", "enum": ["pause_manager_and_hold_member", "resume_manager_and_release_member"]}, "state": {"type": "string", "enum": ["awaiting_runtime", "ready", "unsettled", "superseded", "failed", "resumed"]}, "findingId": {"$ref": "#/$defs/id"}, "source": {"$ref": "#/$defs/source"}, "target": {"$ref": "#/$defs/target"},
+        "monitorPolicy": {"type": "object", "additionalProperties": false, "properties": {"desiredMode": {"type": "string", "enum": ["off", "recommend"]}, "desiredRevision": {"type": "integer", "minimum": 1}, "appliedRevision": {"type": ["integer", "null"], "minimum": 1}}, "required": ["desiredMode", "desiredRevision", "appliedRevision"]},
+        "memberHold": {"type": "object", "additionalProperties": false, "properties": {"holdId": {"$ref": "#/$defs/id"}, "desiredState": {"type": "string", "enum": ["active", "released"]}, "desiredRevision": {"type": "integer", "minimum": 1}, "brokerApplied": {"type": "boolean"}, "nodeAppliedRevision": {"type": ["integer", "null"], "minimum": 1}}, "required": ["holdId", "desiredState", "desiredRevision", "brokerApplied", "nodeAppliedRevision"]},
+        "pendingInput": {"type": "object", "additionalProperties": false, "properties": {"state": {"type": "string", "enum": ["awaiting_runtime", "none_pending", "canceled", "already_available_to_worker", "unknown"]}, "alreadyConsumed": {"type": "boolean"}}, "required": ["state", "alreadyConsumed"]},
+        "handoff": {"type": "object", "additionalProperties": false, "properties": {"capability": {"type": "string", "enum": ["exact_session", "inspection_only", "unavailable"]}, "reason": {"$ref": "#/$defs/capabilityReason"}}, "required": ["capability", "reason"]},
+        "createdAt": {"type": "string", "format": "date-time"}, "updatedAt": {"type": "string", "format": "date-time"}
+      },
+      "required": ["formatVersion", "operationId", "predecessorOperationId", "requestId", "revision", "action", "state", "findingId", "source", "target", "monitorPolicy", "memberHold", "pendingInput", "handoff", "createdAt", "updatedAt"]
+    },
+    "takeoverList": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"takeovers": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/takeover"}}, "nextCursor": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}},
+      "required": ["takeovers", "nextCursor"]
+    },
+    "policyManifest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "sandboxId": {"$ref": "#/$defs/id"}, "sandboxGeneration": {"type": "integer", "minimum": 1}, "policyRevision": {"type": "integer", "minimum": 1}, "mode": {"type": "string", "enum": ["off", "recommend", "auto_steer"]}, "allowedRules": {"type": "array", "maxItems": 4, "items": {"$ref": "#/$defs/rule"}}, "dailyRunLimit": {"type": "integer", "minimum": 0, "maximum": 30}, "dailyInputTokenLimit": {"type": "integer", "minimum": 0, "maximum": 480000}, "dailyOutputTokenLimit": {"type": "integer", "minimum": 0, "maximum": 60000}, "effectiveLimits": {"$ref": "#/$defs/effectiveLimits"}, "managerProfile": {"$ref": "#/$defs/managerProfile"}, "validUntil": {"type": "string", "format": "date-time"}, "runGeneration": {"type": "integer", "minimum": 1}, "autoSteerAvailable": {"type": "boolean"}},
+      "required": ["formatVersion", "sandboxId", "sandboxGeneration", "policyRevision", "mode", "allowedRules", "dailyRunLimit", "dailyInputTokenLimit", "dailyOutputTokenLimit", "effectiveLimits", "managerProfile", "validUntil", "runGeneration", "autoSteerAvailable"]
+    },
+    "policyReport": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "sandboxId": {"$ref": "#/$defs/id"}, "sandboxGeneration": {"type": "integer", "minimum": 1}, "policyRevision": {"type": "integer", "minimum": 1}, "runGeneration": {"type": "integer", "minimum": 1}, "status": {"type": "string", "enum": ["applied", "failed"]}, "recommend": {"$ref": "#/$defs/capability"}, "recommendCapabilities": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/recommendCapabilityReport"}}, "receiptDigest": {"$ref": "#/$defs/digest"}, "errorCode": {"$ref": "#/$defs/errorCode"}},
+      "required": ["formatVersion", "sandboxId", "sandboxGeneration", "policyRevision", "runGeneration", "status", "recommend", "recommendCapabilities", "receiptDigest", "errorCode"]
+    },
+    "recommendCapabilityReport": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"source": {"$ref": "#/$defs/source"}, "providerRouteDigest": {"$ref": "#/$defs/digest"}, "providerId": {"$ref": "#/$defs/providerId"}, "modelId": {"$ref": "#/$defs/modelId"}, "protocol": {"const": "opencode-supervisor/1"}, "recipeIds": {"type": "array", "maxItems": 4, "uniqueItems": true, "items": {"$ref": "#/$defs/recipe"}}, "maxInputTokens": {"const": 8000}, "maxOutputTokens": {"const": 1000}, "toolsAllowed": {"const": false}, "mediaAllowed": {"const": false}, "managerProfile": {"$ref": "#/$defs/managerProfile"}, "available": {"type": "boolean"}, "reason": {"$ref": "#/$defs/capabilityReason"}},
+      "required": ["source", "providerRouteDigest", "providerId", "modelId", "protocol", "recipeIds", "maxInputTokens", "maxOutputTokens", "toolsAllowed", "mediaAllowed", "managerProfile", "available", "reason"]
+    },
+    "reviewManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "reservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "manual": {
+          "const": true
+        },
+        "findingId": {
+          "$ref": "#/$defs/id"
+        },
+        "findingRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "policyRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ruleId": {
+          "$ref": "#/$defs/rule"
+        },
+        "recipeId": {
+          "$ref": "#/$defs/recipe"
+        },
+        "providerRouteDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "managerProfile": {
+          "$ref": "#/$defs/managerProfile"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "budget": {
+          "$ref": "#/$defs/budget"
+        },
+        "validUntil": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "findingEvidence": {
+          "$ref": "#/$defs/findingEvidence"
+        }
+      },
+      "required": [
+        "formatVersion",
+        "reservationId",
+        "runId",
+        "manual",
+        "findingId",
+        "findingRevision",
+        "policyRevision",
+        "ruleId",
+        "recipeId",
+        "providerRouteDigest",
+        "managerProfile",
+        "source",
+        "target",
+        "budget",
+        "validUntil"
+      ]
+    },
+    "takeoverManifest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "operationId": {"$ref": "#/$defs/id"}, "predecessorOperationId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "action": {"type": "string", "enum": ["pause_manager_and_hold_member", "resume_manager_and_release_member"]}, "findingId": {"$ref": "#/$defs/id"}, "findingRevision": {"type": "integer", "minimum": 1}, "policyRevision": {"type": "integer", "minimum": 1}, "runGeneration": {"type": "integer", "minimum": 1}, "holdId": {"$ref": "#/$defs/id"}, "holdRevision": {"type": "integer", "minimum": 1}, "holdState": {"type": "string", "enum": ["active", "released"]}, "source": {"$ref": "#/$defs/source"}, "target": {"$ref": "#/$defs/target"}, "validUntil": {"type": "string", "format": "date-time"}},
+      "required": ["formatVersion", "operationId", "predecessorOperationId", "action", "findingId", "findingRevision", "policyRevision", "runGeneration", "holdId", "holdRevision", "holdState", "source", "target", "validUntil"]
+    },
+    "takeoverReport": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"formatVersion": {"const": 1}, "operationId": {"$ref": "#/$defs/id"}, "predecessorOperationId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}, "action": {"type": "string", "enum": ["pause_manager_and_hold_member", "resume_manager_and_release_member"]}, "findingId": {"$ref": "#/$defs/id"}, "findingRevision": {"type": "integer", "minimum": 1}, "policyRevision": {"type": "integer", "minimum": 1}, "runGeneration": {"type": "integer", "minimum": 1}, "holdId": {"$ref": "#/$defs/id"}, "holdRevision": {"type": "integer", "minimum": 1}, "holdState": {"type": "string", "enum": ["active", "released"]}, "source": {"$ref": "#/$defs/source"}, "target": {"$ref": "#/$defs/target"}, "status": {"type": "string", "enum": ["ready", "unsettled", "failed"]}, "pendingInput": {"type": "object", "additionalProperties": false, "properties": {"state": {"type": "string", "enum": ["none_pending", "canceled", "already_available_to_worker", "unknown"]}, "alreadyConsumed": {"type": "boolean"}}, "required": ["state", "alreadyConsumed"]}, "receiptDigest": {"$ref": "#/$defs/digest"}, "errorCode": {"$ref": "#/$defs/errorCode"}},
+      "required": ["formatVersion", "operationId", "predecessorOperationId", "action", "findingId", "findingRevision", "policyRevision", "runGeneration", "holdId", "holdRevision", "holdState", "source", "target", "status", "pendingInput", "receiptDigest", "errorCode"]
+    },
+    "findingEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "findingId": {
+          "$ref": "#/$defs/id"
+        },
+        "findingRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "journalGeneration": {
+          "$ref": "#/$defs/id"
+        },
+        "ruleId": {
+          "type": "string"
+        },
+        "nativeSessionId": {
+          "$ref": "#/$defs/id"
+        },
+        "firstSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lastSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "matchedCallIds": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "coverage": {
+          "const": "complete"
+        },
+        "firstObservedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastObservedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "toolCategory": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "phase": {
+          "type": "string",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "findingId",
+        "findingRevision",
+        "journalGeneration",
+        "ruleId",
+        "nativeSessionId",
+        "firstSequence",
+        "lastSequence",
+        "count",
+        "matchedCallIds",
+        "coverage",
+        "firstObservedAt",
+        "lastObservedAt",
+        "toolCategory",
+        "phase"
+      ]
+    }
+  }
+}

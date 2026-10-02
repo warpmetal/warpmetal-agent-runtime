@@ -94,6 +94,17 @@ restricted=$test_root/restricted-userns
 printf 'Y\n' > "$enabled"
 printf '1\n' > "$restricted"
 expect_status 0 warpmetal_detect_apparmor_policy_requirement "$enabled" "$restricted"
+printf 'Y' > "$enabled"
+printf '1' > "$restricted"
+expect_status 0 warpmetal_detect_apparmor_policy_requirement "$enabled" "$restricted"
+printf 'Y\nN\n' > "$enabled"
+expect_status 2 warpmetal_detect_apparmor_policy_requirement "$enabled" "$restricted"
+test "$warpmetal_apparmor_policy_error" = runtime_apparmor_state_unverifiable
+printf 'Y\n' > "$enabled"
+printf '1\n0\n' > "$restricted"
+expect_status 2 warpmetal_detect_apparmor_policy_requirement "$enabled" "$restricted"
+test "$warpmetal_apparmor_policy_error" = runtime_apparmor_state_unverifiable
+printf '1\n' > "$restricted"
 printf 'N\n' > "$enabled"
 expect_status 1 warpmetal_detect_apparmor_policy_requirement "$enabled" "$restricted"
 printf 'unexpected\n' > "$enabled"
@@ -148,6 +159,12 @@ warpmetal_rollback_apparmor_policy
 test ! -s "$policy_state"
 
 metadata_command='import json,os,stat,sys; p=sys.argv[1]; s=os.stat(p,follow_symlinks=False); x={n:os.getxattr(p,n,follow_symlinks=False).hex() for n in sorted(os.listxattr(p,follow_symlinks=False))}; print(json.dumps([s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode),s.st_atime_ns,s.st_mtime_ns,x],sort_keys=True))'
+tree_metadata_command='import hashlib,json,os,stat,sys; root=sys.argv[1]; out=[]
+for base,dirs,files in os.walk(root,topdown=True,followlinks=False):
+ dirs.sort(); files.sort()
+ for name in ["."]+dirs+files:
+  p=base if name=="." else os.path.join(base,name); s=os.lstat(p); rel=os.path.relpath(p,root); kind="link" if stat.S_ISLNK(s.st_mode) else "dir" if stat.S_ISDIR(s.st_mode) else "file" if stat.S_ISREG(s.st_mode) else "other"; digest=hashlib.sha256(open(p,"rb").read()).hexdigest() if kind=="file" else os.readlink(p) if kind=="link" else None; out.append([rel,s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode),kind,digest])
+print(json.dumps(out,sort_keys=True,separators=(",",":")))'
 
 # The recovered public lifecycle defaults to a true preserve operation. It does
 # not inspect bundle, parser, kernel, destination, or durable state paths.
@@ -179,6 +196,157 @@ test "$warpmetal_apparmor_policy_error" = runtime_nested_private_procfs_architec
 test ! -e "$lifecycle_root"
 test ! -s "$APPARMOR_TEST_LOG"
 
+# systemd recursively normalizes StateDirectory ownership to the Runtime
+# service's root:warpmetal-sandbox identity. The legacy empty activation
+# baseline can be adopted without reconstructing metadata because it contains
+# no policy backup. Publish the replacement root:root state atomically outside
+# StateDirectory, leave the legacy evidence untouched, and persist a marker so
+# a later disable cannot re-adopt it.
+adoption_runtime_root=$test_root/systemd-state/warpmetal
+adoption_retained_legacy=$adoption_runtime_root/apparmor-policy-state
+adoption_authoritative_root=$test_root/warpmetal-apparmor-policy-state
+adoption_destination=$test_root/etc/apparmor.d/adoption-policy
+snapshot_adoption_scalar_metadata() {
+  snapshot_adoption_root=$1
+  for snapshot_adoption_field in had-policy setup-loaded child-loaded operation; do
+    python3 -c "$metadata_command" \
+      "$snapshot_adoption_root/baseline/$snapshot_adoption_field"
+  done
+}
+install -d -m 0700 "$adoption_retained_legacy" "$adoption_retained_legacy/baseline"
+printf '0\n' > "$adoption_retained_legacy/baseline/had-policy"
+printf '0\n' > "$adoption_retained_legacy/baseline/setup-loaded"
+printf '0\n' > "$adoption_retained_legacy/baseline/child-loaded"
+printf 'enable-first\n' > "$adoption_retained_legacy/baseline/operation"
+chmod 0600 "$adoption_retained_legacy/baseline/"*
+chown -R 0:1000 "$adoption_runtime_root"
+install -m 0644 "$candidate" "$adoption_destination"
+printf '%s\n' 'warpmetal-agent-runtime-bwrap (enforce)' 'warpmetal-agent-runtime-unpriv-bwrap (enforce)' > "$policy_state"
+adoption_legacy_before=$(python3 -c "$tree_metadata_command" "$adoption_retained_legacy")
+adoption_legacy_scalar_metadata_before=$(
+  snapshot_adoption_scalar_metadata "$adoption_retained_legacy"
+)
+adoption_policy_before=$(python3 -c "$metadata_command" "$adoption_destination")
+: > "$APPARMOR_TEST_LOG"
+
+expect_status 0 warpmetal_adopt_legacy_apparmor_policy_state \
+  "$adoption_retained_legacy" "$adoption_authoritative_root" "$candidate" \
+  "$adoption_destination" "$parser" "$policy_state" "$metadata_helper"
+test "$(python3 -c "$tree_metadata_command" "$adoption_retained_legacy")" = \
+  "$adoption_legacy_before"
+test "$(snapshot_adoption_scalar_metadata "$adoption_retained_legacy")" = \
+  "$adoption_legacy_scalar_metadata_before"
+test "$(python3 -c "$metadata_command" "$adoption_destination")" = \
+  "$adoption_policy_before"
+if grep -Eq '^PARSER ' "$APPARMOR_TEST_LOG"; then
+  fail_test legacy_adoption_invoked_parser
+fi
+test "$(stat -c '%u:%g:%a' "$adoption_authoritative_root")" = 0:0:700
+test "$(stat -c '%u:%g:%a' "$adoption_authoritative_root/baseline")" = 0:0:700
+for adoption_field in had-policy setup-loaded child-loaded; do
+  test "$(stat -c '%u:%g:%a' "$adoption_authoritative_root/baseline/$adoption_field")" = \
+    0:0:600
+  test "$(cat "$adoption_authoritative_root/baseline/$adoption_field")" = 0
+done
+adoption_marker=$adoption_authoritative_root/adopted-legacy-empty-baseline-v1
+test "$(stat -c '%u:%g:%a' "$adoption_marker")" = 0:0:600
+test "$(cat "$adoption_marker")" = 1
+
+# The complete marker makes a lost post-publication response resumable without
+# rewriting either tree.
+adoption_new_before=$(python3 -c "$tree_metadata_command" "$adoption_authoritative_root")
+expect_status 0 warpmetal_adopt_legacy_apparmor_policy_state \
+  "$adoption_retained_legacy" "$adoption_authoritative_root" "$candidate" \
+  "$adoption_destination" "$parser" "$policy_state" "$metadata_helper"
+test "$(python3 -c "$tree_metadata_command" "$adoption_authoritative_root")" = \
+  "$adoption_new_before"
+
+# A failed final publication rename leaves the validated legacy tree and live
+# policy byte-for-byte unchanged, with no final replacement root.
+adoption_crash_parent=$test_root/adoption-crash
+adoption_crash_legacy=$adoption_crash_parent/systemd-state/warpmetal/apparmor-policy-state
+adoption_crash_new=$adoption_crash_parent/warpmetal-apparmor-policy-state
+install -d -m 0700 "${adoption_crash_legacy%/*}"
+cp -a "$adoption_retained_legacy" "$adoption_crash_legacy"
+adoption_crash_before=$(python3 -c "$tree_metadata_command" "$adoption_crash_legacy")
+original_path=$PATH
+printf '%s\n' \
+  '#!/bin/sh' \
+  'last=' \
+  'for argument in "$@"; do last=$argument; done' \
+  'if [ "$last" = "$APPARMOR_TEST_ADOPTION_FAIL_TARGET" ]; then exit 9; fi' \
+  'exec /usr/bin/mv "$@"' > "$test_root/bin/mv"
+chmod 0755 "$test_root/bin/mv"
+export APPARMOR_TEST_ADOPTION_FAIL_TARGET="$adoption_crash_new"
+PATH=$test_root/bin:$PATH
+export PATH
+expect_status 1 warpmetal_adopt_legacy_apparmor_policy_state \
+  "$adoption_crash_legacy" "$adoption_crash_new" "$candidate" \
+  "$adoption_destination" "$parser" "$policy_state" "$metadata_helper"
+PATH=$original_path
+export PATH
+unset APPARMOR_TEST_ADOPTION_FAIL_TARGET
+test ! -e "$adoption_crash_new"
+test "$(python3 -c "$tree_metadata_command" "$adoption_crash_legacy")" = \
+  "$adoption_crash_before"
+test "$(python3 -c "$metadata_command" "$adoption_destination")" = \
+  "$adoption_policy_before"
+test -z "$(find "$adoption_crash_parent" -maxdepth 1 -name '.warpmetal-apparmor-policy-state.adopt.*' -print -quit)"
+
+# Nonempty, active, ambiguous, symlinked, non-root-owned, and nonprivate legacy
+# shapes are never treated as lossless adoption candidates.
+for adoption_invalid_kind in nonempty transaction extra symlink nonroot mode; do
+  adoption_invalid_legacy=$test_root/legacy-$adoption_invalid_kind
+  adoption_invalid_new=$test_root/new-$adoption_invalid_kind
+  cp -a "$adoption_retained_legacy" "$adoption_invalid_legacy"
+  case "$adoption_invalid_kind" in
+    nonempty)
+      printf '1\n' > "$adoption_invalid_legacy/baseline/had-policy"
+      cp -a "$candidate" "$adoption_invalid_legacy/baseline/policy"
+      ;;
+    transaction) install -d -m 0700 "$adoption_invalid_legacy/transaction" ;;
+    extra) printf 'unexpected\n' > "$adoption_invalid_legacy/unexpected" ;;
+    symlink)
+      mv "$adoption_invalid_legacy/baseline" "$adoption_invalid_legacy/baseline.real"
+      ln -s baseline.real "$adoption_invalid_legacy/baseline"
+      ;;
+    nonroot) chown 123:1000 "$adoption_invalid_legacy" ;;
+    mode) chmod 0750 "$adoption_invalid_legacy" ;;
+  esac
+  adoption_invalid_before=$(python3 -c "$tree_metadata_command" "$adoption_invalid_legacy")
+  expect_status 1 warpmetal_adopt_legacy_apparmor_policy_state \
+    "$adoption_invalid_legacy" "$adoption_invalid_new" "$candidate" \
+    "$adoption_destination" "$parser" "$policy_state" "$metadata_helper"
+  test ! -e "$adoption_invalid_new"
+  test "$(python3 -c "$tree_metadata_command" "$adoption_invalid_legacy")" = \
+    "$adoption_invalid_before"
+done
+
+# An already-published tree without the committed marker is ambiguous while
+# the normalized legacy state remains present.
+adoption_unmarked_root=$test_root/new-unmarked
+cp -a "$adoption_authoritative_root" "$adoption_unmarked_root"
+rm -f -- "$adoption_unmarked_root/adopted-legacy-empty-baseline-v1"
+expect_status 1 warpmetal_adopt_legacy_apparmor_policy_state \
+  "$adoption_retained_legacy" "$adoption_unmarked_root" "$candidate" \
+  "$adoption_destination" "$parser" "$policy_state" "$metadata_helper"
+
+# Disable uses only the isolated state. The adoption marker survives after its
+# empty baseline is consumed, preventing the retained legacy tree from being
+# adopted a second time.
+warpmetal_configure_apparmor_policy disable x86_64 \
+  "$candidate" "$adoption_destination" "$adoption_authoritative_root" \
+  "$parser" "$policy_state" "$metadata_helper"
+warpmetal_commit_apparmor_policy_operation
+test -f "$adoption_marker"
+test ! -e "$adoption_authoritative_root/baseline"
+test ! -e "$adoption_destination"
+test ! -s "$policy_state"
+expect_status 0 warpmetal_adopt_legacy_apparmor_policy_state \
+  "$adoption_retained_legacy" "$adoption_authoritative_root" "$candidate" \
+  "$adoption_destination" "$parser" "$policy_state" "$metadata_helper"
+test ! -e "$adoption_authoritative_root/baseline"
+
 # First enable preserves an exact loaded pre-existing destination in durable
 # state until the full installer commits. A second enable is policy-idempotent,
 # and disable restores the original file metadata and loaded state exactly.
@@ -197,6 +365,12 @@ warpmetal_commit_apparmor_policy_operation
 test -d "$lifecycle_root/baseline"
 test ! -e "$lifecycle_root/transaction"
 test ! -e "$lifecycle_root/completed"
+lifecycle_baseline_policy_before=$(python3 -c "$metadata_command" "$lifecycle_root/baseline/policy")
+# A subsequent service start only normalizes the legacy Runtime StateDirectory;
+# the isolated nonempty backup retains the exact metadata needed by disable.
+chown -R 0:1000 "$adoption_runtime_root"
+test "$(python3 -c "$metadata_command" "$lifecycle_root/baseline/policy")" = \
+  "$lifecycle_baseline_policy_before"
 
 : > "$APPARMOR_TEST_LOG"
 warpmetal_configure_apparmor_policy enable x86_64 \
