@@ -782,9 +782,9 @@ func (c *Coordinator) ReportsCurrent(ctx context.Context, manifest model.Manifes
 	for _, policy := range manifest.InsightsManagerPolicies {
 		managerPolicySandboxes[policy.SandboxID] = policy.SandboxGeneration
 	}
-	currentSandboxes := make(map[string]int64, len(manifest.ManagedServices))
-	for _, service := range manifest.ManagedServices {
-		currentSandboxes[service.Identity.SandboxID] = service.Identity.SandboxGeneration
+	currentSandboxes := make(map[string]int64, len(manifest.Sandboxes))
+	for _, sandbox := range manifest.Sandboxes {
+		currentSandboxes[sandbox.ID] = sandbox.Generation
 	}
 	sources, err := c.Store.ContinuitySources(ctx)
 	if err != nil {
@@ -825,6 +825,14 @@ func (c *Coordinator) ReportsCurrent(ctx context.Context, manifest model.Manifes
 	}
 	sourceReports := make([]model.ContinuitySourceReportV1, 0, len(sources))
 	for _, source := range sources {
+		// Every source is gated by the current manifest sandbox generation
+		// before the existing positive-ownership predicates: a source whose
+		// stored sandbox generation is no longer current never surfaces as
+		// source authority, while current-generation sources keep the exact
+		// existing ownership rules.
+		if generation, ok := currentSandboxes[source.Report.SandboxID]; !ok || generation != source.Report.SandboxGeneration {
+			continue
+		}
 		if registeredSources[source.Report.RegisteredSourceID] {
 			sourceReports = append(sourceReports, source.Report)
 			continue
