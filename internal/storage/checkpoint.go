@@ -1501,7 +1501,11 @@ func excludedCheckpointPath(path string) bool {
 	first := strings.Split(path, "/")[0]
 	return first == ".git" || first == ".ssh" || first == ".aws" || first == "node_modules" ||
 		path == ".env" || strings.HasPrefix(path, ".env.") || path == ".config/gcloud" ||
-		strings.HasPrefix(path, ".config/gcloud/")
+		strings.HasPrefix(path, ".config/gcloud/") ||
+		// The managed task worktree subtree is private runtime state, not workspace
+		// content. Exclude exactly .warpmetal/worktrees (never all of .warpmetal,
+		// whose other user files remain captured) from capture and verification.
+		path == ".warpmetal/worktrees" || strings.HasPrefix(path, ".warpmetal/worktrees/")
 }
 
 func openParentBeneath(rootFD int, relative string, create bool) (int, string, error) {

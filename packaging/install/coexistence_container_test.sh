@@ -169,7 +169,7 @@ cmp /tmp/warpmetal-docker-state.before /tmp/warpmetal-docker-state.after
 test "$(curl -fsS http://127.0.0.1:18080)" = ok
 test "$(docker exec "$client_container" wget -qO- http://sentinel-server:8080)" = ok
 podman --runtime crun version >/dev/null
-sandbox_image=${WARPMETAL_SANDBOX_TEST_IMAGE:-ghcr.io/warpmetal/warpmetal-agent-sandbox@sha256:68976f7693dd5d28ba71e20c090425d26d87b38543e83c9ff04373ee2081b026}
+sandbox_image=${WARPMETAL_SANDBOX_TEST_IMAGE:-ghcr.io/warpmetal/warpmetal-agent-sandbox@sha256:128918865b7cdf49bb7205064e47701dc1c13d8baeda921f61cdfe7a1ef2327e}
 mkdir -p /tmp/warpmetal-podman-root /tmp/warpmetal-podman-run
 podman \
   --root /tmp/warpmetal-podman-root \

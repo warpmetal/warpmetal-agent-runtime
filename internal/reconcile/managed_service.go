@@ -172,17 +172,27 @@ func (r *Reconciler) reconcileManagedWorkspaceRequests(ctx context.Context, mani
 // failure of another service, and a fatal failure never turns a deferred reason
 // into a silent skip of the whole pass.
 func (r *Reconciler) reconcileManagedServices(ctx context.Context, manifest model.Manifest) (deferred, fatal error) {
-	for _, desired := range manifest.ManagedServices {
-		if err := r.reconcileManagedService(ctx, desired); err != nil {
-			wrapped := fmt.Errorf("managed service %s: %w", desired.Identity.ServiceRegistrationID, err)
-			if errors.Is(err, workspacecatalog.ErrManagedProjectRemountAttestation) {
-				// Fail-closed: this service was not admitted, executed or
-				// advanced. Its bounded, retryable remount reason is deferred so
-				// every other service in the same manifest still reconciles.
-				deferred = errors.Join(deferred, wrapped)
+	// Authenticated inactive intents (stopped/retired/paused) are processed
+	// before active services so an earlier fallible active service cannot
+	// starve an independent Stop/retire/pause intent. Order is preserved
+	// within each group and the existing first-fatal and remount-deferral
+	// behavior is unchanged.
+	for _, active := range []bool{false, true} {
+		for _, desired := range manifest.ManagedServices {
+			if (desired.DesiredState == "active") != active {
 				continue
 			}
-			return deferred, wrapped
+			if err := r.reconcileManagedService(ctx, desired); err != nil {
+				wrapped := fmt.Errorf("managed service %s: %w", desired.Identity.ServiceRegistrationID, err)
+				if errors.Is(err, workspacecatalog.ErrManagedProjectRemountAttestation) {
+					// Fail-closed: this service was not admitted, executed or
+					// advanced. Its bounded, retryable remount reason is deferred so
+					// every other service in the same manifest still reconciles.
+					deferred = errors.Join(deferred, wrapped)
+					continue
+				}
+				return deferred, wrapped
+			}
 		}
 	}
 	return deferred, nil

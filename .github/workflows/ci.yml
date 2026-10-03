@@ -19,7 +19,7 @@ jobs:
           cache-dependency-path: go.sum
       - name: Verify and test
         env:
-          WARP_METAL_SANDBOX_IMAGE: ghcr.io/warpmetal/warpmetal-agent-sandbox@sha256:749164405a43b8ce5f2ffe1d59f81992e091604f43dd7c003f787a55be02fd7f
+          WARP_METAL_SANDBOX_IMAGE: ghcr.io/warpmetal/warpmetal-agent-sandbox@sha256:128918865b7cdf49bb7205064e47701dc1c13d8baeda921f61cdfe7a1ef2327e
           WARPMETAL_WIRE_CONTRACT_EVIDENCE: "1"
         run: |
           set -eu
