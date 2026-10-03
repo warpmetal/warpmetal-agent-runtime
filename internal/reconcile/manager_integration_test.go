@@ -54,6 +54,10 @@ func (manager *fakeManagerCoordinator) Reports(context.Context, continuity.Stale
 	return manager.policies, manager.runs, manager.takeovers, nil
 }
 
+func (manager *fakeManagerCoordinator) ReportsCurrent(context.Context, model.Manifest, []model.ContinuitySourceReportV1, continuity.StaleSourceSet) ([]model.InsightsManagerPolicyReportV1, []model.InsightsManagerRunReportV1, []model.InsightsTakeoverReportV1, error) {
+	return manager.policies, manager.runs, manager.takeovers, nil
+}
+
 func TestReconcilerWiresManagerManifestRecoveryAndSanitizedReports(t *testing.T) {
 	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
 	if err != nil {

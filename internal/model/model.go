@@ -2270,8 +2270,27 @@ func validInsightsManagerPolicyMode(value InsightsManagerPolicyManifestV1) bool 
 	case "off", "recommend":
 		return true
 	case "auto_steer":
-		return value.AutoSteerPolicy != nil && value.AutoSteerPolicy.FormatVersion == 1 &&
-			value.AutoSteerPolicy.Available && value.AutoSteerPolicy.QualifiedTuple != nil && value.AutoSteerPolicy.QualifiedTuple.Valid()
+		policy := value.AutoSteerPolicy
+		if policy == nil {
+			// The saved legacy absent form: admitted as non-executable. The
+			// execution gates treat a missing policy as unavailable, so this
+			// never yields a reservation, start, provider or guidance effect.
+			return true
+		}
+		if policy.FormatVersion != 1 {
+			return false
+		}
+		if policy.Available {
+			return policy.Reason == nil && policy.QualifiedTuple != nil && policy.QualifiedTuple.Valid()
+		}
+		if policy.QualifiedTuple != nil || policy.Reason == nil {
+			return false
+		}
+		switch *policy.Reason {
+		case "native_guard_unqualified", "runtime_unavailable", "source_unavailable":
+			return true
+		}
+		return false
 	}
 	return false
 }

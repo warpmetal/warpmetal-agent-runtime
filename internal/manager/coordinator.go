@@ -258,6 +258,27 @@ func (c *Coordinator) Recover(ctx context.Context) error {
 // (available=false, reason=source_unavailable), while a genuinely fresh
 // re-observation keeps the ordinary available derivation.
 func (c *Coordinator) Reports(ctx context.Context, staleSources continuity.StaleSourceSet) ([]model.InsightsManagerPolicyReportV1, []model.InsightsManagerRunReportV1, []model.InsightsTakeoverReportV1, error) {
+	return c.reports(ctx, staleSources, nil, nil)
+}
+
+// ReportsCurrent scopes policy reports to the current validated authority
+// identity (sandboxId, sandboxGeneration, policyRevision, runGeneration); the
+// lease validUntil and capability-driven AutoSteerPolicy drift never grant
+// identity. Reviews, takeovers and guidance settlement paths are deliberately
+// unfiltered.
+func (c *Coordinator) ReportsCurrent(ctx context.Context, authority model.Manifest, reportSources []model.ContinuitySourceReportV1, staleSources continuity.StaleSourceSet) ([]model.InsightsManagerPolicyReportV1, []model.InsightsManagerRunReportV1, []model.InsightsTakeoverReportV1, error) {
+	current := make(map[string]bool, len(authority.InsightsManagerPolicies))
+	for _, policy := range authority.InsightsManagerPolicies {
+		current[managerPolicyIdentity(policy.SandboxID, policy.SandboxGeneration, policy.PolicyRevision, policy.RunGeneration)] = true
+	}
+	return c.reports(ctx, staleSources, current, reportSources)
+}
+
+func managerPolicyIdentity(sandboxID string, sandboxGeneration, policyRevision, runGeneration int64) string {
+	return fmt.Sprintf("%s|%d|%d|%d", sandboxID, sandboxGeneration, policyRevision, runGeneration)
+}
+
+func (c *Coordinator) reports(ctx context.Context, staleSources continuity.StaleSourceSet, current map[string]bool, reportSources []model.ContinuitySourceReportV1) ([]model.InsightsManagerPolicyReportV1, []model.InsightsManagerRunReportV1, []model.InsightsTakeoverReportV1, error) {
 	policies, err := c.Store.ManagerPolicies(ctx)
 	if err != nil {
 		return nil, nil, nil, err
@@ -272,6 +293,9 @@ func (c *Coordinator) Reports(ctx context.Context, staleSources continuity.Stale
 	}
 	policyReports := make([]model.InsightsManagerPolicyReportV1, 0, len(policies))
 	for _, value := range policies {
+		if current != nil && !current[managerPolicyIdentity(value.Manifest.SandboxID, value.Manifest.SandboxGeneration, value.Manifest.PolicyRevision, value.Manifest.RunGeneration)] {
+			continue
+		}
 		report := value.Report
 		if derived, deriveErr := c.policyReport(ctx, value.Manifest); deriveErr == nil {
 			report = derived
@@ -279,6 +303,7 @@ func (c *Coordinator) Reports(ctx context.Context, staleSources continuity.Stale
 		// The stale derivation is applied to the exact report being serialized,
 		// including the cached fallback, so a derivation outage cannot replay an
 		// available capability for a source this report already publishes stale.
+		report = c.projectPolicyReportSources(value.Manifest, report, reportSources)
 		report = c.deriveStaleSourceCapabilities(value.Manifest, report, staleSources)
 		policyReports = append(policyReports, report)
 	}
@@ -462,6 +487,48 @@ func (c *Coordinator) policyRollup(policy model.InsightsManagerPolicyManifestV1,
 		reasonPointer = &value
 	}
 	return model.InsightsManagerCapabilityV1{Available: available, Reason: reasonPointer}
+}
+
+// projectPolicyReportSources retains only the capability items whose eight
+// InsightsManagerSourceV1 identity fields all match a source serialized in the
+// SAME report. Absent or mismatched items are omitted; the current policy
+// report itself is retained and the rollup and receipt digest are recomputed
+// with the existing helpers before the fresh/stale derivation runs.
+func (c *Coordinator) projectPolicyReportSources(policy model.InsightsManagerPolicyManifestV1, report model.InsightsManagerPolicyReportV1, sources []model.ContinuitySourceReportV1) model.InsightsManagerPolicyReportV1 {
+	if sources == nil {
+		return report
+	}
+	retained := make([]model.InsightsManagerRecommendCapabilityV1, 0, len(report.RecommendCapabilities))
+	changed := false
+	for _, capability := range report.RecommendCapabilities {
+		matched := false
+		for _, source := range sources {
+			if capability.Source.RegisteredSourceID == source.RegisteredSourceID &&
+				capability.Source.WorkspaceEpoch == source.WorkspaceEpoch &&
+				capability.Source.NativeSessionID == source.NativeSessionID &&
+				capability.Source.ServiceRegistrationID == source.ServiceRegistrationID &&
+				capability.Source.ServiceGeneration == source.ServiceGeneration &&
+				capability.Source.SandboxGeneration == source.SandboxGeneration &&
+				capability.Source.ProfileRevision == source.ProfileRevision &&
+				capability.Source.InstructionRevision == source.InstructionRevision {
+				matched = true
+				break
+			}
+		}
+		if matched {
+			retained = append(retained, capability)
+		} else {
+			changed = true
+		}
+	}
+	if !changed {
+		return report
+	}
+	report.RecommendCapabilities = retained
+	report.Recommend = c.policyRollup(policy, retained)
+	report.ReceiptDigest = ""
+	report.ReceiptDigest = digestJSON(report)
+	return report
 }
 
 // deriveStaleSourceCapabilities applies the report assembly's single freshness

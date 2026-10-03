@@ -111,6 +111,7 @@ type ManagerControl interface {
 	ApplyPolicies(context.Context, model.Manifest) error
 	Apply(context.Context, model.Manifest) error
 	Reports(context.Context, continuity.StaleSourceSet) ([]model.InsightsManagerPolicyReportV1, []model.InsightsManagerRunReportV1, []model.InsightsTakeoverReportV1, error)
+	ReportsCurrent(context.Context, model.Manifest, []model.ContinuitySourceReportV1, continuity.StaleSourceSet) ([]model.InsightsManagerPolicyReportV1, []model.InsightsManagerRunReportV1, []model.InsightsTakeoverReportV1, error)
 	GuidanceReports(context.Context) ([]model.InsightsManagerGuidanceV1, error)
 }
 
@@ -734,7 +735,7 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 		report.ManagedServices = append(report.ManagedServices, service.Report)
 	}
 	if r.Manager != nil {
-		policies, reviews, takeovers, err := r.Manager.Reports(ctx, staleSources)
+		policies, reviews, takeovers, err := r.Manager.ReportsCurrent(ctx, authority, report.ContinuitySources, staleSources)
 		if err != nil {
 			return model.Report{}, err
 		}
