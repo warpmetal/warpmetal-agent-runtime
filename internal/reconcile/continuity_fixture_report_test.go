@@ -33,6 +33,18 @@ func (c *recordingContinuityControl) Recover(context.Context) error {
 	return nil
 }
 
+func (c *recordingContinuityControl) RecoverLocalSafety(context.Context) error {
+	return nil
+}
+
+func (c *recordingContinuityControl) RecoverCurrent(ctx context.Context, _ model.Manifest) error {
+	return c.Recover(ctx)
+}
+
+func (c *recordingContinuityControl) ReportsCurrent(ctx context.Context, _ model.Manifest) ([]model.ContinuitySourceReportV1, []model.ContinuityRegistrationReportV1, []model.ContinuityOperationReportV1, error) {
+	return c.Reports(ctx)
+}
+
 func (c *recordingContinuityControl) Apply(_ context.Context, manifest model.Manifest) error {
 	c.applied = append(c.applied, manifest.ContinuityOperations...)
 	return nil

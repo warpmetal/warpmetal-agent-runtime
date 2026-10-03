@@ -366,18 +366,16 @@ func successionHandoffSeedDefaults(journey *acknowledgementJourney) successionHa
 		ProfileID: "opencode", ProfileRevision: 1, ProfileDigest: journey.fixture.SetupManifest.ProfileDigest,
 		InstructionRevision: 1, InstructionDigest: acknowledgementDigest([]byte("handoff-target-instruction")),
 	}
-	projectID := successionHandoffMappedProject
-	workspaceEpoch := successionHandoffMappedEpoch
 	scopeRevision := int64(1)
 	workspace := model.ContinuationHandoffWorkspaceRequestV1{
-		Mode: "new", ProjectID: &projectID, WorkspaceEpoch: &workspaceEpoch, ScopeRevision: &scopeRevision,
+		Mode: "allocate_and_materialize",
 	}
 	contextValue := model.ContinuationContextV1{
 		Digest: acknowledgementDigest([]byte("handoff-context")), Bytes: 128, TokenUpperBound: 64,
 	}
 	manifest := model.ContinuationHandoffManifestV1{
 		FormatVersion: 1, OperationID: successionHandoffOperationID, Action: "prepare_handoff",
-		DesiredRevision: journey.manifest.DesiredRevision, HandoffKind: "work_handoff", SessionMode: "lookup_only",
+		DesiredRevision: journey.manifest.DesiredRevision, HandoffKind: "reviewer", SessionMode: "create_separate",
 		TargetWorkID: "work_finish_target0001", MappingID: "mapping_finish_handoff0001",
 		Identity: identity,
 		Binding: model.ContinuationBindingRefV1{
@@ -674,6 +672,25 @@ func newHandoffSuccessionJourney(t *testing.T, options ...successionJourneyOptio
 		return baseProbe(sandboxID, request)
 	}
 	completeSuccessionHandoff(t, journey, seed, seed.manifest.OperationID, seed.manifest.TargetWorkID, successionHandoffMappedSource)
+	// The fresh manifest carries the handoff as typed current intent: the
+	// authority-bound recovery owns exactly what the validated intent names,
+	// and a valid manifest also carries the handoff's target sandbox.
+	journey.manifest.ContinuityHandoffs = []model.ContinuationHandoffManifestV1{seed.manifest}
+	targetSandbox := model.Sandbox{
+		ID: seed.manifest.TargetPolicy.SandboxID, Name: "handoff-target", DesiredState: "running",
+		Generation: seed.manifest.TargetPolicy.SandboxGeneration, Lifetime: "persistent",
+		Resources: model.Resources{CPUMillicores: 500, MemoryMiB: 1024, WorkspaceDiskGiB: 10, PIDs: 64},
+	}
+	targetPresent := false
+	for index, sandbox := range journey.manifest.Sandboxes {
+		if sandbox.ID == targetSandbox.ID {
+			journey.manifest.Sandboxes[index].Generation = targetSandbox.Generation
+			targetPresent = true
+		}
+	}
+	if !targetPresent {
+		journey.manifest.Sandboxes = append(journey.manifest.Sandboxes, targetSandbox)
+	}
 	if seed.withMappedTarget {
 		seedSuccessionMappedRegistration(t, journey, seed)
 	}
@@ -1116,12 +1133,16 @@ func TestReconcilerKeepsEveryNonSuccessionHandoffMismatchFatal(t *testing.T) {
 	cases := []struct {
 		name                 string
 		expectTargetObserved bool
-		options              []successionJourneyOption
-		mutate               func(t *testing.T, journey *acknowledgementJourney, fixture *successionHandoffFixture) model.Manifest
-		check                func(t *testing.T, passErr error)
+		// validationFirst marks mutations whose manifest no longer forms a
+		// valid effective registration set: with the authorized validation-first
+		// boundary the pass fails closed at the manifest gate before recovery.
+		validationFirst bool
+		options         []successionJourneyOption
+		mutate          func(t *testing.T, journey *acknowledgementJourney, fixture *successionHandoffFixture) model.Manifest
+		check           func(t *testing.T, passErr error)
 	}{
 		{
-			name: "equal_binding_revision_is_not_succession",
+			name: "equal_binding_revision_is_not_succession", validationFirst: true,
 			mutate: func(t *testing.T, journey *acknowledgementJourney, _ *successionHandoffFixture) model.Manifest {
 				manifest := journey.manifest
 				journey.putRegistration(t, func(value *state.LocalContinuityRegistration) {
@@ -1132,7 +1153,7 @@ func TestReconcilerKeepsEveryNonSuccessionHandoffMismatchFatal(t *testing.T) {
 			},
 		},
 		{
-			name: "skipped_binding_revision_is_not_succession",
+			name: "skipped_binding_revision_is_not_succession", validationFirst: true,
 			mutate: func(t *testing.T, journey *acknowledgementJourney, _ *successionHandoffFixture) model.Manifest {
 				manifest := journey.manifest
 				journey.putRegistration(t, func(value *state.LocalContinuityRegistration) {
@@ -1163,7 +1184,7 @@ func TestReconcilerKeepsEveryNonSuccessionHandoffMismatchFatal(t *testing.T) {
 			},
 		},
 		{
-			name: "regressed_scope_is_not_succession",
+			name: "regressed_scope_is_not_succession", validationFirst: true,
 			mutate: func(t *testing.T, journey *acknowledgementJourney, _ *successionHandoffFixture) model.Manifest {
 				manifest := journey.manifest
 				journey.putRegistration(t, func(value *state.LocalContinuityRegistration) {
@@ -1201,7 +1222,7 @@ func TestReconcilerKeepsEveryNonSuccessionHandoffMismatchFatal(t *testing.T) {
 			}},
 		},
 		{
-			name: "changed_work_identity_is_not_succession",
+			name: "changed_work_identity_is_not_succession", validationFirst: true,
 			options: []successionJourneyOption{func(_ *testing.T, _ *acknowledgementJourney, seed *successionHandoffSeed) {
 				seed.setIdentity(func(identity *model.ContinuationIdentityV1) {
 					identity.WorkID = "work_finish_foreign0001"
@@ -1225,7 +1246,7 @@ func TestReconcilerKeepsEveryNonSuccessionHandoffMismatchFatal(t *testing.T) {
 			}},
 		},
 		{
-			name: "changed_sandbox_generation_is_not_succession",
+			name: "changed_sandbox_generation_is_not_succession", validationFirst: true,
 			options: []successionJourneyOption{func(_ *testing.T, _ *acknowledgementJourney, seed *successionHandoffSeed) {
 				seed.setIdentity(func(identity *model.ContinuationIdentityV1) {
 					identity.SandboxGeneration = 3
@@ -1352,7 +1373,7 @@ func TestReconcilerKeepsEveryNonSuccessionHandoffMismatchFatal(t *testing.T) {
 			},
 		},
 		{
-			name: "manifest_predecessor_revision_not_exact_is_not_succession", expectTargetObserved: true,
+			name: "manifest_predecessor_revision_not_exact_is_not_succession", validationFirst: true, expectTargetObserved: true,
 			mutate: func(_ *testing.T, journey *acknowledgementJourney, _ *successionHandoffFixture) model.Manifest {
 				manifest := journey.manifest
 				predecessor := successionManifestPredecessor(journey, &manifest)
@@ -1362,7 +1383,7 @@ func TestReconcilerKeepsEveryNonSuccessionHandoffMismatchFatal(t *testing.T) {
 			},
 		},
 		{
-			name: "manifest_extra_registration_is_not_succession", expectTargetObserved: true,
+			name: "manifest_extra_registration_is_not_succession", validationFirst: true, expectTargetObserved: true,
 			mutate: func(_ *testing.T, journey *acknowledgementJourney, _ *successionHandoffFixture) model.Manifest {
 				manifest := journey.manifest
 				extra := *successionManifestPredecessor(journey, &manifest)
@@ -1425,7 +1446,7 @@ func TestReconcilerKeepsEveryNonSuccessionHandoffMismatchFatal(t *testing.T) {
 			},
 		},
 		{
-			name: "stale_or_regressed_manifest_is_not_succession", expectTargetObserved: true,
+			name: "stale_or_regressed_manifest_is_not_succession", expectTargetObserved: true, validationFirst: true,
 			mutate: func(_ *testing.T, journey *acknowledgementJourney, _ *successionHandoffFixture) model.Manifest {
 				manifest := journey.manifest
 				manifest.DesiredRevision = 63
@@ -1471,6 +1492,22 @@ func TestReconcilerKeepsEveryNonSuccessionHandoffMismatchFatal(t *testing.T) {
 			afterSources := journey.storedSources(t)
 			afterHandoff := journey.storedHandoff(t, handoff.manifest.OperationID)
 			t.Logf("pass error: %v", passErr)
+			if test.validationFirst {
+				// The authorized validation-first boundary fails closed at the
+				// manifest gate before any recovery for an invalid or stale
+				// manifest; the handoff history stays untouched.
+				if passErr == nil {
+					t.Fatal("invalid or stale manifest was accepted by the validation-first gate")
+				}
+				if strings.Contains(passErr.Error(), "recover continuation handoffs:") {
+					t.Fatalf("validation-first gate did not precede handoff recovery: %v", passErr)
+				}
+				if !reflect.DeepEqual(beforeHandoff, afterHandoff) ||
+					!reflect.DeepEqual(beforePreparations, journey.handoffPreparations(t)) {
+					t.Fatal("validation-first failure changed the ready handoff history")
+				}
+				return
+			}
 			failingFatal(t, passErr)
 			if test.check != nil {
 				test.check(t, passErr)

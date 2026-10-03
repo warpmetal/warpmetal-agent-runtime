@@ -109,6 +109,15 @@ func (journey *acknowledgementJourney) backendV21Rows(t *testing.T) map[string]f
 // the reconcile_failed marker and the pinned image digest.
 func (journey *acknowledgementJourney) daemonReport(t *testing.T, passError error) (model.Report, []byte) {
 	t.Helper()
+	return journey.daemonReportFor(t, journey.manifest, passError)
+}
+
+// daemonReportFor declares an explicit test-only validated authority context:
+// the report projection is scoped to the last fully validated manifest, so the
+// journey names the manifest the pass validated before rebuilding the report.
+func (journey *acknowledgementJourney) daemonReportFor(t *testing.T, manifest model.Manifest, passError error) (model.Report, []byte) {
+	t.Helper()
+	journey.reconciler.setCurrentAuthority(manifest)
 	report, err := journey.reconciler.Report(context.Background(), journey.manifest.ServerID, "test")
 	if err != nil {
 		t.Fatalf("report construction failed: %v", err)
@@ -286,7 +295,7 @@ func TestReconcilerPostAcknowledgementReportPassesBackendV21(t *testing.T) {
 		ReceiptDigest: "", ErrorCode: "", Current: true, Availability: "available",
 		Identity: managerIdentity, Binding: managerBinding,
 	}
-	nowReport, nowPayload := journey.daemonReport(t, nil)
+	nowReport, nowPayload := journey.daemonReportFor(t, changed, nil)
 	if verdict := backend.applyRegistrationReport(t, nowPayload, rows); !verdict.Accepted {
 		t.Fatalf("advanced manager report was rejected: HTTP %d %s: %s", verdict.Error.Status, verdict.Error.Code, verdict.Error.Message)
 	} else {
@@ -333,6 +342,15 @@ func TestReconcilerReportProjectionKeepsOnlyCurrentDesiredActiveRegistrations(t 
 		}); err != nil {
 			t.Fatal(err)
 		}
+		// The fixture aligns to the actual Backend behavior: the validated
+		// manifest carries the typed registration it acknowledges, so the
+		// authority context includes it.
+		authority := journey.manifest
+		authority.ContinuityRegistrations = append(
+			append([]model.ContinuityRegistrationV1(nil), journey.manifest.ContinuityRegistrations...),
+			extra.registration,
+		)
+		journey.reconciler.setCurrentAuthority(authority)
 		report, err := journey.reconciler.Report(ctx, journey.manifest.ServerID, "test")
 		if err != nil {
 			t.Fatalf("active failed observation failed report construction: %v", err)

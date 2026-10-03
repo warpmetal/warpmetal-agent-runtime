@@ -42,6 +42,10 @@ type failingRestoreControl struct{ applyErr error }
 
 func (control *failingRestoreControl) Recover(context.Context) error { return nil }
 
+func (control *failingRestoreControl) RecoverCurrent(ctx context.Context, _ model.Manifest) error {
+	return control.Recover(ctx)
+}
+
 func (control *failingRestoreControl) Apply(context.Context, []model.ContinuationManifestV1, []model.RestoreManifestV1) error {
 	return control.applyErr
 }
@@ -54,8 +58,16 @@ func (control *failingRestoreControl) Reports(context.Context) ([]model.Continua
 	return nil, nil, nil
 }
 
+func (control *failingRestoreControl) ReportsCurrent(ctx context.Context, _ model.Manifest) ([]model.ContinuationReportV1, []model.RestoreReportV1, error) {
+	return control.Reports(ctx)
+}
+
 func (control *failingRestoreControl) ReleaseReports(context.Context) ([]model.ContinuationReleaseReportV1, error) {
 	return nil, nil
+}
+
+func (control *failingRestoreControl) ReleaseReportsCurrent(ctx context.Context, _ model.Manifest) ([]model.ContinuationReleaseReportV1, error) {
+	return control.ReleaseReports(ctx)
 }
 
 func managerPolicyManifest(sandboxID string, generation, revision, runGeneration int64, validUntil time.Time) model.InsightsManagerPolicyManifestV1 {

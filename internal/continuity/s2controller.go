@@ -227,6 +227,142 @@ func (c *S2Controller) Reports(ctx context.Context) ([]model.ContinuationReportV
 	return continuations, restores, nil
 }
 
+// RecoverCurrent is the authority-bound recovery for the continuation, release
+// and restore domains: only the operations the fully validated current
+// authority carries as exact typed intent are recovered; every absent accepted
+// history row stays byte-untouched.
+func (c *S2Controller) RecoverCurrent(ctx context.Context, manifest model.Manifest) error {
+	continuations := make(map[string]model.ContinuationManifestV1, len(manifest.ContinuityContinuations))
+	for _, operation := range manifest.ContinuityContinuations {
+		continuations[operation.OperationID] = operation
+	}
+	releases := make(map[string]model.ContinuationReleaseManifestV1, len(manifest.ContinuityContinuationReleases))
+	for _, operation := range manifest.ContinuityContinuationReleases {
+		releases[operation.OperationID] = operation
+	}
+	restores := make(map[string]model.RestoreManifestV1, len(manifest.ContinuityRestores))
+	for _, operation := range manifest.ContinuityRestores {
+		restores[operation.OperationID] = operation
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.configured(); err != nil {
+		return err
+	}
+	continuationRecords, err := c.Store.ContinuationPreparations(ctx)
+	if err != nil {
+		return err
+	}
+	for _, record := range continuationRecords {
+		if record.Report != nil {
+			continue
+		}
+		intent, ok := continuations[record.Manifest.OperationID]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(intent, record.Manifest) {
+			return errors.New("continuation operation conflicts with the current authority")
+		}
+		if err := c.recoverContinuation(ctx, record.Manifest); err != nil {
+			return err
+		}
+	}
+	releaseRecords, err := c.Store.ContinuationReleases(ctx)
+	if err != nil {
+		return err
+	}
+	for _, record := range releaseRecords {
+		if record.Report != nil {
+			continue
+		}
+		intent, ok := releases[record.Manifest.OperationID]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(intent, record.Manifest) {
+			return errors.New("continuation release conflicts with the current authority")
+		}
+		if err := c.recoverRelease(ctx, record.Manifest); err != nil {
+			return err
+		}
+	}
+	restoreRecords, err := c.Store.RestoreOperations(ctx)
+	if err != nil {
+		return err
+	}
+	for _, record := range restoreRecords {
+		if record.Report != nil {
+			continue
+		}
+		intent, ok := restores[record.Manifest.OperationID]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(intent, record.Manifest) {
+			return errors.New("restore operation conflicts with the current authority")
+		}
+		if err := c.applyRestore(ctx, record.Manifest); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ReportsCurrent is the authority-bound report projection for the
+// continuation/restore domains: only exact current-intent operations are
+// emitted; accepted historical reports are omitted without local mutation.
+func (c *S2Controller) ReportsCurrent(ctx context.Context, manifest model.Manifest) ([]model.ContinuationReportV1, []model.RestoreReportV1, error) {
+	continuations := make(map[string]bool, len(manifest.ContinuityContinuations))
+	for _, operation := range manifest.ContinuityContinuations {
+		continuations[operation.OperationID] = true
+	}
+	restores := make(map[string]bool, len(manifest.ContinuityRestores))
+	for _, operation := range manifest.ContinuityRestores {
+		restores[operation.OperationID] = true
+	}
+	continuationRecords, err := c.Store.ContinuationPreparations(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	restoreRecords, err := c.Store.RestoreOperations(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	continuationReports := make([]model.ContinuationReportV1, 0)
+	for _, record := range continuationRecords {
+		if record.Report != nil && continuations[record.Manifest.OperationID] {
+			continuationReports = append(continuationReports, *record.Report)
+		}
+	}
+	restoreReports := make([]model.RestoreReportV1, 0)
+	for _, record := range restoreRecords {
+		if record.Report != nil && restores[record.Manifest.OperationID] {
+			restoreReports = append(restoreReports, *record.Report)
+		}
+	}
+	return continuationReports, restoreReports, nil
+}
+
+// ReleaseReportsCurrent is the authority-bound release report projection.
+func (c *S2Controller) ReleaseReportsCurrent(ctx context.Context, manifest model.Manifest) ([]model.ContinuationReleaseReportV1, error) {
+	releases := make(map[string]bool, len(manifest.ContinuityContinuationReleases))
+	for _, operation := range manifest.ContinuityContinuationReleases {
+		releases[operation.OperationID] = true
+	}
+	records, err := c.Store.ContinuationReleases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	reports := make([]model.ContinuationReleaseReportV1, 0, len(records))
+	for _, record := range records {
+		if record.Report != nil && releases[record.Manifest.OperationID] {
+			reports = append(reports, *record.Report)
+		}
+	}
+	return reports, nil
+}
+
 func (c *S2Controller) applyContinuation(ctx context.Context, manifest model.ContinuationManifestV1) error {
 	existing, err := c.Store.ContinuationPreparation(ctx, manifest.OperationID)
 	if err != nil {

@@ -40,6 +40,18 @@ func (c *recordingContinuationRestoreControl) Recover(context.Context) error {
 	return nil
 }
 
+func (c *recordingContinuationRestoreControl) RecoverCurrent(ctx context.Context, _ model.Manifest) error {
+	return c.Recover(ctx)
+}
+
+func (c *recordingContinuationRestoreControl) ReportsCurrent(ctx context.Context, _ model.Manifest) ([]model.ContinuationReportV1, []model.RestoreReportV1, error) {
+	return c.Reports(ctx)
+}
+
+func (c *recordingContinuationRestoreControl) ReleaseReportsCurrent(ctx context.Context, _ model.Manifest) ([]model.ContinuationReleaseReportV1, error) {
+	return c.ReleaseReports(ctx)
+}
+
 func (c *recordingContinuationRestoreControl) Apply(_ context.Context, continuations []model.ContinuationManifestV1, restores []model.RestoreManifestV1) error {
 	c.continuations = append(c.continuations, continuations...)
 	c.restores = append(c.restores, restores...)

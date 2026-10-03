@@ -170,7 +170,10 @@ func (r *Reconciler) reconcileManagedWorkspaceRequests(ctx context.Context, mani
 // returns the bounded, retryable workspace-remount reasons it deferred and, in
 // a separate error, the first fatal failure: a deferred service never hides the
 // failure of another service, and a fatal failure never turns a deferred reason
-// into a silent skip of the whole pass.
+// into a silent skip of the whole pass. A fatal failure is retained while the
+// remaining independently owned services still reconcile (isolation, not
+// suppression), and it is returned after the pass so Reconcile cannot advance
+// the global applied revision.
 func (r *Reconciler) reconcileManagedServices(ctx context.Context, manifest model.Manifest) (deferred, fatal error) {
 	// Authenticated inactive intents (stopped/retired/paused) are processed
 	// before active services so an earlier fallible active service cannot
@@ -191,11 +194,20 @@ func (r *Reconciler) reconcileManagedServices(ctx context.Context, manifest mode
 					deferred = errors.Join(deferred, wrapped)
 					continue
 				}
-				return deferred, wrapped
+				// Isolation, not suppression: retain the first fatal cause and keep
+				// reconciling the other independently owned services in this pass,
+				// so an earlier active enrollment failure cannot starve a later
+				// independent valid start. The failed service itself stays closed;
+				// the fatal is returned after the pass so Reconcile cannot
+				// SetRevision.
+				if fatal == nil {
+					fatal = wrapped
+				}
+				continue
 			}
 		}
 	}
-	return deferred, nil
+	return deferred, fatal
 }
 
 func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.ManagedServiceV1) error {

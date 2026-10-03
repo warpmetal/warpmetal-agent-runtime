@@ -21,6 +21,14 @@ func (f *fakeContinuityRecovery) Recover(context.Context) error {
 	return f.err
 }
 
+func (f *fakeContinuityRecovery) RecoverLocalSafety(context.Context) error {
+	return nil
+}
+
+func (f *fakeContinuityRecovery) RecoverCurrent(ctx context.Context, _ model.Manifest) error {
+	return f.Recover(ctx)
+}
+
 func TestReconcileRecoversDurableContinuityOperationsBeforeLifecycleActions(t *testing.T) {
 	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
 	if err != nil {
