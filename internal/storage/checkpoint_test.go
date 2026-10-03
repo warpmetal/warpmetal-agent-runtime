@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -96,6 +97,13 @@ func TestCheckpointRoundTripPreservesWorktreeIndexAndDoesNotMutateSourceGit(t *t
 	}
 	writeFile(t, filepath.Join(source, ".env"), []byte("TOKEN=secret\n"), 0600)
 	writeFile(t, filepath.Join(source, ".ssh", "id_test"), []byte("private\n"), 0600)
+	// A private managed task worktree under .warpmetal/worktrees is not workspace
+	// content: capturing it would leak task-private state into continuity
+	// checkpoints, an independent task-worktree change would falsely fail
+	// verification, and a restore could clobber the active task subtree. Ordinary
+	// .warpmetal user files must remain captured.
+	writeFile(t, filepath.Join(source, ".warpmetal", "legacy-user.txt"), []byte("legacy user file\n"), 0600)
+	writeFile(t, filepath.Join(source, ".warpmetal", "worktrees", "task_fixture", "private.txt"), []byte("private task state\n"), 0600)
 
 	headBefore := runGit(t, source, "rev-parse", "HEAD")
 	indexPath := runGit(t, source, "rev-parse", "--git-path", "index")
@@ -138,6 +146,15 @@ func TestCheckpointRoundTripPreservesWorktreeIndexAndDoesNotMutateSourceGit(t *t
 	if slices.Contains(paths, ".env") || slices.Contains(paths, ".ssh/id_test") {
 		t.Fatalf("default secret exclusions entered manifest: %#v", paths)
 	}
+	legacy := manifestEntry(t, checkpoint.Manifest, ".warpmetal/legacy-user.txt")
+	if legacy.Worktree == nil || legacy.Worktree.Digest != digest([]byte("legacy user file\n")) {
+		t.Fatalf("ordinary .warpmetal user file was not captured: %#v", legacy)
+	}
+	for _, entry := range checkpoint.Manifest.Entries {
+		if entry.Path == ".warpmetal/worktrees" || strings.HasPrefix(entry.Path, ".warpmetal/worktrees/") {
+			t.Fatalf("private managed task worktree entry %q was captured", entry.Path)
+		}
+	}
 	if got := runGit(t, source, "rev-parse", "HEAD"); got != headBefore {
 		t.Fatalf("capture changed HEAD from %s to %s", headBefore, got)
 	}
@@ -147,6 +164,13 @@ func TestCheckpointRoundTripPreservesWorktreeIndexAndDoesNotMutateSourceGit(t *t
 	}
 	if !bytes.Equal(indexAfter, indexBefore) {
 		t.Fatal("capture changed the real Git index")
+	}
+
+	// An independent change inside the private managed task worktree must not
+	// invalidate workspace verification; only workspace content does.
+	writeFile(t, filepath.Join(source, ".warpmetal", "worktrees", "task_fixture", "private.txt"), []byte("private task state changed\n"), 0600)
+	if err := objects.VerifyWorkspace(context.Background(), checkpoint.ID, source); err != nil {
+		t.Fatalf("private managed task worktree change invalidated verification: %v", err)
 	}
 
 	destination := filepath.Join(t.TempDir(), "destination")
@@ -170,6 +194,12 @@ func TestCheckpointRoundTripPreservesWorktreeIndexAndDoesNotMutateSourceGit(t *t
 	}
 	if _, err := os.Stat(filepath.Join(destination, "deleted.txt")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("deleted file was materialized: %v", err)
+	}
+	if content, _ := os.ReadFile(filepath.Join(destination, ".warpmetal", "legacy-user.txt")); string(content) != "legacy user file\n" {
+		t.Fatalf("ordinary .warpmetal user file was not materialized: %q", content)
+	}
+	if _, err := os.Stat(filepath.Join(destination, ".warpmetal", "worktrees", "task_fixture", "private.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("private managed task worktree file was materialized: %v", err)
 	}
 	if info, err := os.Stat(filepath.Join(destination, "bin", "tool")); err != nil || info.Mode().Perm() != 0700 {
 		t.Fatalf("executable mode changed: %#v %v", info, err)

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/workspacecatalog"
@@ -33,6 +34,11 @@ type catalogContractProducerInput struct {
 	Handoff          *catalogProducerHandoff          `json:"handoff"`
 	Restore          *catalogProducerRestore          `json:"restore"`
 	MaterializeSteps []string                         `json:"materializeSteps"`
+	// r734 frozen contract fields (serialized names are authoritative): the
+	// complete real backend manifest and one actual active service id ordered
+	// before the later stopped services.
+	Manifest                   *model.Manifest `json:"manifest"`
+	EnrollmentFailureServiceID string          `json:"enrollmentFailureServiceId"`
 }
 
 type catalogProducerSandbox struct {
@@ -72,6 +78,11 @@ type catalogContractProducerOutput struct {
 	HandoffReport   *model.ProjectCatalogReportV1  `json:"handoffReport"`
 	RestoreReport   *model.ProjectCatalogReportV1  `json:"restoreReport"`
 	CatalogPhases   map[string]string              `json:"catalogPhases"`
+	// r734 frozen contract outputs for managed-stop-after-active-failure.
+	ManagedServiceReports []model.ManagedServiceReportV1 `json:"managedServiceReports"`
+	AppliedRevision       int64                          `json:"appliedRevision"`
+	ReconcileFatal        string                         `json:"reconcileFatal"`
+	StopInvocations       int                            `json:"stopInvocations"`
 }
 
 func TestManagedWorkspaceCatalogContractProducer(t *testing.T) {
@@ -119,17 +130,24 @@ func TestManagedWorkspaceCatalogContractProducer(t *testing.T) {
 		if input.WorkspaceRequest == nil || input.ManagedService != nil {
 			t.Fatal("create requires only workspaceRequest")
 		}
-		anchor := filepath.Join(input.StateDirectory, "workspace")
-		if err := os.Mkdir(anchor, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+		request := *input.WorkspaceRequest
+		// r744: mirror the real Runtime, which anchors each managed project at
+		// its own sandbox workspace root (Workspaces.Ensure(sandboxID)), so one
+		// state directory can hold the distinct projects of a mixed manifest.
+		anchor := filepath.Join(input.StateDirectory, "workspace", request.SandboxID)
+		if err := os.MkdirAll(anchor, 0700); err != nil {
 			t.Fatal(err)
 		}
-		request := *input.WorkspaceRequest
 		project, err := catalog.EnsureDefault(context.Background(), workspacecatalog.DefaultProjectRequest{
 			Anchor: anchor, ServerID: request.ServerID, TeamID: request.TeamID, MemberID: request.MemberID,
 			SandboxID: request.SandboxID, SandboxGeneration: request.SandboxGeneration,
 			ServiceRegistrationID: request.ServiceRegistrationID, AllocationDigest: request.AllocationDigest,
 		})
 		if err != nil {
+			if errors.Is(err, workspacecatalog.ErrProjectChanged) {
+				t.Fatalf("create service=%s sandbox=%q generation=%d team=%s anchor=%s allocation=%s: %v",
+					request.ServiceRegistrationID, request.SandboxID, request.SandboxGeneration, request.TeamID, anchor, request.AllocationDigest, err)
+			}
 			t.Fatal(err)
 		}
 		output = catalogContractProducerOutput{
@@ -304,6 +322,76 @@ func TestManagedWorkspaceCatalogContractProducer(t *testing.T) {
 			HandoffReport: handoffReport, RestoreReport: restoreReport,
 			CatalogPhases: phases,
 		}
+	case "managed-stop-after-active-failure":
+		if input.Manifest == nil {
+			t.Fatal("managed-stop-after-active-failure requires manifest")
+		}
+		manifest := *input.Manifest
+		serverID := manifest.ServerID
+		if serverID == "" {
+			t.Fatal("managed-stop-after-active-failure requires manifest.serverId")
+		}
+		lastRevision, err := store.Revision(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := model.ValidateManifest(manifest, serverID, lastRevision); err != nil {
+			t.Fatalf("managed-stop-after-active-failure rejected an invalid manifest: %v", err)
+		}
+		now := time.Date(2026, 9, 27, 17, 0, 30, 0, time.UTC)
+		// Durable RF state comes from the legitimate backend manifest through the
+		// same production store paths the reconciler reads.
+		for _, setup := range manifest.SetupOperations {
+			seedReadyProfile(t, store, setup)
+		}
+		for _, sandbox := range manifest.Sandboxes {
+			if err := store.PutSandbox(context.Background(), state.LocalSandbox{
+				ID: sandbox.ID, Name: sandbox.Name, DesiredState: "running", ObservedState: "running",
+				Generation: sandbox.Generation, ObservedGeneration: sandbox.Generation,
+				Lifetime: sandbox.Lifetime, Resources: sandbox.Resources, ImageDigest: manifest.ImageDigest,
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// Workspace records are composed by prior bridge actions; refuse a test
+		// setup gap honestly instead of inventing identities or attestations.
+		for _, service := range manifest.ManagedServices {
+			record, err := store.ManagedProject(context.Background(), service.Workspace.SelectionID)
+			if err != nil || record == nil {
+				t.Fatalf("managed-stop-after-active-failure requires the workspace record for %s (run the catalog create/resolve bridge action first): %v", service.Identity.ServiceRegistrationID, err)
+			}
+		}
+		fixture := loadProducerFixture(t)
+		version := input.Version
+		if version == "" {
+			version = "0.1.30-catalog-producer"
+		}
+		runtimeFake := &fakeManagedRuntime{store: store, fixture: fixture}
+		control := &bridgeFailingControl{fixture: fixture, failureServiceID: input.EnrollmentFailureServiceID}
+		reconciler := &Reconciler{Store: store, ManagedCatalog: catalog, ManagedControl: control, ManagedRuntime: runtimeFake, Now: func() time.Time { return now }}
+		_, fatal := reconciler.reconcileManagedServices(context.Background(), manifest)
+		appliedRevision, err := store.Revision(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := reconciler.Report(context.Background(), serverID, version)
+		if err != nil {
+			t.Fatalf("runtime report: %v", err)
+		}
+		stopInvocations := 0
+		for _, invocation := range runtimeFake.invocations {
+			if invocation.action == string(containers.ManagedSupervisorStop) {
+				stopInvocations++
+			}
+		}
+		output = catalogContractProducerOutput{
+			Action: "managed-stop-after-active-failure", ResolveStatus: "reconciled",
+			Report: &report, ManagedServiceReports: report.ManagedServices,
+			AppliedRevision: appliedRevision, StopInvocations: stopInvocations,
+		}
+		if fatal != nil {
+			output.ReconcileFatal = fatal.Error()
+		}
 	default:
 		t.Fatalf("unsupported catalog producer action %q", input.Action)
 	}
@@ -316,6 +404,37 @@ func TestManagedWorkspaceCatalogContractProducer(t *testing.T) {
 	if err := os.WriteFile(outputPath, encoded, 0600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// bridgeFailingControl is the r734 test-only driver for the
+// managed-stop-after-active-failure bridge action under the frozen contract.
+// Enrollment fails with the real control-plane-shaped error only for the single
+// named active service; every other call uses the captured fixture responses.
+// It never fabricates a native idle, a stop receipt or a consumer validation.
+type bridgeFailingControl struct {
+	fixture          producerFixture
+	failureServiceID string
+}
+
+func (control *bridgeFailingControl) ManagedServiceEndpoint() string {
+	return "https://api.warpmetal.example"
+}
+
+func (control *bridgeFailingControl) ManagedServiceEnrollment(_ context.Context, serviceID string, _ model.ManagedServiceFetchRequestV1) (model.ManagedServiceEnrollmentV1, error) {
+	if control.failureServiceID != "" && serviceID == control.failureServiceID {
+		return model.ManagedServiceEnrollmentV1{}, errors.New("control-plane response 401 (enrollment_rejected)")
+	}
+	if serviceID != control.fixture.ServiceManifest.Identity.ServiceRegistrationID {
+		return model.ManagedServiceEnrollmentV1{}, errors.New("enrollment fixture unavailable for service")
+	}
+	return control.fixture.EnrollmentResponse, nil
+}
+
+func (control *bridgeFailingControl) ManagedServiceInstructions(_ context.Context, serviceID string, _ model.ManagedServiceFetchRequestV1) (model.ManagedServiceInstructionV1, error) {
+	if serviceID != control.fixture.ServiceManifest.Identity.ServiceRegistrationID {
+		return model.ManagedServiceInstructionV1{}, errors.New("instruction fixture unavailable for service")
+	}
+	return control.fixture.InstructionResponse, nil
 }
 
 func requireJSONEOF(decoder *json.Decoder) error {
