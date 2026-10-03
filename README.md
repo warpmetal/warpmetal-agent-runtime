@@ -353,6 +353,12 @@ Lease renewal and fresh native checks refresh source health while retaining a se
 
 Idle worker completion updates only the execution flag when the exact observed source and lifecycle still match, preserving newer readiness observations and lifecycle fences.
 
+The Agent Manager control-plane schemas are owned by the frontend repository:
+`backend/contracts/agent-manager-control-v1.schema.json`, mirrored byte-for-byte
+here as `internal/manager/testdata/backend.schema.json`. The canonical node
+target API is documented at
+[`docs/AGENT_MANAGER_NODE_TARGET_V1.md`](https://github.com/Fractal-Grid-AI/warpmetal_frontend/blob/main/docs/AGENT_MANAGER_NODE_TARGET_V1.md).
+
 ### Managed review execution, findings and hold recovery
 
 Automatic and manual manager reviews follow one durable lifecycle. Runtime first

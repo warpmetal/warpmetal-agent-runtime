@@ -60,10 +60,32 @@ func TestCoordinatorAppliesBackendRecommendResumeAndRecoversLostReleaseLookupOnl
 		"reconcile_intervention_hold": managerHoldReceipt(t, fixture.RecommendResume, "reconcile_intervention_hold", "released", "none_pending"),
 	}, loseActions: map[string]bool{"release_intervention_hold": true}}
 	now := fixture.RecommendTakeover.ValidUntil.Add(-30 * time.Second)
-	coordinator := &Coordinator{Store: store, Control: &fakeManagerControl{}, Helper: helper, Now: func() time.Time { return now }}
+	canonicalCalls := 0
+	canonicalTakeover := model.InsightsManagerTargetEnvelopeV1{FormatVersion: 1, FindingID: fixture.RecommendTakeover.FindingID,
+		FindingRevision: fixture.RecommendTakeover.FindingRevision, Source: fixture.RecommendTakeover.Source, Target: fixture.RecommendTakeover.Target}
+	canonicalResume := model.InsightsManagerTargetEnvelopeV1{FormatVersion: 1, FindingID: fixture.RecommendResume.FindingID,
+		FindingRevision: fixture.RecommendResume.FindingRevision, Source: fixture.RecommendResume.Source, Target: fixture.RecommendResume.Target}
+	control := &fakeManagerControl{canonicalFor: func(string, string) (model.InsightsManagerTargetEnvelopeV1, error) {
+		canonicalCalls++
+		if canonicalCalls == 1 {
+			return canonicalTakeover, nil
+		}
+		return canonicalResume, nil
+	}}
+	coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return now }}
 	if err := coordinator.Apply(context.Background(), model.Manifest{
 		InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{fixture.RecommendTakeoverPolicy},
 		InsightsTakeovers:       []model.InsightsTakeoverManifestV1{fixture.RecommendTakeover},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The Resume releases the member task: align the observed authority to the
+	// released state instead of leaving a stale Busy contradiction.
+	if err := store.PutManagedTaskAuthority(context.Background(), state.LocalManagedTaskAuthority{
+		ServiceRegistrationID: fixture.RecommendResume.Source.ServiceRegistrationID,
+		ServiceGeneration:     fixture.RecommendResume.Source.ServiceGeneration,
+		SandboxGeneration:     fixture.RecommendResume.Source.SandboxGeneration,
+		ObservedAt:            now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +107,7 @@ func TestCoordinatorAppliesBackendRecommendResumeAndRecoversLostReleaseLookupOnl
 		t.Fatal(err)
 	}
 	defer store.Close()
-	coordinator = &Coordinator{Store: store, Control: &fakeManagerControl{}, Helper: helper, Now: func() time.Time { return now }}
+	coordinator = &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return now }}
 	if err := coordinator.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -165,10 +187,62 @@ type fakeManagerControl struct {
 	// error, and the retry must re-send the same idempotent report instead of
 	// treating the run as helper execution_unknown.
 	startReportLoseOnce bool
+	canonical           model.InsightsManagerTargetEnvelopeV1
+	canonicalErr        error
+	canonicalCalls      int
+	events              []string
+	contexts            map[string]model.InsightsManagerTargetEnvelopeV1
+	canonicalFor        func(findingID string, registeredSourceID string) (model.InsightsManagerTargetEnvelopeV1, error)
+}
+
+// rememberCanonical lets the double attest the exact target of a reservation
+// or run report it observed, so existing journeys keep their happy-path
+// semantics unless a test pins a different canonical descriptor.
+func (control *fakeManagerControl) rememberCanonical(findingID string, revision int64, source model.InsightsManagerSourceV1, target model.InsightsManagerTargetV1) {
+	if control.contexts == nil {
+		control.contexts = map[string]model.InsightsManagerTargetEnvelopeV1{}
+	}
+	control.contexts[findingID] = model.InsightsManagerTargetEnvelopeV1{FormatVersion: 1, FindingID: findingID, FindingRevision: revision, Source: source, Target: target}
+}
+
+// GetInsightsManagerTarget is the test double for the r1370 canonical
+// descriptor read. A pinned envelope wins; otherwise the exact context of an
+// observed reservation or run report is replayed.
+func (control *fakeManagerControl) GetInsightsManagerTarget(_ context.Context, findingID string, registeredSourceID string) (model.InsightsManagerTargetEnvelopeV1, error) {
+	control.canonicalCalls++
+	control.events = append(control.events, "canonical")
+	if control.canonicalErr != nil {
+		return model.InsightsManagerTargetEnvelopeV1{}, control.canonicalErr
+	}
+	if control.canonical.FormatVersion == 1 {
+		return control.canonical, nil
+	}
+	if control.canonicalFor != nil {
+		if envelope, err := control.canonicalFor(findingID, registeredSourceID); err != nil {
+			return model.InsightsManagerTargetEnvelopeV1{}, err
+		} else if envelope.FormatVersion == 1 {
+			return envelope, nil
+		}
+	}
+	if control.reservation.FormatVersion == 1 && control.reservation.FindingID == findingID &&
+		control.reservation.Source.RegisteredSourceID == registeredSourceID {
+		return model.InsightsManagerTargetEnvelopeV1{FormatVersion: 1, FindingID: control.reservation.FindingID,
+			FindingRevision: control.reservation.FindingRevision, Source: control.reservation.Source, Target: control.reservation.Target}, nil
+	}
+	if envelope, ok := control.contexts[findingID]; ok && envelope.Source.RegisteredSourceID == registeredSourceID {
+		return envelope, nil
+	}
+	if control.runForReport != nil && control.runForReport.FindingID == findingID && control.runForReport.Source.RegisteredSourceID == registeredSourceID {
+		request := *control.runForReport
+		return model.InsightsManagerTargetEnvelopeV1{FormatVersion: 1, FindingID: request.FindingID, FindingRevision: request.FindingRevision, Source: request.Source, Target: request.Target}, nil
+	}
+	return model.InsightsManagerTargetEnvelopeV1{}, errors.New("canonical descriptor unavailable in test double")
 }
 
 func (control *fakeManagerControl) ReserveInsightsManagerReview(_ context.Context, request model.InsightsManagerReservationRequestV1) (model.InsightsManagerReservationV1, error) {
 	control.reservations = append(control.reservations, request)
+	control.events = append(control.events, "reserve")
+	control.rememberCanonical(request.FindingID, request.FindingRevision, request.Source, request.Target)
 	control.runForReport = &request
 	if control.loseReserve {
 		control.loseReserve = false
@@ -193,6 +267,7 @@ func (control *fakeManagerControl) ReserveInsightsManagerReview(_ context.Contex
 
 func (control *fakeManagerControl) SubmitInsightsManagerRunReport(_ context.Context, report model.InsightsManagerRunReportV1) (model.InsightsManagerActivityV1, error) {
 	control.reports = append(control.reports, report)
+	control.events = append(control.events, "report")
 	if report.State == "reviewing" && control.startReportError != nil {
 		return model.InsightsManagerActivityV1{}, control.startReportError
 	}
@@ -854,7 +929,9 @@ func TestCoordinatorPersistsTakeoverAndLostResumeBeforeLookupOnlyRecovery(t *tes
 		"reconcile_intervention_hold": managerHoldReceipt(t, managerResumeManifest(t, takeover), "reconcile_intervention_hold", "released", "none_pending"),
 	}, loseActions: map[string]bool{"release_intervention_hold": true}}
 	now := func() time.Time { return takeover.ValidUntil.Add(-30 * time.Second) }
-	coordinator := &Coordinator{Store: store, Control: &fakeManagerControl{}, Helper: help, Now: now}
+	canonical := model.InsightsManagerTargetEnvelopeV1{FormatVersion: 1, FindingID: takeover.FindingID, FindingRevision: takeover.FindingRevision, Source: takeover.Source, Target: takeover.Target}
+	control := &fakeManagerControl{canonical: canonical}
+	coordinator := &Coordinator{Store: store, Control: control, Helper: help, Now: now}
 	manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
 		InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{policy}, InsightsTakeovers: []model.InsightsTakeoverManifestV1{takeover}}
 	if err := coordinator.Apply(context.Background(), manifest); err != nil {
@@ -892,7 +969,7 @@ func TestCoordinatorPersistsTakeoverAndLostResumeBeforeLookupOnlyRecovery(t *tes
 		t.Fatal(err)
 	}
 	defer store.Close()
-	coordinator = &Coordinator{Store: store, Control: &fakeManagerControl{}, Helper: help, Now: now}
+	coordinator = &Coordinator{Store: store, Control: control, Helper: help, Now: now}
 	if err := coordinator.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -943,7 +1020,8 @@ func TestCoordinatorPreservesUnsettledUnknownHoldAndRefusesResume(t *testing.T) 
 	helper := &fakeManagerHelper{outputs: map[string][]byte{
 		"acquire_intervention_hold": managerHoldReceipt(t, takeover, "acquire_intervention_hold", "unsettled", "unknown"),
 	}}
-	coordinator := &Coordinator{Store: store, Control: &fakeManagerControl{}, Helper: helper,
+	canonical := model.InsightsManagerTargetEnvelopeV1{FormatVersion: 1, FindingID: takeover.FindingID, FindingRevision: takeover.FindingRevision, Source: takeover.Source, Target: takeover.Target}
+	coordinator := &Coordinator{Store: store, Control: &fakeManagerControl{canonical: canonical}, Helper: helper,
 		Now: func() time.Time { return takeover.ValidUntil.Add(-30 * time.Second) }}
 	manifest := model.Manifest{InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{policy},
 		InsightsTakeovers: []model.InsightsTakeoverManifestV1{takeover}}
@@ -1374,7 +1452,8 @@ func managerReviewReceipt(t *testing.T, fixture managerCoordinatorFixture, actio
 
 func managerRequestForReview(review model.InsightsManagerReviewManifestV1) *model.InsightsManagerReservationRequestV1 {
 	return &model.InsightsManagerReservationRequestV1{RequestID: "req_manual_runtime0001", FindingID: review.FindingID,
-		RuleID: review.RuleID, RecipeID: review.RecipeID}
+		FindingRevision: review.FindingRevision, PolicyRevision: review.PolicyRevision, RuleID: review.RuleID, RecipeID: review.RecipeID,
+		Source: review.Source, Target: review.Target}
 }
 
 func managerInsightBatch(fixture managerCoordinatorFixture, policyRevision int64, batchID string) model.InsightBatchV1 {

@@ -91,6 +91,8 @@ func newIntakeJourney(t *testing.T, batchPolicyRevision int64) *intakeJourney {
 	if err := store.PutManagerRun(ctx, state.LocalManagerRun{Manifest: prior, Phase: "recommended", StartedAt: now.Add(-time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
+	control.canonical = model.InsightsManagerTargetEnvelopeV1{FormatVersion: 1, FindingID: review.FindingID,
+		FindingRevision: review.FindingRevision, Source: review.Source, Target: review.Target}
 	return &intakeJourney{fixture: fixture, policy: policy, store: store, control: control, coordinator: coordinator,
 		finding: finding, batch: batch, receipt: receipt, review: review}
 }

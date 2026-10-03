@@ -20,7 +20,9 @@ import (
 // policyStubControl and policyStubHelper satisfy the manager coordinator's
 // action-bearing dependencies without granting any authority: the early policy
 // apply must never need them.
-type policyStubControl struct{}
+type policyStubControl struct {
+	canonical *model.InsightsManagerTargetEnvelopeV1
+}
 
 func (policyStubControl) ReserveInsightsManagerReview(context.Context, model.InsightsManagerReservationRequestV1) (model.InsightsManagerReservationV1, error) {
 	return model.InsightsManagerReservationV1{}, errors.New("stub control has no review authority")
@@ -28,6 +30,13 @@ func (policyStubControl) ReserveInsightsManagerReview(context.Context, model.Ins
 
 func (policyStubControl) SubmitInsightsManagerRunReport(context.Context, model.InsightsManagerRunReportV1) (model.InsightsManagerActivityV1, error) {
 	return model.InsightsManagerActivityV1{}, errors.New("stub control has no run authority")
+}
+
+func (control policyStubControl) GetInsightsManagerTarget(_ context.Context, findingID string, registeredSourceID string) (model.InsightsManagerTargetEnvelopeV1, error) {
+	if control.canonical != nil && control.canonical.FindingID == findingID && control.canonical.Source.RegisteredSourceID == registeredSourceID {
+		return *control.canonical, nil
+	}
+	return model.InsightsManagerTargetEnvelopeV1{}, errors.New("stub control has no canonical target read")
 }
 
 type policyStubHelper struct{}

@@ -164,6 +164,36 @@ func (c Client) ReserveInsightsManagerReview(
 	return result, err
 }
 
+// GetInsightsManagerTarget performs the r1370 node-authorized canonical
+// descriptor read: GET /internal/runtime/insights/manager/target with exactly
+// findingId and registeredSourceId, no body, and a closed typed response.
+func (c Client) GetInsightsManagerTarget(ctx context.Context, findingID string, registeredSourceID string) (model.InsightsManagerTargetEnvelopeV1, error) {
+	var result model.InsightsManagerTargetEnvelopeV1
+	query := url.Values{}
+	query.Set("findingId", findingID)
+	query.Set("registeredSourceId", registeredSourceID)
+	path := "/internal/runtime/insights/manager/target?" + query.Encode()
+	if err := c.request(ctx, http.MethodGet, path, c.NodeToken, nil, &result, true); err != nil {
+		return model.InsightsManagerTargetEnvelopeV1{}, err
+	}
+	if result.FormatVersion != 1 || result.FindingID != findingID || result.FindingRevision < 1 ||
+		result.Source.RegisteredSourceID != registeredSourceID || !validCanonicalTarget(result.Target) {
+		return model.InsightsManagerTargetEnvelopeV1{}, errors.New("insights manager target response is invalid")
+	}
+	return result, nil
+}
+
+func validCanonicalTarget(target model.InsightsManagerTargetV1) bool {
+	if (target.TaskID == nil) != (target.TaskAttempt == nil) || target.TaskAttempt != nil && *target.TaskAttempt < 1 {
+		return false
+	}
+	work := target.WorkID != nil
+	if work != (target.WorkRevision != nil) || work != (target.BindingID != nil) || work != (target.BindingRevision != nil) {
+		return false
+	}
+	return !work || *target.WorkRevision >= 1 && *target.BindingRevision >= 1
+}
+
 func (c Client) SubmitInsightsManagerRunReport(
 	ctx context.Context,
 	report model.InsightsManagerRunReportV1,
@@ -238,6 +268,9 @@ func (c Client) request(
 	}
 	origin.Path = path
 	origin.RawQuery = ""
+	if index := strings.IndexByte(path, '?'); index >= 0 {
+		origin.Path, origin.RawQuery = path[:index], path[index+1:]
+	}
 	var payload io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)

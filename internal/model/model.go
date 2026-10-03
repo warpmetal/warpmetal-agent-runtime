@@ -551,6 +551,17 @@ type InsightsManagerTargetV1 struct {
 	BindingRevision *int64  `json:"bindingRevision"`
 }
 
+// InsightsManagerTargetEnvelopeV1 is the closed node-authorized canonical
+// target read (r1370): GET
+// /internal/runtime/insights/manager/target?findingId=<id>&registeredSourceId=<id>.
+type InsightsManagerTargetEnvelopeV1 struct {
+	FormatVersion   int                     `json:"formatVersion"`
+	FindingID       string                  `json:"findingId"`
+	FindingRevision int64                   `json:"findingRevision"`
+	Source          InsightsManagerSourceV1 `json:"source"`
+	Target          InsightsManagerTargetV1 `json:"target"`
+}
+
 type InsightsManagerProfileV1 struct {
 	ProfileID       string `json:"profileId"`
 	ProfileRevision int64  `json:"profileRevision"`
