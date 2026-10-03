@@ -23,6 +23,7 @@ import (
 type Control interface {
 	ReserveInsightsManagerReview(context.Context, model.InsightsManagerReservationRequestV1) (model.InsightsManagerReservationV1, error)
 	SubmitInsightsManagerRunReport(context.Context, model.InsightsManagerRunReportV1) (model.InsightsManagerActivityV1, error)
+	GetInsightsManagerTarget(context.Context, string, string) (model.InsightsManagerTargetEnvelopeV1, error)
 }
 
 type Helper interface {
@@ -734,7 +735,7 @@ func (c *Coordinator) reviewAuthority(ctx context.Context, review model.Insights
 		}
 		evidence = managerFindingEvidence(*finding)
 	}
-	if err := c.localTargetAuthority(ctx, review.Source, review.Target); err != nil {
+	if err := c.localTargetAuthority(ctx, review.FindingID, review.FindingRevision, review.Source, review.Target); err != nil {
 		return nil, nil, err
 	}
 	return capability, evidence, nil
@@ -760,33 +761,66 @@ func (c *Coordinator) localServiceAuthority(ctx context.Context, source model.In
 	return nil
 }
 
-func (c *Coordinator) localTargetAuthority(ctx context.Context, source model.InsightsManagerSourceV1, target model.InsightsManagerTargetV1) error {
-	if target.TaskID != nil {
-		task, err := c.Store.ManagedTaskAuthority(ctx, source.ServiceRegistrationID)
-		if err != nil || task == nil || !task.Busy || task.TaskID == nil || task.TaskAttempt == nil ||
-			task.ServiceGeneration != source.ServiceGeneration || task.SandboxGeneration != source.SandboxGeneration ||
-			*task.TaskID != *target.TaskID || *task.TaskAttempt != *target.TaskAttempt ||
-			task.ObservedAt.After(c.now().Add(5*time.Second)) || c.now().Sub(task.ObservedAt) > 120*time.Second {
-			return errors.Join(err, errors.New("manager task authority changed"))
-		}
+func (c *Coordinator) localTargetAuthority(ctx context.Context, findingID string, findingRevision int64, source model.InsightsManagerSourceV1, target model.InsightsManagerTargetV1) error {
+	envelope, err := c.Control.GetInsightsManagerTarget(ctx, findingID, source.RegisteredSourceID)
+	if err != nil {
+		return err
 	}
-	if target.WorkID != nil {
-		registration, err := c.Store.ContinuityRegistration(ctx, *target.BindingID)
-		if err != nil || registration == nil || registration.ObservedStatus != "verified" || !registration.Manifest.ContinuityEnabled ||
-			registration.Manifest.DesiredState != "active" || registration.Manifest.Identity.WorkID != *target.WorkID ||
-			registration.Manifest.Identity.WorkspaceEpoch != source.WorkspaceEpoch ||
-			registration.Manifest.Identity.SandboxGeneration != source.SandboxGeneration ||
-			registration.Manifest.Identity.ExpectedRevision != *target.WorkRevision ||
-			registration.Manifest.Binding.BindingID != *target.BindingID ||
-			registration.Manifest.Binding.BindingRevision != *target.BindingRevision ||
-			registration.Manifest.Binding.RegisteredSourceID != source.RegisteredSourceID ||
-			registration.Manifest.Binding.ServiceRegistrationID != source.ServiceRegistrationID ||
-			registration.Manifest.Binding.NativeSessionID != source.NativeSessionID ||
-			registration.ServiceGeneration != source.ServiceGeneration ||
-			(target.TaskID != nil && (registration.Manifest.Identity.TaskID == nil || registration.Manifest.Identity.TaskAttempt == nil ||
-				*registration.Manifest.Identity.TaskID != *target.TaskID || *registration.Manifest.Identity.TaskAttempt != *target.TaskAttempt)) {
-			return errors.Join(err, errors.New("manager Work binding authority changed"))
-		}
+	if envelope.FormatVersion != 1 || envelope.FindingID != findingID || envelope.FindingRevision != findingRevision || envelope.Source != source {
+		return errors.New("manager canonical descriptor authority changed")
+	}
+	if !reflect.DeepEqual(envelope.Target, target) {
+		return errors.New("manager canonical target changed")
+	}
+	if err := c.localWorkAuthority(ctx, source, target); err != nil {
+		return err
+	}
+	return c.localBusyTaskConsistency(ctx, source, target)
+}
+
+// localWorkAuthority keeps the genuine Work context binding checks: a
+// task-bearing target must match the current verified Work registration for
+// this source. Registration task provenance is not part of Work authority.
+func (c *Coordinator) localWorkAuthority(ctx context.Context, source model.InsightsManagerSourceV1, target model.InsightsManagerTargetV1) error {
+	if target.WorkID == nil {
+		return nil
+	}
+	registration, err := c.Store.ContinuityRegistration(ctx, *target.BindingID)
+	if err != nil || registration == nil || registration.ObservedStatus != "verified" || !registration.Manifest.ContinuityEnabled ||
+		registration.Manifest.DesiredState != "active" || registration.Manifest.Identity.WorkID != *target.WorkID ||
+		registration.Manifest.Identity.WorkspaceEpoch != source.WorkspaceEpoch ||
+		registration.Manifest.Identity.SandboxGeneration != source.SandboxGeneration ||
+		registration.Manifest.Identity.ExpectedRevision != *target.WorkRevision ||
+		registration.Manifest.Binding.BindingID != *target.BindingID ||
+		registration.Manifest.Binding.BindingRevision != *target.BindingRevision ||
+		registration.Manifest.Binding.RegisteredSourceID != source.RegisteredSourceID ||
+		registration.Manifest.Binding.ServiceRegistrationID != source.ServiceRegistrationID ||
+		registration.Manifest.Binding.NativeSessionID != source.NativeSessionID ||
+		registration.ServiceGeneration != source.ServiceGeneration {
+		return errors.Join(err, errors.New("manager Work binding authority changed"))
+	}
+	return nil
+}
+
+// localBusyTaskConsistency treats the live member-task authority as additional
+// defense only: when the worker reports Busy it must match the canonical task,
+// while an idle or absent observation grants nothing and cannot veto the
+// canonical waiting/cancel task.
+func (c *Coordinator) localBusyTaskConsistency(ctx context.Context, source model.InsightsManagerSourceV1, target model.InsightsManagerTargetV1) error {
+	task, err := c.Store.ManagedTaskAuthority(ctx, source.ServiceRegistrationID)
+	if err != nil {
+		return err
+	}
+	if task == nil || !task.Busy || task.TaskID == nil || task.TaskAttempt == nil {
+		// Idle or absent authority grants nothing and cannot veto the
+		// canonical waiting/cancel task.
+		return nil
+	}
+	if target.TaskID == nil || target.TaskAttempt == nil ||
+		*task.TaskID != *target.TaskID || *task.TaskAttempt != *target.TaskAttempt ||
+		task.ServiceGeneration != source.ServiceGeneration || task.SandboxGeneration != source.SandboxGeneration ||
+		task.ObservedAt.After(c.now().Add(5*time.Second)) || c.now().Sub(task.ObservedAt) > 120*time.Second {
+		return errors.New("manager Busy task contradicts canonical target")
 	}
 	return nil
 }
@@ -1041,7 +1075,17 @@ func (c *Coordinator) ObserveAcknowledgedInsightBatch(ctx context.Context, batch
 		if err != nil || service == nil {
 			return err
 		}
-		target, err := c.automaticDescriptorTarget(ctx, source, service)
+		reservationID := opaqueID("reservation_", batch.BatchID+"\x00"+finding.FindingID)
+		existing, err := c.Store.ManagerReservation(ctx, reservationID)
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			// An existing persisted intent is replayed by Recover; the
+			// canonical read must never precede that stored lookup.
+			continue
+		}
+		target, err := c.canonicalDescriptorTarget(ctx, finding, source, service)
 		if err != nil {
 			return err
 		}
@@ -1052,7 +1096,7 @@ func (c *Coordinator) ObserveAcknowledgedInsightBatch(ctx context.Context, batch
 		if expiresIn < 1 {
 			continue
 		}
-		request := model.InsightsManagerReservationRequestV1{FormatVersion: 1, ReservationID: opaqueID("reservation_", batch.BatchID+"\x00"+finding.FindingID), RequestID: opaqueID("req_manager_", batch.BatchID+"\x00"+finding.FindingID), Manual: false, FindingID: finding.FindingID, FindingRevision: finding.Revision, PolicyRevision: policy.PolicyRevision, RuleID: finding.RuleID, RecipeID: recipe, ProviderRouteDigest: capability.ProviderRouteDigest, Source: source, Target: target, Budget: model.InsightsManagerBudgetV1{ModelRequests: policy.EffectiveLimits.PerRunModelRequests, InputTokens: policy.EffectiveLimits.PerRunInputTokens, OutputTokens: policy.EffectiveLimits.PerRunOutputTokens}, ExpiresInSeconds: expiresIn}
+		request := model.InsightsManagerReservationRequestV1{FormatVersion: 1, ReservationID: reservationID, RequestID: opaqueID("req_manager_", batch.BatchID+"\x00"+finding.FindingID), Manual: false, FindingID: finding.FindingID, FindingRevision: finding.Revision, PolicyRevision: policy.PolicyRevision, RuleID: finding.RuleID, RecipeID: recipe, ProviderRouteDigest: capability.ProviderRouteDigest, Source: source, Target: target, Budget: model.InsightsManagerBudgetV1{ModelRequests: policy.EffectiveLimits.PerRunModelRequests, InputTokens: policy.EffectiveLimits.PerRunInputTokens, OutputTokens: policy.EffectiveLimits.PerRunOutputTokens}, ExpiresInSeconds: expiresIn}
 		intent := state.LocalManagerReservation{Request: request, Phase: "pending"}
 		if err := c.Store.PutManagerReservation(ctx, intent); err != nil {
 			return err
@@ -1064,60 +1108,51 @@ func (c *Coordinator) ObserveAcknowledgedInsightBatch(ctx context.Context, batch
 	return nil
 }
 
-// automaticDescriptorTarget returns the automatic reservation target in the
-// exact shape the backend descriptor derives from the same continuity
-// registration: the service team/member, the registration's task fields when
-// present, and the verified Work binding fields. With no verified binding for
-// this source the minimal team/member target is used, exactly as the backend
-// descriptor does. The correction keeps the automatic branch consistent with
-// the descriptor so a reservation is never refused for a target mismatch.
-func (c *Coordinator) automaticDescriptorTarget(ctx context.Context, source model.InsightsManagerSourceV1, service *state.LocalManagedService) (model.InsightsManagerTargetV1, error) {
-	target := model.InsightsManagerTargetV1{TeamID: service.Manifest.Identity.TeamID, MemberID: service.Manifest.Identity.MemberID}
-	registrations, err := c.Store.ContinuityRegistrations(ctx)
+// canonicalDescriptorTarget reads the fresh node-authorized canonical
+// descriptor and returns the exact automatic target, validating the local
+// verified Work projection and treating a present Busy worker task as
+// additional defense. Task identity never comes from registration provenance.
+func (c *Coordinator) canonicalDescriptorTarget(ctx context.Context, finding model.InsightFindingV1, source model.InsightsManagerSourceV1, service *state.LocalManagedService) (model.InsightsManagerTargetV1, error) {
+	envelope, err := c.Control.GetInsightsManagerTarget(ctx, finding.FindingID, source.RegisteredSourceID)
 	if err != nil {
 		return model.InsightsManagerTargetV1{}, err
 	}
-	for i := range registrations {
-		registration := &registrations[i]
-		if registration.ObservedStatus != "verified" ||
-			registration.Manifest.Binding.RegisteredSourceID != source.RegisteredSourceID ||
-			registration.Manifest.Identity.SandboxGeneration != source.SandboxGeneration {
-			continue
-		}
-		workID := registration.Manifest.Identity.WorkID
-		workRevision := registration.Manifest.Identity.ExpectedRevision
-		bindingID := registration.Manifest.Binding.BindingID
-		bindingRevision := registration.Manifest.Binding.BindingRevision
-		target.WorkID = &workID
-		target.WorkRevision = &workRevision
-		target.BindingID = &bindingID
-		target.BindingRevision = &bindingRevision
-		if registration.Manifest.Identity.TaskID != nil && registration.Manifest.Identity.TaskAttempt != nil {
-			target.TaskID = registration.Manifest.Identity.TaskID
-			target.TaskAttempt = registration.Manifest.Identity.TaskAttempt
-		}
-		return target, nil
+	if envelope.FormatVersion != 1 || envelope.FindingID != finding.FindingID || envelope.FindingRevision != finding.Revision || envelope.Source != source {
+		return model.InsightsManagerTargetV1{}, errors.New("manager canonical descriptor authority changed")
+	}
+	target := envelope.Target
+	if target.TeamID != service.Manifest.Identity.TeamID || target.MemberID != service.Manifest.Identity.MemberID {
+		return model.InsightsManagerTargetV1{}, errors.New("manager canonical target service changed")
+	}
+	if err := c.localWorkAuthority(ctx, source, target); err != nil {
+		return model.InsightsManagerTargetV1{}, err
+	}
+	if err := c.localBusyTaskConsistency(ctx, source, target); err != nil {
+		return model.InsightsManagerTargetV1{}, err
 	}
 	return target, nil
 }
 
-// sourceStaleReserveRefusal reports whether the control plane refused an
-// automatic reservation specifically because the continuity source is stale.
-func sourceStaleReserveRefusal(err error) bool {
+// staleReserveRefusal reports whether the control plane refused an automatic
+// reservation with a definitive typed stale condition (stale source or stale
+// canonical target). Unrecognized 409s and transport errors are not stale.
+func staleReserveRefusal(err error) bool {
 	var responseErr *api.ResponseError
-	return errors.As(err, &responseErr) && responseErr.Status == 409 && responseErr.Code == "manager_source_stale"
+	return errors.As(err, &responseErr) && responseErr.Status == 409 &&
+		(responseErr.Code == "manager_source_stale" || responseErr.Code == "manager_target_stale")
 }
 
 // settleUnreservedSourceStale retires a PENDING AUTOMATIC reservation that the
-// control plane refused specifically because the continuity source is stale and
-// that never created a backend reservation, run or provider execution: the
+// control plane refused with a definitive typed stale condition (source or
+// canonical target) and that never created a backend reservation, run or
+// provider execution: the
 // intent keeps its request intact as evidence and only moves to the terminal
 // "unused" phase so the pass can complete and the source can refresh. A manual
 // intent, a non-pending intent, an existing reservation, an existing local run
 // for the same reservation or request, and every other refusal fail closed and
 // keep the original error.
 func (c *Coordinator) settleUnreservedSourceStale(ctx context.Context, intent *state.LocalManagerReservation, cause error) (bool, error) {
-	if !sourceStaleReserveRefusal(cause) || intent.Phase != "pending" || intent.Request.Manual || intent.Reservation != nil {
+	if !staleReserveRefusal(cause) || intent.Phase != "pending" || intent.Request.Manual || intent.Reservation != nil {
 		return false, nil
 	}
 	runs, err := c.Store.ManagerRuns(ctx)
@@ -1139,22 +1174,10 @@ func (c *Coordinator) settleUnreservedSourceStale(ctx context.Context, intent *s
 
 func (c *Coordinator) completeAutomaticReservation(ctx context.Context, intent *state.LocalManagerReservation) error {
 	request := intent.Request
-	// Re-derive the descriptor target on every completion attempt so a pending
-	// automatic reservation created before the descriptor-shape correction
-	// recovers without clearing or migration.
-	service, err := c.Store.ManagedService(ctx, request.Source.ServiceRegistrationID)
-	if err != nil {
-		return err
-	}
-	if service == nil {
-		return errors.New("manager reservation service is unavailable")
-	}
-	target, err := c.automaticDescriptorTarget(ctx, request.Source, service)
-	if err != nil {
-		return err
-	}
-	request.Target = target
-	intent.Request = request
+	// The persisted request is immutable: recovery replays the exact stored
+	// body and IDs and never recomputes or retargets it. A fresh canonical
+	// comparison is enforced by localTargetAuthority before any paid/native
+	// effect.
 	storedCapability, err := c.Store.ManagerCapability(ctx, request.Source.RegisteredSourceID)
 	if err != nil || storedCapability == nil {
 		return errors.Join(err, errors.New("manager reservation source catalog is unavailable"))
@@ -1354,7 +1377,7 @@ func (c *Coordinator) takeoverAuthority(ctx context.Context, manifest model.Insi
 	if err := c.localServiceAuthority(ctx, manifest.Source, manifest.Target); err != nil {
 		return err
 	}
-	if err := c.localTargetAuthority(ctx, manifest.Source, manifest.Target); err != nil {
+	if err := c.localTargetAuthority(ctx, manifest.FindingID, manifest.FindingRevision, manifest.Source, manifest.Target); err != nil {
 		return err
 	}
 	return nil

@@ -226,6 +226,8 @@ func newPendingPauseJourney(t *testing.T) *pendingPauseJourney {
 		Action: "pause_manager_and_hold_member", FindingID: "finding_pendingpause0001", FindingRevision: 1,
 		PolicyRevision: 5, RunGeneration: 5, HoldID: "hold_pendingpause0001", HoldRevision: 1, HoldState: "active",
 		Source: exactSource, Target: target, ValidUntil: journey.fresh.ValidUntil}
+	envelope := model.InsightsManagerTargetEnvelopeV1{FormatVersion: 1, FindingID: pause.FindingID, FindingRevision: pause.FindingRevision, Source: pause.Source, Target: pause.Target}
+	journey.coordinator.Control = policyStubControl{canonical: &envelope}
 	helper := &pendingPauseHelper{now: now, loseAcquire: true}
 	journey.coordinator.Helper = helper
 	if err := journey.coordinator.Apply(ctx, model.Manifest{InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{journey.fresh},
