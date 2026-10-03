@@ -417,10 +417,20 @@ func TestManagedWorkerStatusRejectsMissingMalformedOrSubstitutedNestedAuthority(
 }
 
 func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishingSource(t *testing.T) {
-	for _, role := range []string{"worker", "reviewer", "manager"} {
-		t.Run(role, func(t *testing.T) {
+	for _, variant := range []struct{ role, contract string }{
+		{"worker", ""}, {"worker", "0.1.32"},
+		{"reviewer", ""},
+		{"manager", ""}, {"manager", "0.1.32"},
+	} {
+		role, contract := variant.role, variant.contract
+		name := role
+		if contract != "" {
+			name += "/negotiated_wire32"
+		}
+		t.Run(name, func(t *testing.T) {
 			fixture := loadProducerFixture(t)
 			fixture.ServiceManifest.Identity.Role = role
+			fixture.ServiceManifest.RuntimeContractVersion = contract
 			// Reused/refreshed sandboxes and new services have different generations.
 			fixture.ServiceManifest.Identity.SandboxGeneration = 2
 			fixture.SetupManifest.SandboxGeneration = 2
@@ -471,6 +481,7 @@ func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishin
 			fixture.ServiceManifest.Workspace.RootAttestation = workspace.Report.RootAttestation
 			control := &fakeManagedControl{fixture: fixture}
 			runtime := &fakeManagedRuntime{store: store, serviceID: fixture.ServiceManifest.Identity.ServiceRegistrationID, fixture: fixture, failStart: true, failRebind: true}
+			probeRuntimes := []*fakeManagedRuntime{runtime}
 			fixedNow := func() time.Time { return time.Date(2026, 9, 27, 17, 0, 30, 0, time.UTC) }
 			reconciler := &Reconciler{Store: store, ManagedCatalog: catalog, ManagedControl: control, ManagedRuntime: runtime, Now: fixedNow}
 			manifest := model.Manifest{ServerID: fixture.ServiceManifest.Identity.ServerID, DesiredRevision: fixture.ServiceManifest.DesiredRevision, ManagedServices: []model.ManagedServiceV1{fixture.ServiceManifest}}
@@ -498,6 +509,7 @@ func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishin
 			defer store.Close()
 			catalog = &workspacecatalog.Catalog{State: store, Now: fixedNow}
 			runtime = &fakeManagedRuntime{store: store, serviceID: fixture.ServiceManifest.Identity.ServiceRegistrationID, fixture: fixture, failStart: true}
+			probeRuntimes = append(probeRuntimes, runtime)
 			reconciler = &Reconciler{Store: store, ManagedCatalog: catalog, ManagedControl: control, ManagedRuntime: runtime, Now: fixedNow}
 			pending, err = store.ManagedService(context.Background(), fixture.ServiceManifest.Identity.ServiceRegistrationID)
 			if err != nil || pending == nil || pending.Report.ObservedState != "registering" || pending.Report.ReceiptDigest != pendingDigest {
@@ -521,6 +533,7 @@ func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishin
 			}
 			secondInvocations := append([]managedInvocation(nil), runtime.invocations...)
 			runtime = &fakeManagedRuntime{store: store, serviceID: fixture.ServiceManifest.Identity.ServiceRegistrationID, fixture: fixture}
+			probeRuntimes = append(probeRuntimes, runtime)
 			reconciler = &Reconciler{Store: store, ManagedCatalog: catalog, ManagedControl: control, ManagedRuntime: runtime, Now: fixedNow}
 			if _, err := reconciler.reconcileManagedServices(context.Background(), manifest); err != nil {
 				t.Fatal(err)
@@ -699,6 +712,7 @@ func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishin
 			defer store.Close()
 			catalog = &workspacecatalog.Catalog{State: store, Now: fixedNow}
 			runtime = &fakeManagedRuntime{store: store, serviceID: fixture.ServiceManifest.Identity.ServiceRegistrationID, fixture: fixture}
+			probeRuntimes = append(probeRuntimes, runtime)
 			reconciler = &Reconciler{Store: store, ManagedCatalog: catalog, ManagedControl: control, ManagedRuntime: runtime, Now: fixedNow}
 			for revision, desired := range []string{"paused", "stopped", "retired"} {
 				fixture.ServiceManifest.OperationID = fmt.Sprintf("op_managed_%s_0001", desired)
@@ -777,6 +791,11 @@ func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishin
 			if err != nil || len(sources) != 1 || sources[0].Report.Availability != "unavailable" || stringValue(sources[0].Report.Reason) != "service_retired" {
 				t.Fatalf("retired source tombstone = %#v %v", sources, err)
 			}
+			var probeInvocations []managedInvocation
+			for _, probe := range probeRuntimes {
+				probeInvocations = append(probeInvocations, probe.invocations...)
+			}
+			assertManagedCapabilityProbeEquality(t, probeInvocations, fixture)
 		})
 	}
 }
@@ -1323,6 +1342,234 @@ func extractSandboxValidatorScriptsFromImage(t *testing.T, image string) (string
 		}
 	}
 	return worker, supervisor
+}
+
+// managedCapabilitySeamAdapter drives the unchanged packaged Supervisor
+// negotiation/receipt code on a fixture sandbox root. It is a non-provider
+// seam: the guard GET is served loopback with the actual observed guard
+// version and the metadata is the actual published native metadata. It never
+// replays a live Start and never executes native code.
+const managedCapabilitySeamAdapter = `
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import socketserver
+import sys
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler
+from pathlib import Path
+
+payload = json.load(sys.stdin)
+start = payload["start"]
+status = payload["status"]
+manager = payload["manager"]
+guard = payload["guard"]
+
+base = Path(tempfile.mkdtemp(prefix="wire-seam-"))
+instance = base / ".warpmetal/opencode/instances/default"
+instance.mkdir(parents=True)
+digest = start["profileDigest"]
+version_root = base / ".warpmetal/tools/opencode" / digest.removeprefix("sha256:")
+(version_root / "install/bin").mkdir(parents=True)
+binary = version_root / "install/bin/opencode"
+binary.write_bytes(b"fixture-managed-binary\n")
+(version_root / "install/.warpmetal-binary.sha256").write_text(hashlib.sha256(binary.read_bytes()).hexdigest())
+(version_root / ".warpmetal-ready.json").write_text(json.dumps({
+    "profileId": "opencode", "profileDigest": digest, "profileRevision": 2, "status": "ready",
+}))
+(version_root / "native-metadata.json").write_text(json.dumps({
+    "formatVersion": 1,
+    "archiveSha256": guard["artifactSha256"],
+    "manifest": {
+        "version": guard["customVersion"],
+        "sourceRevision": guard["sourceRevision"],
+        "patchDigest": guard["patchDigest"],
+    },
+}))
+(instance / "credentials.json").write_text(json.dumps({"password": "fixture-guard-password-0123456789"}))
+
+class GuardHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = json.dumps({"data": {"nativeGuardVersion": guard["guardVersion"]}}).encode()
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+server = socketserver.TCPServer(("127.0.0.1", 0), GuardHandler)
+port = server.server_address[1]
+threading.Thread(target=server.serve_forever, daemon=True).start()
+
+state = {
+    "phase": "stopped",
+    "version": guard["customVersion"],
+    "profileDigest": digest,
+    "sessionId": "ses_fixtureprobe0001",
+    "port": port,
+    "managerPluginDigest": manager["managerPluginDigest"],
+    "managerPluginLoaded": True,
+    "managerProfile": manager["managerProfile"],
+    "managerProviderId": manager["managerProviderId"],
+    "managerModelId": manager["managerModelId"],
+    "managerNativeProtocol": manager["managerNativeProtocol"],
+    "managerProviderRouteDigest": manager["managerProviderRouteDigest"],
+    "managerRecommendAvailable": True,
+    "managerCapabilityReason": None,
+    "managerRecipeIds": manager["managerRecipeIds"],
+}
+(instance / "state.json").write_text(json.dumps(state))
+
+loader = importlib.machinery.SourceFileLoader("wire_seam", sys.argv[1])
+spec = importlib.util.spec_from_loader("wire_seam", loader)
+module = importlib.util.module_from_spec(spec)
+loader.exec_module(module)
+
+def status_document(identity, contract_source):
+    document = {
+        "schemaVersion": 1,
+        "sandboxId": identity["sandboxId"],
+        "instance": identity["instance"],
+        "profileId": identity["profileId"],
+        "profileDigest": identity["profileDigest"],
+        "probe": False,
+        "requestTimeoutSeconds": 30,
+    }
+    if contract_source.get("runtimeContractVersion"):
+        document["runtimeContractVersion"] = contract_source["runtimeContractVersion"]
+    return document
+
+supervisor = module.Supervisor(root=base)
+print(json.dumps({
+    "startReceipt": supervisor.run("status", status_document(start, start)),
+    "statusReceipt": supervisor.run("status", status_document(status, status)),
+}))
+`
+
+// assertManagedCapabilityProbeEquality feeds the actual RF-emitted start and
+// supervisor status request payloads from the journey capture through the
+// unchanged packaged Supervisor negotiation/receipt seam and the actual
+// managedManagerCapability consumer. Labels: the RF payloads are replayed
+// actual emissions; the receipts are helper-generated by the packaged
+// Supervisor code on a fixture root with the actual observed guard metadata;
+// this is not a live Start or an end-to-end claim.
+func assertManagedCapabilityProbeEquality(t *testing.T, invocations []managedInvocation, fixture producerFixture) {
+	t.Helper()
+	sandboxSource := os.Getenv("WARP_METAL_SANDBOX_SOURCE")
+	image := os.Getenv("WARP_METAL_SANDBOX_IMAGE")
+	var supervisorScript string
+	switch {
+	case sandboxSource != "":
+		supervisorScript = filepath.Join(sandboxSource, "runner", "warpmetal_opencode_supervisor.py")
+	case image != "":
+		_, supervisorScript = extractSandboxValidatorScriptsFromImage(t, image)
+	default:
+		if os.Getenv("WARPMETAL_WIRE_CONTRACT_EVIDENCE") != "" {
+			t.Fatal("WARP_METAL_SANDBOX_SOURCE or WARP_METAL_SANDBOX_IMAGE is required for the packaged Supervisor seam")
+		}
+		t.Skip("packaged Supervisor seam unavailable")
+	}
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var startRequest, statusRequest map[string]any
+	for _, invocation := range invocations {
+		// Supervisor probes carry the sandbox/profile identity; the broker
+		// worker status carries a command envelope instead.
+		if _, ok := invocation.request["profileId"]; !ok {
+			continue
+		}
+		switch invocation.action {
+		case "start":
+			startRequest = invocation.request
+		case "status":
+			statusRequest = invocation.request
+		}
+	}
+	if startRequest == nil || statusRequest == nil {
+		t.Fatalf("journey did not emit the start/status probes: %#v", invocations)
+	}
+	canonical := func(request map[string]any) map[string]any {
+		copy := make(map[string]any, len(request))
+		for key, value := range request {
+			copy[key] = value
+		}
+		// Bind the canonical 24-character sandbox identity the packaged
+		// validator requires; the RF fixture identity is not canonical.
+		copy["sandboxId"] = "sbx_0123456789abcdef01234567"
+		return copy
+	}
+	guard := map[string]any{
+		"guardVersion":   "warpmetal.atomic-input.v1",
+		"customVersion":  "2.0.14-wm.1",
+		"sourceRevision": "08462140ec0de1e4b17d4a353d8d5827f53cf7b0",
+		"patchDigest":    "sha256:5bcf0104d17a31d5141d9ad773b7ca7fbeddeb71a4a36689d5baee9f72f0f47b",
+		"artifactSha256": "sha256:69e7db9c21c2de97317b6aab50e06de3fc0a622fdd70ba4f305088825d65e844",
+		"binarySha256":   "sha256:efc368d45d9226386d8a235cb85adfa17c5bff32f9208630cd771707378e92f9",
+	}
+	manager := map[string]any{
+		"managerPluginDigest": "sha256:f7d9cec7e6bcfef134b0d27c5bd1526a0199859b5954c0dae523ff843eaf7a94",
+		"managerProfile": map[string]any{
+			"profileId": "warpmetal-insights-manager", "profileRevision": 1,
+			"profileDigest": "sha256:4ea596774c5b66bfc395bda3f6c00765d4e89e22f270235a327872b3760e5e17",
+		},
+		"managerProviderId":          "deepseek",
+		"managerModelId":             "deepseek-flash",
+		"managerNativeProtocol":      "openai_chat",
+		"managerProviderRouteDigest": "sha256:09434ec9b4a8638d088a0ca5c52e52f0161a1f74b56f9b966227b7dcae01305e",
+		"managerRecipeIds": []string{
+			"inspect_first_failure@1", "check_repeated_operation@1", "refine_query@1", "inspect_active_phase@1",
+		},
+	}
+	requestPayload, err := json.Marshal(map[string]any{
+		"start": canonical(startRequest), "status": canonical(statusRequest),
+		"guard": guard, "manager": manager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.CommandContext(context.Background(), python, "-c", managedCapabilitySeamAdapter, supervisorScript)
+	command.Stdin = bytes.NewReader(requestPayload)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("packaged Supervisor seam failed: %v: %s", err, strings.TrimSpace(string(output)))
+	}
+	var receipts struct {
+		StartReceipt  managedSupervisorReceipt `json:"startReceipt"`
+		StatusReceipt managedSupervisorReceipt `json:"statusReceipt"`
+	}
+	if err := json.Unmarshal(output, &receipts); err != nil {
+		t.Fatalf("packaged Supervisor seam receipt decode: %v: %s", err, strings.TrimSpace(string(output)))
+	}
+	desired := fixture.ServiceManifest
+	modelID, authMode := "deepseek-flash", "api_key"
+	desired.Authority = &model.ManagedServiceAuthorityV1{
+		TeamRevision: 5, ProviderID: "deepseek", ModelID: &modelID, AuthMode: &authMode,
+	}
+	if _, err := managedManagerCapability(desired, "source_probe_fixture0001", receipts.StartReceipt, receipts.StatusReceipt); err != nil {
+		t.Fatalf("actual RF probe sequence refused by managedManagerCapability: %v (startContract=%v statusContract=%v)",
+			err, startRequest["runtimeContractVersion"], statusRequest["runtimeContractVersion"])
+	}
+	mutatedAuthority := receipts.StartReceipt
+	mutatedAuthority.ManagerProviderID = "foreign-provider"
+	if _, err := managedManagerCapability(desired, "source_probe_fixture0001", mutatedAuthority, receipts.StatusReceipt); err == nil {
+		t.Fatal("material authority change was not refused by managedManagerCapability")
+	}
+	if receipts.StartReceipt.NativeGuard != nil {
+		guardCopy := *receipts.StartReceipt.NativeGuard
+		guardCopy.GuardVersion = "foreign.guard.v1"
+		mutatedGuard := receipts.StartReceipt
+		mutatedGuard.NativeGuard = &guardCopy
+		if _, err := managedManagerCapability(desired, "source_probe_fixture0001", mutatedGuard, receipts.StatusReceipt); err == nil {
+			t.Fatal("material guard change was not refused by managedManagerCapability")
+		}
+	}
 }
 
 func loadProducerFixture(t *testing.T) producerFixture {

@@ -345,11 +345,17 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 		}
 		return r.failManagedService(ctx, desired, "invalid_start_receipt", err)
 	}
-	statusPayload, _ := json.Marshal(map[string]any{
+	statusRequest := map[string]any{
 		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
 		"profileId": desired.Profile.ProfileID, "profileDigest": desired.Profile.ProfileDigest,
 		"probe": true, "requestTimeoutSeconds": 30,
-	})
+	}
+	// The capability consumer compares the start and status receipts, so the
+	// status probe negotiates exactly when the start request did.
+	if version := desired.RuntimeContractVersion; version != "" {
+		statusRequest["runtimeContractVersion"] = version
+	}
+	statusPayload, _ := json.Marshal(statusRequest)
 	statusReceiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, desired.Identity.SandboxID, containers.ManagedSupervisorStatus, statusPayload)
 	if err != nil {
 		return r.failManagedService(ctx, desired, "native_status_failed", err)
