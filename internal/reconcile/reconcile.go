@@ -35,6 +35,8 @@ type Sessions interface {
 
 type ContinuityRecovery interface {
 	Recover(context.Context) error
+	RecoverLocalSafety(context.Context) error
+	RecoverCurrent(context.Context, model.Manifest) error
 }
 
 type ContinuityControl interface {
@@ -46,22 +48,32 @@ type ContinuityControl interface {
 	// the pass.
 	Acknowledge(context.Context, model.Manifest) error
 	Reports(context.Context) ([]model.ContinuitySourceReportV1, []model.ContinuityRegistrationReportV1, []model.ContinuityOperationReportV1, error)
+	ReportsCurrent(context.Context, model.Manifest) ([]model.ContinuitySourceReportV1, []model.ContinuityRegistrationReportV1, []model.ContinuityOperationReportV1, error)
 }
 
 type ContinuationRestoreControl interface {
 	Recover(context.Context) error
+	RecoverCurrent(context.Context, model.Manifest) error
 	Apply(context.Context, []model.ContinuationManifestV1, []model.RestoreManifestV1) error
 	ApplyReleases(context.Context, []model.ContinuationReleaseManifestV1) error
 	Reports(context.Context) ([]model.ContinuationReportV1, []model.RestoreReportV1, error)
+	ReportsCurrent(context.Context, model.Manifest) ([]model.ContinuationReportV1, []model.RestoreReportV1, error)
 	ReleaseReports(context.Context) ([]model.ContinuationReleaseReportV1, error)
+	ReleaseReportsCurrent(context.Context, model.Manifest) ([]model.ContinuationReleaseReportV1, error)
 }
 
 type ContinuationHandoffControl interface {
+	// RecoverHandoffsCurrent is the authority-bound recovery the production
+	// reconciler always uses: only the operations the fully validated current
+	// authority carries as typed intent are recovered. RecoverHandoffs remains
+	// the standalone controller surface for direct tests.
+	RecoverHandoffsCurrent(context.Context, model.Manifest) error
 	RecoverHandoffs(context.Context) error
 	ApplyHandoffs(context.Context, []model.ContinuationHandoffManifestV1) error
 	ApplyHandoffTargetRegistrations(context.Context, []model.ContinuityRegistrationV1) error
 	ApplyHandoffReleases(context.Context, []model.ContinuationHandoffReleaseManifestV1) error
 	HandoffReports(context.Context) ([]model.ContinuationHandoffReportV1, []model.ContinuationHandoffReleaseReportV1, error)
+	HandoffReportsCurrent(context.Context, model.Manifest) ([]model.ContinuationHandoffReportV1, []model.ContinuationHandoffReleaseReportV1, error)
 }
 
 type ManagedWorkspaceCatalog interface {
@@ -134,20 +146,86 @@ type Reconciler struct {
 	ManagedExecutionContext context.Context
 
 	mu                sync.Mutex
+	authorityMu       sync.Mutex
+	currentAuthority  *model.Manifest
 	managedWorkerMu   sync.Mutex
 	managedExecutions map[string]*managedWorkerExecution
+}
+
+func (r *Reconciler) setCurrentAuthority(manifest model.Manifest) {
+	// Proportionate deep snapshot: the authority must never alias the caller's
+	// slices, maps or pointers for the lifetime of the process.
+	payload, err := json.Marshal(manifest)
+	if err != nil {
+		return
+	}
+	var snapshot model.Manifest
+	if err := json.Unmarshal(payload, &snapshot); err != nil {
+		return
+	}
+	r.authorityMu.Lock()
+	defer r.authorityMu.Unlock()
+	r.currentAuthority = &snapshot
+}
+
+// currentAuthorityManifest returns the last fully validated immutable current
+// authority, or an empty authority (empty current arrays) before the first
+// valid manifest. Historical stored state is never an authority default.
+func (r *Reconciler) currentAuthorityManifest() model.Manifest {
+	r.authorityMu.Lock()
+	defer r.authorityMu.Unlock()
+	if r.currentAuthority == nil {
+		return model.Manifest{}
+	}
+	return *r.currentAuthority
+}
+
+// currentManagedServiceTuple is the reviewed strict outgoing service tuple:
+// only a stored service whose typed identity, config digest, operation id,
+// action revision and observed desired revision match a current authority
+// service is emitted. Superseded tuples are omitted; nothing is synthesized.
+func currentManagedServiceTuple(authority model.Manifest, stored state.LocalManagedService) bool {
+	for _, desired := range authority.ManagedServices {
+		if stored.Manifest.OperationID == desired.OperationID &&
+			stored.Manifest.ActionRevision == desired.ActionRevision &&
+			stored.Manifest.DesiredRevision == desired.DesiredRevision &&
+			stored.Manifest.ConfigDigest == desired.ConfigDigest &&
+			reflect.DeepEqual(stored.Manifest.Identity, desired.Identity) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) (err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	lastRevision, err := r.Store.Revision(ctx)
+	if err != nil {
+		return err
+	}
+	if err := model.ValidateManifest(manifest, r.ServerID, lastRevision); err != nil {
+		return err
+	}
+	if !requested(manifest.Sandboxes).Fits(r.HostCapacity) {
+		return errors.New("desired sandboxes exceed detected host capacity")
+	}
+	// One narrow immutable current authority: the fully validated fresh
+	// manifest owns every action-recovery and reporting decision of this pass.
+	// The last validated process manifest is the fallback owner; before the
+	// first valid manifest the authority carries empty current arrays.
+	r.setCurrentAuthority(manifest)
+	authority := r.currentAuthorityManifest()
 	if r.Continuity != nil {
-		if err := r.Continuity.Recover(ctx); err != nil {
+		if err := r.Continuity.RecoverLocalSafety(ctx); err != nil {
+			return fmt.Errorf("recover local continuity safety: %w", err)
+		}
+		if err := r.Continuity.RecoverCurrent(ctx, authority); err != nil {
 			return fmt.Errorf("recover continuity operations: %w", err)
 		}
 	}
 	if r.ContinuationRestore != nil {
-		if err := r.ContinuationRestore.Recover(ctx); err != nil {
+		if err := r.ContinuationRestore.RecoverCurrent(ctx, authority); err != nil {
 			return fmt.Errorf("recover continuation/restore operations: %w", err)
 		}
 	}
@@ -161,7 +239,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) (er
 	// pass could proceed, so it stays visible alongside any unrelated abort.
 	var deferredHandoffProbe error
 	if r.ContinuationHandoff != nil {
-		if err := r.ContinuationHandoff.RecoverHandoffs(ctx); err != nil {
+		if err := r.ContinuationHandoff.RecoverHandoffsCurrent(ctx, authority); err != nil {
 			var succession *continuity.HandoffSourceSuccessionDeferral
 			switch {
 			case errors.As(err, &succession):
@@ -202,17 +280,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) (er
 			err = errors.Join(deferredManagedProjectRemount, err)
 		}
 	}()
-	lastRevision, err := r.Store.Revision(ctx)
-	if err != nil {
-		return err
-	}
-	if err := model.ValidateManifest(manifest, r.ServerID, lastRevision); err != nil {
-		return err
-	}
-	if !requested(manifest.Sandboxes).Fits(r.HostCapacity) {
-		return errors.New("desired sandboxes exceed detected host capacity")
-	}
-	// The authenticated manifest must pass the existing complete identity,
+	// The authenticated manifest has passed the existing complete identity,
 	// schema, revision and capacity gates before its fresh lease may prepare an
 	// exact pending protective Pause. This phase stores only that operation's
 	// deadline. Bounded exact-operation reconciliation follows immediately, and
@@ -456,7 +524,7 @@ func (r *Reconciler) reconcileContinuationRestore(ctx context.Context, manifest 
 	if r.ContinuationRestore == nil {
 		return nil
 	}
-	if err := r.ContinuationRestore.Recover(ctx); err != nil {
+	if err := r.ContinuationRestore.RecoverCurrent(ctx, r.currentAuthorityManifest()); err != nil {
 		return err
 	}
 	if err := r.ContinuationRestore.Apply(ctx, manifest.ContinuityContinuations, manifest.ContinuityRestores); err != nil {
@@ -520,6 +588,7 @@ func (r *Reconciler) Expire(ctx context.Context) error {
 }
 
 func (r *Reconciler) Report(ctx context.Context, serverID, version string) (model.Report, error) {
+	authority := r.currentAuthorityManifest()
 	revision, err := r.Store.Revision(ctx)
 	if err != nil {
 		return model.Report{}, err
@@ -596,7 +665,7 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 		report.SetupOperations = append(report.SetupOperations, item)
 	}
 	if r.ContinuityControl != nil {
-		sources, registrations, operations, err := r.ContinuityControl.Reports(ctx)
+		sources, registrations, operations, err := r.ContinuityControl.ReportsCurrent(ctx, authority)
 		if err != nil {
 			return model.Report{}, err
 		}
@@ -614,19 +683,19 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 		report.ContinuitySources[index] = staleSources.DeriveSourceReport(report.ContinuitySources[index])
 	}
 	if r.ContinuationRestore != nil {
-		continuations, restores, err := r.ContinuationRestore.Reports(ctx)
+		continuations, restores, err := r.ContinuationRestore.ReportsCurrent(ctx, authority)
 		if err != nil {
 			return model.Report{}, err
 		}
 		report.ContinuityContinuations, report.ContinuityRestores = continuations, restores
-		releases, err := r.ContinuationRestore.ReleaseReports(ctx)
+		releases, err := r.ContinuationRestore.ReleaseReportsCurrent(ctx, authority)
 		if err != nil {
 			return model.Report{}, err
 		}
 		report.ContinuityContinuationReleases = releases
 	}
 	if r.ContinuationHandoff != nil {
-		handoffs, releases, err := r.ContinuationHandoff.HandoffReports(ctx)
+		handoffs, releases, err := r.ContinuationHandoff.HandoffReportsCurrent(ctx, authority)
 		if err != nil {
 			return model.Report{}, err
 		}
@@ -654,9 +723,15 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 		return model.Report{}, err
 	}
 	for _, service := range services {
-		if service.Report.FormatVersion == 1 {
-			report.ManagedServices = append(report.ManagedServices, service.Report)
+		if service.Report.FormatVersion != 1 {
+			continue
 		}
+		if !currentManagedServiceTuple(authority, service) {
+			// Superseded or foreign stored tuples are omitted from the outgoing
+			// report without any local mutation or synthesis.
+			continue
+		}
+		report.ManagedServices = append(report.ManagedServices, service.Report)
 	}
 	if r.Manager != nil {
 		policies, reviews, takeovers, err := r.Manager.Reports(ctx, staleSources)

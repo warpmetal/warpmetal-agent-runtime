@@ -36,6 +36,11 @@ func (stub *sourceObservationHandoffStub) RecoverHandoffs(context.Context) error
 	return continuity.ErrHandoffProbeUnknown
 }
 
+func (stub *sourceObservationHandoffStub) RecoverHandoffsCurrent(context.Context, model.Manifest) error {
+	stub.recoveries++
+	return continuity.ErrHandoffProbeUnknown
+}
+
 func (stub *sourceObservationHandoffStub) ApplyHandoffs(context.Context, []model.ContinuationHandoffManifestV1) error {
 	stub.applies++
 	return nil
@@ -52,6 +57,10 @@ func (stub *sourceObservationHandoffStub) ApplyHandoffReleases(context.Context, 
 }
 
 func (stub *sourceObservationHandoffStub) HandoffReports(context.Context) ([]model.ContinuationHandoffReportV1, []model.ContinuationHandoffReleaseReportV1, error) {
+	return nil, nil, nil
+}
+
+func (stub *sourceObservationHandoffStub) HandoffReportsCurrent(context.Context, model.Manifest) ([]model.ContinuationHandoffReportV1, []model.ContinuationHandoffReleaseReportV1, error) {
 	return nil, nil, nil
 }
 

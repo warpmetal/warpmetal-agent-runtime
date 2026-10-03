@@ -511,6 +511,9 @@ func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishin
 			runtime = &fakeManagedRuntime{store: store, serviceID: fixture.ServiceManifest.Identity.ServiceRegistrationID, fixture: fixture, failStart: true}
 			probeRuntimes = append(probeRuntimes, runtime)
 			reconciler = &Reconciler{Store: store, ManagedCatalog: catalog, ManagedControl: control, ManagedRuntime: runtime, Now: fixedNow}
+			// Honest test-only validated authority context for the producer
+			// manifest under test (no all-history default).
+			reconciler.setCurrentAuthority(manifest)
 			pending, err = store.ManagedService(context.Background(), fixture.ServiceManifest.Identity.ServiceRegistrationID)
 			if err != nil || pending == nil || pending.Report.ObservedState != "registering" || pending.Report.ReceiptDigest != pendingDigest {
 				t.Fatalf("reopened progress report drifted: %#v %v", pending, err)
@@ -535,6 +538,9 @@ func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishin
 			runtime = &fakeManagedRuntime{store: store, serviceID: fixture.ServiceManifest.Identity.ServiceRegistrationID, fixture: fixture}
 			probeRuntimes = append(probeRuntimes, runtime)
 			reconciler = &Reconciler{Store: store, ManagedCatalog: catalog, ManagedControl: control, ManagedRuntime: runtime, Now: fixedNow}
+			// Honest test-only validated authority context for the producer
+			// manifest under test (no all-history default).
+			reconciler.setCurrentAuthority(manifest)
 			if _, err := reconciler.reconcileManagedServices(context.Background(), manifest); err != nil {
 				t.Fatal(err)
 			}
@@ -714,6 +720,9 @@ func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishin
 			runtime = &fakeManagedRuntime{store: store, serviceID: fixture.ServiceManifest.Identity.ServiceRegistrationID, fixture: fixture}
 			probeRuntimes = append(probeRuntimes, runtime)
 			reconciler = &Reconciler{Store: store, ManagedCatalog: catalog, ManagedControl: control, ManagedRuntime: runtime, Now: fixedNow}
+			// Honest test-only validated authority context for the producer
+			// manifest under test (no all-history default).
+			reconciler.setCurrentAuthority(manifest)
 			for revision, desired := range []string{"paused", "stopped", "retired"} {
 				fixture.ServiceManifest.OperationID = fmt.Sprintf("op_managed_%s_0001", desired)
 				fixture.ServiceManifest.ActionRevision = int64(revision + 3)
@@ -764,6 +773,7 @@ func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishin
 					if err != nil || !reflect.DeepEqual(before, after) || len(runtime.invocations) != calls {
 						t.Fatalf("completed %s replay changed state or invoked replacement: %v", desired, err)
 					}
+					reconciler.setCurrentAuthority(manifest)
 					outbound, err := reconciler.Report(context.Background(), fixture.ServiceManifest.Identity.ServerID, "test")
 					if err != nil || len(outbound.ManagedWorkspaceSelections) != 0 || len(outbound.ManagedServices) != 1 {
 						t.Fatalf("replacement generation advertised a stale catalog selection: %#v %v", outbound.ManagedWorkspaceSelections, err)
@@ -1619,7 +1629,8 @@ func seedReadyProfile(t *testing.T, store *state.Store, setup model.SetupOperati
 	if err := store.TransitionSetupOperation(context.Background(), setup.ID, "applying", nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionSetupOperation(context.Background(), setup.ID, "ready", []byte(`{"status":"ready"}`), "", ""); err != nil {
+	receipt, _ := json.Marshal(map[string]any{"status": "ready", "receiptDigest": digest})
+	if err := store.TransitionSetupOperation(context.Background(), setup.ID, "ready", receipt, "", ""); err != nil {
 		t.Fatal(err)
 	}
 }

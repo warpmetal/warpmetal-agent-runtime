@@ -172,6 +172,31 @@ func (c *S2Controller) ApplyHandoffs(ctx context.Context, manifests []model.Cont
 }
 
 func (c *S2Controller) RecoverHandoffs(ctx context.Context) error {
+	return c.recoverHandoffs(ctx, nil, nil)
+}
+
+// RecoverHandoffsCurrent is the authority-bound production recovery: only the
+// operations the fully validated current authority carries as typed intent are
+// recovered. Historical accepted preparations absent from that authority are
+// skipped without re-probe, report or history mutation, while every current
+// operation keeps the original exact fatal checks.
+func (c *S2Controller) RecoverHandoffsCurrent(ctx context.Context, manifest model.Manifest) error {
+	handoffs := make(map[string]model.ContinuationHandoffManifestV1, len(manifest.ContinuityHandoffs))
+	for _, handoff := range manifest.ContinuityHandoffs {
+		handoffs[handoff.OperationID] = handoff
+	}
+	releases := make(map[string]model.ContinuationHandoffReleaseManifestV1, len(manifest.ContinuityHandoffReleases))
+	for _, release := range manifest.ContinuityHandoffReleases {
+		releases[release.OperationID] = release
+	}
+	return c.recoverHandoffs(ctx, handoffs, releases)
+}
+
+func (c *S2Controller) recoverHandoffs(
+	ctx context.Context,
+	handoffs map[string]model.ContinuationHandoffManifestV1,
+	releases map[string]model.ContinuationHandoffReleaseManifestV1,
+) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err := c.handoffConfigured(); err != nil {
@@ -182,6 +207,17 @@ func (c *S2Controller) RecoverHandoffs(ctx context.Context) error {
 		return err
 	}
 	for _, record := range records {
+		if handoffs != nil {
+			intent, ok := handoffs[record.Manifest.OperationID]
+			if !ok {
+				// Not part of the validated current authority: historical or
+				// foreign state stays byte-untouched.
+				continue
+			}
+			if !reflect.DeepEqual(intent, record.Manifest) {
+				return errors.Join(ErrS2RecoveryUnknown, errors.New("handoff preparation conflicts with the current authority"))
+			}
+		}
 		if record.Report == nil {
 			if err := c.recoverHandoff(ctx, record); err != nil {
 				return err
@@ -217,12 +253,24 @@ func (c *S2Controller) RecoverHandoffs(ctx context.Context) error {
 			}
 		}
 	}
-	releases, err := c.Store.ContinuationHandoffReleases(ctx)
+	storedReleases, err := c.Store.ContinuationHandoffReleases(ctx)
 	if err != nil {
 		return err
 	}
-	for _, release := range releases {
+	for _, release := range storedReleases {
 		if release.Report == nil {
+			if releases != nil {
+				intent, ok := releases[release.Manifest.OperationID]
+				if !ok {
+					// Pending release intent absent from the current authority is
+					// not recovered as current: the parent ready record is never
+					// recovered without its owning release intent.
+					continue
+				}
+				if !reflect.DeepEqual(intent, release.Manifest) {
+					return errors.Join(ErrS2RecoveryUnknown, errors.New("handoff release conflicts with the current authority"))
+				}
+			}
 			if err := c.recoverHandoffRelease(ctx, release.Manifest); err != nil {
 				return err
 			}
@@ -776,6 +824,52 @@ func (c *S2Controller) HandoffReports(ctx context.Context) ([]model.Continuation
 		if record.Report != nil {
 			releaseReports = append(releaseReports, *record.Report)
 		}
+	}
+	return preparedReports, releaseReports, nil
+}
+
+// HandoffReportsCurrent is the authority-bound report projection: only the
+// handoff and release operations the fully validated current authority carries
+// as exact typed intent are emitted. Accepted historical reports absent from
+// that authority are omitted without any local mutation.
+func (c *S2Controller) HandoffReportsCurrent(ctx context.Context, manifest model.Manifest) ([]model.ContinuationHandoffReportV1, []model.ContinuationHandoffReleaseReportV1, error) {
+	handoffs := make(map[string]model.ContinuationHandoffManifestV1, len(manifest.ContinuityHandoffs))
+	for _, handoff := range manifest.ContinuityHandoffs {
+		handoffs[handoff.OperationID] = handoff
+	}
+	releases := make(map[string]model.ContinuationHandoffReleaseManifestV1, len(manifest.ContinuityHandoffReleases))
+	for _, release := range manifest.ContinuityHandoffReleases {
+		releases[release.OperationID] = release
+	}
+	preparations, err := c.Store.ContinuationHandoffPreparations(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	storedReleases, err := c.Store.ContinuationHandoffReleases(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	preparedReports := make([]model.ContinuationHandoffReportV1, 0, len(preparations))
+	for _, record := range preparations {
+		if record.Report == nil {
+			continue
+		}
+		intent, ok := handoffs[record.Manifest.OperationID]
+		if !ok || !reflect.DeepEqual(intent, record.Manifest) {
+			continue
+		}
+		preparedReports = append(preparedReports, *record.Report)
+	}
+	releaseReports := make([]model.ContinuationHandoffReleaseReportV1, 0, len(storedReleases))
+	for _, record := range storedReleases {
+		if record.Report == nil {
+			continue
+		}
+		intent, ok := releases[record.Manifest.OperationID]
+		if !ok || !reflect.DeepEqual(intent, record.Manifest) {
+			continue
+		}
+		releaseReports = append(releaseReports, *record.Report)
 	}
 	return preparedReports, releaseReports, nil
 }

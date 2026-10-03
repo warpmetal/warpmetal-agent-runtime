@@ -625,6 +625,286 @@ func (c *Coordinator) Reports(ctx context.Context) ([]model.ContinuitySourceRepo
 	return sourceReports, registrationReports, operations, nil
 }
 
+// RecoverCurrent is the authority-bound continuity-operation recovery: only
+// barriers the fully validated current authority carries as typed intent are
+// reconciled; absent historical barriers stay byte-untouched.
+// RecoverLocalSafety is the authority-independent local safety recovery the
+// r843 D1 ruling keeps outside current execution-intent recovery: the local
+// checkpoint-engine operations (capture/checkpoint/materialize, owned pause)
+// must recover even when the manifest carries no current continuity
+// operations. Strictly local: it never creates, alters or fabricates
+// backend-visible intents, outboxes, reports or barriers, and it never
+// advances the applied revision.
+func (c *Coordinator) RecoverLocalSafety(ctx context.Context) error {
+	return c.Service.Recover(ctx)
+}
+
+func (c *Coordinator) RecoverCurrent(ctx context.Context, manifest model.Manifest) error {
+	current := make(map[string]model.ContinuityOperationV1, len(manifest.ContinuityOperations))
+	for _, operation := range manifest.ContinuityOperations {
+		if _, duplicate := current[operation.OperationID]; duplicate {
+			return errors.New("duplicate current continuity operation")
+		}
+		current[operation.OperationID] = operation
+	}
+	reports, err := c.Store.ContinuityOperationReports(ctx)
+	if err != nil {
+		return err
+	}
+	reportByID := make(map[string]model.ContinuityOperationReportV1, len(reports))
+	for _, report := range reports {
+		reportByID[report.OperationID] = report
+	}
+	barriers, err := c.Store.ContinuityBarriers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, barrier := range barriers {
+		intent, ok := current[barrier.OperationID]
+		if !ok {
+			continue
+		}
+		workspace, err := c.Registry.Resolve(ctx, intent.Identity)
+		if err != nil {
+			return err
+		}
+		expected, err := c.helperRequest("reconcile_boundary", intent, workspace)
+		if err != nil {
+			return err
+		}
+		var stored map[string]any
+		if err := json.Unmarshal(barrier.Request, &stored); err != nil {
+			return err
+		}
+		delete(expected, "action")
+		delete(stored, "action")
+		if !reflect.DeepEqual(expected, stored) {
+			// A barrier whose stored helper request does not equal the current
+			// typed operation stays byte-untouched with no helper probe.
+			return errors.New("continuity barrier conflicts with the current authority")
+		}
+		if report, exists := reportByID[barrier.OperationID]; exists && !continuityOperationReportExact(intent, report) {
+			return errors.New("continuity operation conflicts with the current authority")
+		}
+		var request map[string]any
+		if err := json.Unmarshal(barrier.Request, &request); err != nil {
+			return err
+		}
+		sandboxID := fmt.Sprint(request["sandboxId"])
+		request["action"] = "reconcile_boundary"
+		if _, _, err := c.callHelper(ctx, sandboxID, request, "acknowledged"); err != nil {
+			var refused boundaryRefusal
+			if errors.As(err, &refused) && refused.code == "boundary_missing" {
+				if err := c.Store.DeleteContinuityBarrier(ctx, barrier.OperationID); err != nil {
+					return err
+				}
+				continue
+			}
+			return err
+		}
+		request["action"] = "release_boundary"
+		if _, _, err := c.callHelper(ctx, sandboxID, request, "released"); err != nil {
+			return err
+		}
+		if err := c.Store.DeleteContinuityBarrier(ctx, barrier.OperationID); err != nil {
+			return err
+		}
+		if report, ok := reportByID[barrier.OperationID]; ok && report.Status == "applying" {
+			report.Status = "outcome_unknown"
+			report.LastError = &model.ItemError{Code: "recovered_boundary_without_operation_result"}
+			if err := c.Store.PutContinuityOperationReport(ctx, report); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// ReportsCurrent is the authority-bound source/registration/operation report
+// projection: only registrations, operations and the sources they own that the
+// fully validated current authority carries are emitted. Accepted historical
+// tuples are omitted without any local mutation.
+func (c *Coordinator) ReportsCurrent(ctx context.Context, manifest model.Manifest) ([]model.ContinuitySourceReportV1, []model.ContinuityRegistrationReportV1, []model.ContinuityOperationReportV1, error) {
+	currentRegistrations := append([]model.ContinuityRegistrationV1(nil), manifest.ContinuityRegistrations...)
+	registeredSources := map[string]bool{}
+	currentServices := map[string]bool{}
+	currentServiceGenerations := map[string]int64{}
+	for _, registration := range manifest.ContinuityRegistrations {
+		c.registerCurrentSource(registeredSources, registration.Binding.RegisteredSourceID)
+		if registration.Binding.ServiceRegistrationID != "" {
+			currentServices[registration.Binding.ServiceRegistrationID] = true
+		}
+	}
+	for _, service := range manifest.ManagedServices {
+		if service.Identity.ServiceRegistrationID != "" {
+			currentServices[service.Identity.ServiceRegistrationID] = true
+			currentServiceGenerations[service.Identity.ServiceRegistrationID] = service.Identity.ExpectedServiceGeneration
+		}
+	}
+	for _, handoff := range manifest.ContinuityHandoffs {
+		c.registerCurrentSource(registeredSources, handoff.Binding.RegisteredSourceID)
+		currentServices[handoff.Binding.ServiceRegistrationID] = true
+		currentServices[handoff.TargetPolicy.ServiceRegistrationID] = true
+		currentServiceGenerations[handoff.TargetPolicy.ServiceRegistrationID] = handoff.TargetPolicy.ServiceGeneration
+		if handoff.Binding.ServiceRegistrationID != "" {
+			currentServiceGenerations[handoff.Binding.ServiceRegistrationID] = handoff.Binding.ServiceGeneration
+		}
+	}
+	for _, release := range manifest.ContinuityHandoffReleases {
+		c.registerCurrentSource(registeredSources, release.Binding.RegisteredSourceID)
+		currentServices[release.Binding.ServiceRegistrationID] = true
+		currentServiceGenerations[release.Binding.ServiceRegistrationID] = release.Binding.ServiceGeneration
+	}
+	for _, operation := range manifest.ContinuityContinuations {
+		c.registerCurrentSource(registeredSources, operation.Binding.RegisteredSourceID)
+		currentServices[operation.Binding.ServiceRegistrationID] = true
+		currentServiceGenerations[operation.Binding.ServiceRegistrationID] = operation.Binding.ServiceGeneration
+	}
+	for _, operation := range manifest.ContinuityRestores {
+		c.registerCurrentSource(registeredSources, operation.Binding.RegisteredSourceID)
+		currentServices[operation.Binding.ServiceRegistrationID] = true
+		currentServiceGenerations[operation.Binding.ServiceRegistrationID] = operation.Binding.ServiceGeneration
+	}
+	for _, release := range manifest.ContinuityContinuationReleases {
+		c.registerCurrentSource(registeredSources, release.Binding.RegisteredSourceID)
+		currentServices[release.Binding.ServiceRegistrationID] = true
+		currentServiceGenerations[release.Binding.ServiceRegistrationID] = release.Binding.ServiceGeneration
+	}
+	operationIDs := make(map[string]bool, len(manifest.ContinuityOperations))
+	for _, operation := range manifest.ContinuityOperations {
+		operationIDs[operation.OperationID] = true
+		c.registerCurrentSource(registeredSources, operation.Binding.RegisteredSourceID)
+		if operation.Binding.ServiceRegistrationID != "" {
+			currentServices[operation.Binding.ServiceRegistrationID] = true
+		}
+	}
+	managerPolicySandboxes := make(map[string]int64, len(manifest.InsightsManagerPolicies))
+	for _, policy := range manifest.InsightsManagerPolicies {
+		managerPolicySandboxes[policy.SandboxID] = policy.SandboxGeneration
+	}
+	currentSandboxes := make(map[string]int64, len(manifest.ManagedServices))
+	for _, service := range manifest.ManagedServices {
+		currentSandboxes[service.Identity.SandboxID] = service.Identity.SandboxGeneration
+	}
+	sources, err := c.Store.ContinuitySources(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	registrations, err := c.Store.ContinuityRegistrations(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	operations, err := c.Store.ContinuityOperationReports(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	registrationReports := make([]model.ContinuityRegistrationReportV1, 0, len(registrations))
+	for _, registration := range registrations {
+		item, emit, err := reportableContinuityRegistration(registration)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if !emit {
+			continue
+		}
+		owned, err := c.currentRegistrationOwned(ctx, manifest, currentRegistrations, registration)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if !owned {
+			continue
+		}
+		// In-pass closure: an owned registration owns its exact source and
+		// service generation for this report.
+		c.registerCurrentSource(registeredSources, registration.Manifest.Binding.RegisteredSourceID)
+		if registration.Manifest.Binding.ServiceRegistrationID != "" {
+			currentServices[registration.Manifest.Binding.ServiceRegistrationID] = true
+			currentServiceGenerations[registration.Manifest.Binding.ServiceRegistrationID] = registration.ServiceGeneration
+		}
+		registrationReports = append(registrationReports, item)
+	}
+	sourceReports := make([]model.ContinuitySourceReportV1, 0, len(sources))
+	for _, source := range sources {
+		if registeredSources[source.Report.RegisteredSourceID] {
+			sourceReports = append(sourceReports, source.Report)
+			continue
+		}
+		if generation, ok := currentServiceGenerations[source.Report.ServiceRegistrationID]; ok && generation == source.Report.ServiceGeneration {
+			sourceReports = append(sourceReports, source.Report)
+			continue
+		}
+		if generation, ok := managerPolicySandboxes[source.Report.SandboxID]; ok && generation == source.Report.SandboxGeneration {
+			sourceReports = append(sourceReports, source.Report)
+		}
+	}
+	currentOperations := make([]model.ContinuityOperationReportV1, 0, len(operations))
+	for _, report := range operations {
+		if operationIDs[report.OperationID] {
+			currentOperations = append(currentOperations, report)
+		}
+	}
+	return sourceReports, registrationReports, currentOperations, nil
+}
+
+func (c *Coordinator) registerCurrentSource(registered map[string]bool, sourceID string) {
+	if sourceID != "" {
+		registered[sourceID] = true
+	}
+}
+
+// continuityOperationReportExact is the full typed-intent binding of the
+// current operation against the stored operation-report authority.
+func continuityOperationReportExact(intent model.ContinuityOperationV1, report model.ContinuityOperationReportV1) bool {
+	return report.OperationID == intent.OperationID && report.Action == intent.Action &&
+		report.RequestDigest == intent.RequestDigest && report.ScopeRevision == intent.ScopeRevision &&
+		report.BoundaryKind == intent.BoundaryKind &&
+		reflect.DeepEqual(report.Identity, intent.Identity) &&
+		reflect.DeepEqual(report.Binding, intent.Binding)
+}
+
+// currentRegistrationOwned is the exact current registration ownership check:
+// the stored row must either be byte-for-field the validated manifest's typed
+// registration tuple, reference a current service, or belong to a current
+// manager-policy sandbox generation. Superseded rows are omitted.
+func (c *Coordinator) currentRegistrationOwned(
+	ctx context.Context,
+	manifest model.Manifest,
+	current []model.ContinuityRegistrationV1,
+	stored state.LocalContinuityRegistration,
+) (bool, error) {
+	listed := false
+	for _, desired := range current {
+		if stored.Manifest.Binding.BindingID != desired.Binding.BindingID {
+			continue
+		}
+		listed = true
+		if reflect.DeepEqual(stored.Manifest, desired) {
+			return true, nil
+		}
+	}
+	if listed {
+		// An explicitly current binding is owned only by its exact desired
+		// tuple; a mismatch never falls through to broader fallbacks.
+		return false, nil
+	}
+	// An absent binding is owned only by an existing pending typed operation in
+	// the validated manifest whose prepared handoff exactly owns this mapped
+	// target registration. Historical accepted preparations lend no authority.
+	ownership, owned, err := handoffTargetRegistrationOwnedByPreparation(ctx, c.Store, stored.Manifest)
+	if err != nil {
+		return false, err
+	}
+	if !owned || ownership == nil {
+		return false, nil
+	}
+	for _, handoff := range manifest.ContinuityHandoffs {
+		if reflect.DeepEqual(handoff, ownership.preparation.Manifest) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // reportableContinuityRegistration projects exactly one durable registration
 // row onto the Runtime report. Only a structurally valid current
 // desired-active registration is emitted, carrying the existing observed

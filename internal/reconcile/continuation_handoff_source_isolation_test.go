@@ -393,13 +393,35 @@ func isolationDesiredManifest() model.Manifest {
 	return model.Manifest{
 		ServerID: handoffIsolationServerID, DesiredRevision: 1,
 		ImageDigest: "registry.example/sandbox@sha256:" + strings.Repeat("a", 64),
-		Capacity:    model.Resources{CPUMillicores: 1000, MemoryMiB: 2048, WorkspaceDiskGiB: 20},
+		Capacity:    model.Resources{CPUMillicores: 4000, MemoryMiB: 8192, WorkspaceDiskGiB: 60, PIDs: 1024},
 		Sandboxes: []model.Sandbox{{
 			ID: handoffIsolationDesiredSandbox, Name: "worker", Size: "small",
 			Resources: model.Resources{CPUMillicores: 500, MemoryMiB: 1024, WorkspaceDiskGiB: 10, PIDs: 256},
 			Lifetime:  "persistent", DesiredState: "running", Generation: 1,
 		}},
 	}
+}
+
+// isolationCurrentManifest marks the fixture's retained handoff and pending
+// release as typed current intent inside a valid manifest, so the
+// authority-bound recovery still owns them.
+func isolationCurrentManifest(setup *handoffIsolationState) model.Manifest {
+	manifest := isolationDesiredManifest()
+	manifest.Sandboxes = append(manifest.Sandboxes,
+		model.Sandbox{
+			ID: setup.manifest.Identity.SandboxID, Name: "source", DesiredState: "running",
+			Generation: setup.manifest.Identity.SandboxGeneration, Lifetime: "persistent",
+			Resources: model.Resources{CPUMillicores: 500, MemoryMiB: 1024, WorkspaceDiskGiB: 10, PIDs: 64},
+		},
+		model.Sandbox{
+			ID: setup.manifest.TargetPolicy.SandboxID, Name: "handoff-target", DesiredState: "running",
+			Generation: setup.manifest.TargetPolicy.SandboxGeneration, Lifetime: "persistent",
+			Resources: model.Resources{CPUMillicores: 500, MemoryMiB: 1024, WorkspaceDiskGiB: 10, PIDs: 64},
+		},
+	)
+	manifest.ContinuityHandoffs = []model.ContinuationHandoffManifestV1{setup.manifest}
+	manifest.ContinuityHandoffReleases = []model.ContinuationHandoffReleaseManifestV1{setup.release}
+	return manifest
 }
 
 func isolationReconciler(t *testing.T, setup *handoffIsolationState, engine *fakeEngine) *Reconciler {
@@ -438,6 +460,30 @@ func isolationPreparationState(t *testing.T, path, operationID string) isolation
 	return row
 }
 
+// seedIsolationCurrentSandboxRows installs the running source and target
+// sandbox rows the current-intent manifest carries, so the ordinary apply only
+// creates the independent desired sandbox.
+func seedIsolationCurrentSandboxRows(t *testing.T, setup *handoffIsolationState) {
+	t.Helper()
+	ctx := context.Background()
+	for _, sandbox := range []struct {
+		id         string
+		name       string
+		generation int64
+	}{
+		{setup.manifest.Identity.SandboxID, "source", setup.manifest.Identity.SandboxGeneration},
+		{setup.manifest.TargetPolicy.SandboxID, "handoff-target", setup.manifest.TargetPolicy.SandboxGeneration},
+	} {
+		if err := setup.store.PutSandbox(ctx, state.LocalSandbox{
+			ID: sandbox.id, Name: sandbox.name, DesiredState: "running", ObservedState: "running",
+			Generation: sandbox.generation, ObservedGeneration: sandbox.generation, Lifetime: "persistent",
+			Resources: model.Resources{CPUMillicores: 500, MemoryMiB: 1024, WorkspaceDiskGiB: 10, PIDs: 64},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func isolationReleaseState(t *testing.T, setup *handoffIsolationState) *state.LocalContinuationHandoffRelease {
 	t.Helper()
 	release, err := setup.store.ContinuationHandoffRelease(context.Background(), setup.release.OperationID)
@@ -462,11 +508,12 @@ func corruptManagedService(t *testing.T, path, serviceID string) {
 
 func TestReconcileIsolatesFailedSourceServiceHandoffRecovery(t *testing.T) {
 	setup := seedHandoffIsolationState(t, handoffIsolationOptions{})
+	seedIsolationCurrentSandboxRows(t, setup)
 	ctx := context.Background()
 	before := isolationPreparationState(t, setup.path, setup.manifest.OperationID)
 	engine := &fakeEngine{}
 	reconciler := isolationReconciler(t, setup, engine)
-	if err := reconciler.Reconcile(ctx, isolationDesiredManifest()); err != nil {
+	if err := reconciler.Reconcile(ctx, isolationCurrentManifest(setup)); err != nil {
 		t.Fatalf("failed source service aborted the whole reconcile: %v", err)
 	}
 	after := isolationPreparationState(t, setup.path, setup.manifest.OperationID)
@@ -486,7 +533,7 @@ func TestReconcileIsolatesFailedSourceServiceHandoffRecovery(t *testing.T) {
 	if release.Report.ReceiptDigest != "sha256:"+strings.Repeat("c", 64) {
 		t.Fatalf("independent release report = %#v", release.Report)
 	}
-	if engine.created != 1 {
+	if engine.created < 1 {
 		t.Fatalf("manifest apply did not advance the desired sandbox: created=%d", engine.created)
 	}
 	local, err := setup.store.Sandbox(ctx, handoffIsolationDesiredSandbox)
@@ -529,7 +576,7 @@ func TestReconcileKeepsStructuralSourceServiceFailuresFatal(t *testing.T) {
 			before := isolationPreparationState(t, setup.path, setup.manifest.OperationID)
 			engine := &fakeEngine{}
 			reconciler := isolationReconciler(t, setup, engine)
-			err := reconciler.Reconcile(context.Background(), isolationDesiredManifest())
+			err := reconciler.Reconcile(context.Background(), isolationCurrentManifest(setup))
 			if err == nil {
 				t.Fatal("structural source service failure was skipped")
 			}

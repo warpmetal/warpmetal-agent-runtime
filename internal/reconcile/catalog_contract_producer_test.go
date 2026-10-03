@@ -369,6 +369,11 @@ func TestManagedWorkspaceCatalogContractProducer(t *testing.T) {
 		runtimeFake := &fakeManagedRuntime{store: store, fixture: fixture}
 		control := &bridgeFailingControl{fixture: fixture, failureServiceID: input.EnrollmentFailureServiceID}
 		reconciler := &Reconciler{Store: store, ManagedCatalog: catalog, ManagedControl: control, ManagedRuntime: runtimeFake, Now: func() time.Time { return now }}
+		// Honest test-only validated authority context: this bridge action has
+		// just passed the actual model.ValidateManifest for input.Manifest, so
+		// the production report projection is scoped to exactly that validated
+		// authority. No all-history default is exercised here.
+		reconciler.setCurrentAuthority(manifest)
 		_, fatal := reconciler.reconcileManagedServices(context.Background(), manifest)
 		appliedRevision, err := store.Revision(context.Background())
 		if err != nil {
