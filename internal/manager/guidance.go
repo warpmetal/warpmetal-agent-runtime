@@ -433,7 +433,10 @@ func (c *Coordinator) dispatchPendingGuidance(ctx context.Context) error {
 		if _, _, err := c.reviewAuthority(ctx, run.Manifest, true); err != nil {
 			continue
 		}
-		if err := c.dispatchGuidance(ctx, run); err != nil {
+		actionContext, cancelAction := c.runActionContext(ctx, run)
+		err = c.dispatchGuidance(actionContext, run)
+		cancelAction()
+		if err != nil {
 			return err
 		}
 	}

@@ -122,12 +122,14 @@ func TestCoordinatorAppliesBackendRecommendResumeAndRecoversLostReleaseLookupOnl
 }
 
 type managerHelperCall struct {
+	CtxErr    error
 	SandboxID string
 	Payload   map[string]any
 }
 
 type fakeManagerHelper struct {
 	calls        []managerHelperCall
+	ctxSensitive bool
 	loseStart    bool
 	reviewOutput []byte
 	outputs      map[string][]byte
@@ -135,7 +137,7 @@ type fakeManagerHelper struct {
 	beforeCall   func(map[string]any) error
 }
 
-func (helper *fakeManagerHelper) ExecManager(_ context.Context, sandboxID string, payload []byte) ([]byte, []byte, error) {
+func (helper *fakeManagerHelper) ExecManager(ctx context.Context, sandboxID string, payload []byte) ([]byte, []byte, error) {
 	var request map[string]any
 	if err := json.Unmarshal(payload, &request); err != nil {
 		return nil, nil, err
@@ -145,7 +147,10 @@ func (helper *fakeManagerHelper) ExecManager(_ context.Context, sandboxID string
 			return nil, nil, err
 		}
 	}
-	helper.calls = append(helper.calls, managerHelperCall{SandboxID: sandboxID, Payload: request})
+	helper.calls = append(helper.calls, managerHelperCall{SandboxID: sandboxID, Payload: request, CtxErr: ctx.Err()})
+	if helper.ctxSensitive && ctx.Err() != nil {
+		return nil, nil, ctx.Err()
+	}
 	action, _ := request["action"].(string)
 	if action == "start_review" && helper.loseStart {
 		helper.loseStart = false
@@ -348,6 +353,47 @@ func TestCoordinatorPersistsBeforeDispatchAndReconcilesLostStartAfterSQLiteReope
 			t.Fatalf("manager session mapping = %#v, %v", mapped, err)
 		}
 	})
+
+	t.Run("expired original lease still reconciles unknown execution observation-only", func(t *testing.T) {
+		fixture := loadManagerCoordinatorFixture(t)
+		store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer store.Close()
+		seedManagerCoordinatorAuthority(t, store, fixture)
+		seedManagerFinding(t, store, fixture)
+		helper := &fakeManagerHelper{loseStart: true, ctxSensitive: true, reviewOutput: managerReviewReceipt(t, fixture, "reconcile_review")}
+		control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
+		requireManagerStartReportBeforeHelper(t, helper, control)
+		current := fixture.Review.ValidUntil.Add(-30 * time.Second)
+		coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return current }}
+		manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
+			InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{fixture.Policy},
+			InsightsManagerReviews:  []model.InsightsManagerReviewManifestV1{fixture.Review}}
+		if err := coordinator.Apply(context.Background(), manifest); err == nil {
+			t.Fatal("lost start response returned success")
+		}
+		persisted, err := store.ManagerRun(context.Background(), fixture.Review.RunID)
+		if err != nil || persisted == nil || persisted.Phase != "execution_unknown" {
+			t.Fatalf("durable unknown intent = %#v, %v", persisted, err)
+		}
+		current = fixture.Review.ValidUntil.Add(30 * time.Second)
+		if err := coordinator.Recover(context.Background()); err != nil {
+			t.Fatalf("ordinary recovery was clipped by the expired original lease: %v calls=%#v", err, helper.calls)
+		}
+		if len(helper.calls) != 2 || helper.calls[1].Payload["action"] != "reconcile_review" {
+			t.Fatalf("expired unknown run did not settle through reconcile_review: %#v", helper.calls)
+		}
+		if helper.calls[1].CtxErr != nil {
+			t.Fatalf("reconcile_review observation context was already canceled: %v", helper.calls[1].CtxErr)
+		}
+		persisted, err = store.ManagerRun(context.Background(), fixture.Review.RunID)
+		if err != nil || persisted == nil || persisted.Phase == "execution_unknown" {
+			t.Fatalf("expired unknown run stayed stuck after ordinary recovery: %#v, %v", persisted, err)
+		}
+	})
+
 	for _, refusal := range []string{"report refused", "run ACK changed", "finding ACK changed"} {
 		t.Run(refusal+" before helper and after reopen", func(t *testing.T) {
 			fixture := loadManagerCoordinatorFixture(t)
@@ -2435,5 +2481,68 @@ func TestQ2WireExampleExport(t *testing.T) {
 	}
 	if err := os.WriteFile(path, append(payload, '\n'), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCoordinatorRecoversAutomaticReviewingRunObservationOnlyAfterOff(t *testing.T) {
+	fixture := loadManagerCoordinatorFixture(t)
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	seedManagerCoordinatorAuthority(t, store, fixture)
+	seedManagerFinding(t, store, fixture)
+	reviewing := managerReviewReceipt(t, fixture, "start_review")
+	var progress map[string]any
+	if err := json.Unmarshal(reviewing, &progress); err != nil {
+		t.Fatal(err)
+	}
+	progress["status"] = "reviewing"
+	reviewing, _ = json.Marshal(progress)
+	helper := &fakeManagerHelper{outputs: map[string][]byte{
+		"start_review":     reviewing,
+		"reconcile_review": managerReviewReceipt(t, fixture, "reconcile_review"),
+		"continue_review":  managerReviewReceipt(t, fixture, "continue_review"),
+	}}
+	control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
+	requireManagerStartReportBeforeHelper(t, helper, control)
+	current := fixture.Review.ValidUntil.Add(-30 * time.Second)
+	coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: func() time.Time { return current }}
+	automatic := fixture.Review
+	automatic.Manual = false
+	manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
+		InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{fixture.Policy},
+		InsightsManagerReviews:  []model.InsightsManagerReviewManifestV1{automatic}}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+	run, err := store.ManagerRun(context.Background(), automatic.RunID)
+	if err != nil || run == nil || run.Phase != "reviewing" || !run.AutomaticOrigin {
+		t.Fatalf("automatic reviewing run = %#v, %v", run, err)
+	}
+	off := fixture.Policy
+	off.Mode = "off"
+	off.AllowedRules = nil
+	off.AutoSteerPolicy = nil
+	off.AutoSteerAvailable = false
+	off.ValidUntil = current.Add(120 * time.Second)
+	if err := coordinator.ApplyPolicies(context.Background(), model.Manifest{InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{off}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	actions := []string{}
+	for _, call := range helper.calls {
+		action, _ := call.Payload["action"].(string)
+		actions = append(actions, action)
+	}
+	if len(actions) != 2 || actions[0] != "start_review" || actions[1] != "reconcile_review" {
+		t.Fatalf("ordinary Recover actions = %v, want start_review then reconcile_review only (no second model request after Off)", actions)
+	}
+	persisted, err := store.ManagerRun(context.Background(), automatic.RunID)
+	if err != nil || persisted == nil || persisted.Phase == "reviewing" || persisted.Phase == "execution_unknown" {
+		t.Fatalf("automatic reviewing run did not settle observation-only: %#v, %v", persisted, err)
 	}
 }

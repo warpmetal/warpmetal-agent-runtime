@@ -109,18 +109,8 @@ func (c *Coordinator) ApplyPolicies(ctx context.Context, manifest model.Manifest
 }
 
 func (c *Coordinator) Apply(ctx context.Context, manifest model.Manifest) error {
-	if err := c.ApplyPolicies(ctx, manifest); err != nil {
+	if err := c.ApplyLifecycle(ctx, manifest); err != nil {
 		return err
-	}
-	for _, review := range manifest.InsightsManagerReviews {
-		if err := c.applyReview(ctx, review); err != nil {
-			return err
-		}
-	}
-	for _, takeover := range manifest.InsightsTakeovers {
-		if err := c.applyTakeover(ctx, takeover); err != nil {
-			return err
-		}
 	}
 	if err := c.dispatchPendingGuidance(ctx); err != nil {
 		return err
@@ -231,7 +221,14 @@ func (c *Coordinator) Recover(ctx context.Context) error {
 				return err
 			}
 		case "reviewing":
-			if err := c.resumeRun(ctx, &runs[i], "continue_review"); err != nil {
+			action := "continue_review"
+			if runs[i].AutomaticOrigin {
+				// A second model request is reserved for the fresh post-ACK
+				// feedback phase under the shared current-policy gate; ordinary
+				// recovery observes automatic reviewing runs GET-only.
+				action = "reconcile_review"
+			}
+			if err := c.resumeRun(ctx, &runs[i], action); err != nil {
 				return err
 			}
 		case "report_pending":
@@ -849,6 +846,11 @@ func (c *Coordinator) dispatchReview(ctx context.Context, run *state.LocalManage
 		request["runtimeContractVersion"] = guidanceContractVersion
 	}
 	payload, _ := json.Marshal(request)
+	if run.AutomaticOrigin && (action == "start_review" || action == "continue_review") {
+		actionContext, cancelAction := c.runActionContext(ctx, run)
+		defer cancelAction()
+		ctx = actionContext
+	}
 	output, _, err := c.Helper.ExecManager(ctx, sandboxID, payload)
 	if err != nil {
 		run.Phase = "execution_unknown"
@@ -1776,6 +1778,20 @@ func (c *Coordinator) now() time.Time {
 		return c.Now()
 	}
 	return time.Now().UTC()
+}
+
+// runActionContext caps one helper action by the durable original run lease
+// captured at admission. It never widens or rebases that lease: an expired
+// origin yields an already-expired context.
+func (c *Coordinator) runActionContext(ctx context.Context, run *state.LocalManagerRun) (context.Context, context.CancelFunc) {
+	if run.OriginValidUntil.IsZero() {
+		return context.WithCancel(ctx)
+	}
+	remaining := run.OriginValidUntil.Sub(c.now())
+	if remaining <= 0 {
+		return context.WithTimeout(ctx, 0)
+	}
+	return context.WithTimeout(ctx, remaining)
 }
 func digestJSON(value any) string {
 	payload, _ := json.Marshal(value)

@@ -141,6 +141,15 @@ func serve(arguments []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	reconciler := newRuntimeReconciler(store, engine, *workspaceRoot, *accessPath, gateway, hostCapacity, settings.ServerID, *stateRoot, client, ctx)
+	loop := runtimeFeedbackLoop{
+		reconciler:          reconciler,
+		client:              client,
+		serverID:            settings.ServerID,
+		version:             version,
+		hostKeys:            hostKeys,
+		controlPlaneTimeout: controlPlaneTimeout,
+		reconcileTimeout:    reconcileTimeout,
+	}
 	gatewayErrors := make(chan error, 1)
 	go func() { gatewayErrors <- gateway.Serve(ctx, *socketPath) }()
 	ticker := time.NewTicker(maxDuration(*poll, 2*time.Second))
@@ -154,44 +163,221 @@ func serve(arguments []string) error {
 				return fmt.Errorf("gateway stopped: %w", err)
 			}
 		case <-ticker.C:
-			expireContext, cancelExpire := context.WithTimeout(ctx, controlPlaneTimeout)
-			err := reconciler.Expire(expireContext)
-			cancelExpire()
-			var manifest model.Manifest
-			if err == nil {
-				manifestContext, cancelManifest := context.WithTimeout(ctx, controlPlaneTimeout)
-				manifest, err = client.Manifest(manifestContext)
-				cancelManifest()
-			}
-			if err == nil {
-				reconcileContext, cancelReconcile := context.WithTimeout(ctx, reconcileTimeout)
-				err = reconciler.Reconcile(reconcileContext, manifest)
-				cancelReconcile()
-			}
-			if err == nil && reconciler.Insights != nil {
-				insightContext, cancelInsights := context.WithTimeout(ctx, controlPlaneTimeout)
-				err = reconciler.Insights.RunOnce(insightContext)
-				cancelInsights()
-			}
-			reportContext, cancelReport := context.WithTimeout(ctx, controlPlaneTimeout)
-			report, reportErr := reconciler.Report(reportContext, settings.ServerID, version)
-			report.HostKeys = hostKeys
-			if manifest.ImageDigest != "" {
-				report.ImageDigest = manifest.ImageDigest
-			}
-			if err != nil {
-				report.LastError = &model.ItemError{
-					Code:    "reconcile_failed",
-					Message: bounded(err.Error()),
-				}
-			}
-			if reportErr == nil {
-				reportErr = client.Report(reportContext, report)
-			}
-			cancelReport()
-			if reportErr != nil {
-				log.Printf("runtime report failed: %s", bounded(reportErr.Error()))
-			}
+			loop.pass(ctx)
+		}
+	}
+}
+
+// runtimeFeedbackLoop performs one serial control-loop pass. It is the
+// extracted, directly callable unit of the daemon tick; the heavy lifecycle
+// order is unchanged and the post-ACK automatic feedback phase is bounded.
+type runtimeFeedbackLoop struct {
+	reconciler          *reconcile.Reconciler
+	client              control.Client
+	serverID            string
+	version             string
+	hostKeys            []model.HostKey
+	controlPlaneTimeout time.Duration
+	reconcileTimeout    time.Duration
+	// feedbackWait is an optional context-aware wait hook. Production defaults
+	// to a bounded timer; tests may observe or interrupt the wait.
+	feedbackWait func(context.Context, time.Duration) bool
+	// feedbackWindowOverride/feedbackCadenceOverride exist only so bounded
+	// tests can scale the fixed feedback budget. Production always uses the
+	// constants below.
+	feedbackWindowOverride  time.Duration
+	feedbackCadenceOverride time.Duration
+}
+
+const (
+	feedbackWindow  = 120 * time.Second
+	feedbackCadence = 10 * time.Second
+)
+
+// window is the whole post-ACK feedback budget: 120s in production.
+func (l *runtimeFeedbackLoop) window() time.Duration {
+	if l.feedbackWindowOverride > 0 {
+		return l.feedbackWindowOverride
+	}
+	return feedbackWindow
+}
+
+// cadence is the bounded tail poll interval: 10s in production.
+func (l *runtimeFeedbackLoop) cadence() time.Duration {
+	if l.feedbackCadenceOverride > 0 {
+		return l.feedbackCadenceOverride
+	}
+	return feedbackCadence
+}
+
+// actionCeiling bounds one feedback action by the parent phase deadline and the
+// normal reconcile ceiling. It never floors an expired parent back to life.
+func (l *runtimeFeedbackLoop) actionCeiling(ctx context.Context) time.Duration {
+	remaining := l.reconcileTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		if left := time.Until(deadline); left < remaining {
+			remaining = left
+		}
+	}
+	return remaining
+}
+
+// waitFor waits one bounded interval, clamped to the parent phase deadline and
+// interrupted by its cancellation. It reports whether the wait completed.
+func (l *runtimeFeedbackLoop) waitFor(ctx context.Context, cadence time.Duration) bool {
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining < cadence {
+			cadence = remaining
+		}
+	}
+	if cadence <= 0 {
+		return false
+	}
+	if l.feedbackWait != nil {
+		return l.feedbackWait(ctx, cadence)
+	}
+	timer := time.NewTimer(cadence)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+// pass runs one heavy lifecycle pass, publishes its real Report and requires a
+// successful Backend ACK before the post-ACK automatic feedback phase. The
+// final Report sends the resulting metadata outside the feedback window.
+func (l *runtimeFeedbackLoop) pass(ctx context.Context) {
+	expireContext, cancelExpire := context.WithTimeout(ctx, l.controlPlaneTimeout)
+	err := l.reconciler.Expire(expireContext)
+	cancelExpire()
+	var manifest model.Manifest
+	if err == nil {
+		manifestContext, cancelManifest := context.WithTimeout(ctx, l.controlPlaneTimeout)
+		manifest, err = l.client.Manifest(manifestContext)
+		cancelManifest()
+	}
+	if err == nil {
+		reconcileContext, cancelReconcile := context.WithTimeout(ctx, l.reconcileTimeout)
+		err = l.reconciler.Reconcile(reconcileContext, manifest)
+		cancelReconcile()
+	}
+	reportContext, cancelReport := context.WithTimeout(ctx, l.controlPlaneTimeout)
+	report, reportErr := l.reconciler.Report(reportContext, l.serverID, l.version)
+	report.HostKeys = l.hostKeys
+	if manifest.ImageDigest != "" {
+		report.ImageDigest = manifest.ImageDigest
+	}
+	if err != nil {
+		report.LastError = &model.ItemError{
+			Code:    "reconcile_failed",
+			Message: bounded(err.Error()),
+		}
+	}
+	if reportErr == nil {
+		reportErr = l.client.Report(reportContext, report)
+	}
+	cancelReport()
+	if reportErr != nil {
+		log.Printf("runtime report failed: %s", bounded(reportErr.Error()))
+	}
+	if err != nil || reportErr != nil {
+		return
+	}
+	l.feedback(ctx)
+	finalContext, cancelFinal := context.WithTimeout(ctx, l.controlPlaneTimeout)
+	finalReport, finalErr := l.reconciler.Report(finalContext, l.serverID, l.version)
+	finalReport.HostKeys = l.hostKeys
+	if manifest.ImageDigest != "" {
+		finalReport.ImageDigest = manifest.ImageDigest
+	}
+	if finalErr == nil {
+		finalErr = l.client.Report(finalContext, finalReport)
+	}
+	cancelFinal()
+	if finalErr != nil {
+		log.Printf("runtime report failed: %s", bounded(finalErr.Error()))
+	}
+}
+
+// feedback runs the post-ACK automatic feedback phase under ONE parent
+// deadline created before the first fresh fetch. The fresh validated manifest,
+// collector, automatic admission and the bounded serial progression loop all
+// inherit that parent while retaining their ordinary per-request timeouts;
+// per-run actions are additionally capped by the durable original run lease in
+// the Coordinator. A start failure keeps its durable unknown phase and the
+// rounds continue observation-only; cancellation or expiry stops the phase and
+// the final Report runs on the outer context.
+func (l *runtimeFeedbackLoop) feedback(ctx context.Context) {
+	manager, ok := l.reconciler.AutomaticFeedback()
+	if !ok {
+		return
+	}
+	parent, cancelParent := context.WithTimeout(ctx, l.window())
+	defer cancelParent()
+	fetch := func() bool {
+		freshContext, cancelFresh := context.WithTimeout(parent, l.controlPlaneTimeout)
+		fresh, err := l.client.Manifest(freshContext)
+		cancelFresh()
+		if err != nil {
+			return false
+		}
+		applyContext, cancelApply := context.WithTimeout(parent, l.controlPlaneTimeout)
+		defer cancelApply()
+		return l.reconciler.ApplyFeedbackManifest(applyContext, fresh) == nil
+	}
+	if !fetch() {
+		return
+	}
+	if l.reconciler.Insights != nil {
+		insightContext, cancelInsights := context.WithTimeout(parent, l.controlPlaneTimeout)
+		err := l.reconciler.Insights.RunOnce(insightContext)
+		cancelInsights()
+		if err != nil {
+			log.Printf("runtime insights failed: %s", bounded(err.Error()))
+			return
+		}
+	}
+	admissionContext, cancelAdmission := context.WithTimeout(parent, l.actionCeiling(parent))
+	err := manager.ReconsiderAdmissions(admissionContext)
+	cancelAdmission()
+	if err != nil {
+		// The durable execution_unknown phase is retained; the bounded rounds
+		// continue observation-only instead of ending the whole phase.
+		log.Printf("runtime automatic admission failed: %s", bounded(err.Error()))
+	}
+	for parent.Err() == nil {
+		if !fetch() {
+			return
+		}
+		dispatchContext, cancelDispatch := context.WithTimeout(parent, l.actionCeiling(parent))
+		err = manager.DispatchReadyGuidance(dispatchContext)
+		cancelDispatch()
+		if err != nil {
+			log.Printf("runtime guidance dispatch failed: %s", bounded(err.Error()))
+			return
+		}
+		advanceContext, cancelAdvance := context.WithTimeout(parent, l.actionCeiling(parent))
+		err = manager.AdvanceAutomaticRuns(advanceContext)
+		cancelAdvance()
+		if err != nil {
+			log.Printf("runtime automatic progression failed: %s", bounded(err.Error()))
+			return
+		}
+		pendingContext, cancelPending := context.WithTimeout(parent, l.controlPlaneTimeout)
+		pending, pendingErr := manager.AutomaticWorkPending(pendingContext)
+		cancelPending()
+		if pendingErr != nil {
+			log.Printf("runtime automatic work check failed: %s", bounded(pendingErr.Error()))
+			return
+		}
+		if !pending {
+			return
+		}
+		if !l.waitFor(parent, l.cadence()) {
+			return
 		}
 	}
 }
