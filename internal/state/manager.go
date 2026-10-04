@@ -50,6 +50,27 @@ type LocalManagerFinding struct {
 	PolicyRevision    int64                         `json:"policyRevision"`
 	JournalGeneration string                        `json:"journalGeneration"`
 	Acknowledged      bool                          `json:"acknowledged"`
+	Admission         *LocalManagerAdmission        `json:"admission,omitempty"`
+}
+
+// LocalManagerAdmission is the durable automatic-admission anchor for one
+// acknowledged finding observation. It is metadata only; a bound target is
+// captured once at the first observation and is never retargeted.
+type LocalManagerAdmission struct {
+	State              string                         `json:"state"`
+	Reason             string                         `json:"reason,omitempty"`
+	ObservedAt         time.Time                      `json:"observedAt"`
+	EvaluatedAt        time.Time                      `json:"evaluatedAt"`
+	BatchID            string                         `json:"batchId"`
+	SandboxID          string                         `json:"sandboxId"`
+	Mode               string                         `json:"mode,omitempty"`
+	PolicyRevision     int64                          `json:"policyRevision"`
+	RunGeneration      int64                          `json:"runGeneration"`
+	RuleID             string                         `json:"ruleId"`
+	WitnessTaskID      *string                        `json:"witnessTaskId,omitempty"`
+	WitnessTaskAttempt *int64                         `json:"witnessTaskAttempt,omitempty"`
+	WitnessObservedAt  time.Time                      `json:"witnessObservedAt"`
+	Target             *model.InsightsManagerTargetV1 `json:"target,omitempty"`
 }
 
 type LocalManagerPolicy struct {
@@ -358,6 +379,30 @@ func (s *Store) ManagerFinding(ctx context.Context, id string) (*LocalManagerFin
 		return nil, err
 	}
 	return &value, nil
+}
+
+func (s *Store) ManagerFindings(ctx context.Context) ([]LocalManagerFinding, error) {
+	if err := s.ensureManagerSchema(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT value_json FROM manager_findings ORDER BY finding_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var values []LocalManagerFinding
+	for rows.Next() {
+		var payload []byte
+		var value LocalManagerFinding
+		if err := rows.Scan(&payload); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(payload, &value); err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, rows.Err()
 }
 
 func (s *Store) PutManagerRun(ctx context.Context, value LocalManagerRun) error {

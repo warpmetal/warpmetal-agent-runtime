@@ -399,6 +399,23 @@ id/revision/rule/native session and its bounded shape; retention or the snapshot
 alone never authorizes a review without the fresh current policy, source, target
 and capability fences.
 
+Automatic admission is durable across transient gates. The first acknowledged
+observation captures the immutable canonical source and task/Work/binding target
+(plus a fresh live-task witness when the canonical read is temporarily
+unavailable) before any temporary policy or capability gate, and the observation
+is written before the local outbox acknowledgement so a manager failure keeps the
+batch replayable. A later reconsideration at the end-of-pass apply admits exactly
+one reservation/run once the gate clears, without a new batch. A changed or null
+canonical task, a changed policy lineage or Off, a closed finding, or a changed
+source generation retires the anchor instead of retargeting it; findings
+acknowledged before this mechanism are never backfilled.
+
+Auto-steer automatic admission claims one attempt per stable finding episode and
+is revision-immune: count/revision updates refresh provenance only. Recommend
+keeps its existing per-revision episode, and manual reviews are never counted as
+automatic attempts. Work/binding revisions are revalidated live against the
+verified registration rather than frozen by the anchor.
+
 Protective Pause and Resume hold operations recover by exact persisted operation
 identity. Restart or lost-response recovery observes the same operation with
 `reconcile_intervention_hold`, including after the 120-second effect lease

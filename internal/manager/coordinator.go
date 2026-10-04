@@ -122,7 +122,10 @@ func (c *Coordinator) Apply(ctx context.Context, manifest model.Manifest) error 
 			return err
 		}
 	}
-	return c.dispatchPendingGuidance(ctx)
+	if err := c.dispatchPendingGuidance(ctx); err != nil {
+		return err
+	}
+	return c.recoverAdmissions(ctx)
 }
 
 // RenewPendingTakeovers prepares bounded exact-operation reconciliation from the freshly fetched,
@@ -1037,81 +1040,392 @@ func (c *Coordinator) ObserveAcknowledgedInsightBatch(ctx context.Context, batch
 	if policyState != nil {
 		provenance = policyState.Manifest.PolicyRevision
 	}
+	// Durable automatic-admission anchors are captured before any temporary
+	// policy/capability gate so an accepted finding is never silently lost.
+	// Observation only persists anchors and read-only captures; every effect is
+	// owned by recoverAdmissions at the end-of-pass Apply boundary.
 	for _, finding := range batch.Findings {
-		if finding.State != "open" {
-			continue
-		}
-		local := state.LocalManagerFinding{Finding: finding, Source: source, PolicyRevision: provenance, JournalGeneration: batch.JournalGeneration, Acknowledged: true}
-		if err := c.Store.PutManagerFinding(ctx, local); err != nil {
-			return err
-		}
-	}
-	// Automatic admission keeps every existing fence: a current recommend
-	// policy, fresh lease, allowed rule, episode/cooldown/limit eligibility and
-	// exact source/capability/descriptor identity.
-	if policyState == nil {
-		return nil
-	}
-	policy := policyState.Manifest
-	if !reviewPolicyModeValid(policy) || !c.now().Before(policy.ValidUntil) || policy.ValidUntil.Sub(c.now()) > 120*time.Second {
-		return nil
-	}
-	for _, finding := range batch.Findings {
-		if finding.State != "open" || !contains(policy.AllowedRules, finding.RuleID) {
-			continue
-		}
-		if !c.eligibleAutomatic(ctx, policy, source, finding) {
-			continue
-		}
-		capability, err := c.Store.ManagerCapability(ctx, source.RegisteredSourceID)
-		if err != nil || capability == nil || !capability.Available {
-			return err
-		}
-		recipe := recipeForRule(finding.RuleID)
-		if !contains(capability.RecipeIDs, recipe) {
-			continue
-		}
-		service, err := c.Store.ManagedService(ctx, source.ServiceRegistrationID)
-		if err != nil || service == nil {
-			return err
-		}
-		reservationID := opaqueID("reservation_", batch.BatchID+"\x00"+finding.FindingID)
-		existing, err := c.Store.ManagerReservation(ctx, reservationID)
+		stored, err := c.Store.ManagerFinding(ctx, finding.FindingID)
 		if err != nil {
 			return err
 		}
-		if existing != nil {
-			// An existing persisted intent is replayed by Recover; the
-			// canonical read must never precede that stored lookup.
+		if stored == nil {
+			if finding.State != "open" {
+				continue
+			}
+			anchor := state.LocalManagerAdmission{State: admissionPending, ObservedAt: c.now(), EvaluatedAt: c.now(), BatchID: batch.BatchID, SandboxID: batch.SandboxID, RuleID: finding.RuleID}
+			if policyState != nil {
+				anchor.PolicyRevision = policyState.Manifest.PolicyRevision
+				anchor.RunGeneration = policyState.Manifest.RunGeneration
+				anchor.Mode = policyState.Manifest.Mode
+			}
+			if err := c.captureAdmissionAnchor(ctx, &anchor, finding, source, policyState); err != nil {
+				return err
+			}
+			local := state.LocalManagerFinding{Finding: finding, Source: source, PolicyRevision: provenance, JournalGeneration: batch.JournalGeneration, Acknowledged: true, Admission: &anchor}
+			if err := c.Store.PutManagerFinding(ctx, local); err != nil {
+				return err
+			}
 			continue
 		}
-		target, err := c.canonicalDescriptorTarget(ctx, finding, source, service)
-		if err != nil {
-			return err
-		}
-		expiresIn := int(policy.ValidUntil.Sub(c.now()).Seconds())
-		if expiresIn > 120 {
-			expiresIn = 120
-		}
-		if expiresIn < 1 {
+		// Every genuine observation refreshes current finding content and
+		// provenance while preserving the original admission anchor.
+		refreshed := *stored
+		refreshed.Finding = finding
+		refreshed.Source = source
+		refreshed.JournalGeneration = batch.JournalGeneration
+		refreshed.PolicyRevision = provenance
+		refreshed.Acknowledged = true
+		if stored.Admission == nil {
+			// Legacy rows stay legacy: no backfill of an admission anchor.
+			if err := c.Store.PutManagerFinding(ctx, refreshed); err != nil {
+				return err
+			}
 			continue
 		}
-		request := model.InsightsManagerReservationRequestV1{FormatVersion: 1, ReservationID: reservationID, RequestID: opaqueID("req_manager_", batch.BatchID+"\x00"+finding.FindingID), Manual: false, FindingID: finding.FindingID, FindingRevision: finding.Revision, PolicyRevision: policy.PolicyRevision, RuleID: finding.RuleID, RecipeID: recipe, ProviderRouteDigest: capability.ProviderRouteDigest, Source: source, Target: target, Budget: model.InsightsManagerBudgetV1{ModelRequests: policy.EffectiveLimits.PerRunModelRequests, InputTokens: policy.EffectiveLimits.PerRunInputTokens, OutputTokens: policy.EffectiveLimits.PerRunOutputTokens}, ExpiresInSeconds: expiresIn}
-		intent := state.LocalManagerReservation{Request: request, Phase: "pending"}
-		if err := c.Store.PutManagerReservation(ctx, intent); err != nil {
-			return err
+		anchor := stored.Admission
+		switch {
+		case source != stored.Source:
+			anchor.State, anchor.Reason, anchor.EvaluatedAt = admissionDeclined, "source_changed", c.now()
+		case finding.State != "open":
+			if liveAdmission(anchor.State) {
+				anchor.State, anchor.Reason, anchor.EvaluatedAt = admissionDeclined, "finding_closed", c.now()
+			}
+		case anchor.Mode == "recommend" && finding.Revision != stored.Finding.Revision:
+			// Recommend keeps its existing per-revision episode identity: a new
+			// revision is a fresh admission for the same stable finding row.
+			fresh := state.LocalManagerAdmission{State: admissionPending, ObservedAt: c.now(), EvaluatedAt: c.now(), BatchID: batch.BatchID, SandboxID: batch.SandboxID, RuleID: finding.RuleID}
+			if policyState != nil {
+				fresh.PolicyRevision = policyState.Manifest.PolicyRevision
+				fresh.RunGeneration = policyState.Manifest.RunGeneration
+				fresh.Mode = policyState.Manifest.Mode
+			}
+			if err := c.captureAdmissionAnchor(ctx, &fresh, finding, source, policyState); err != nil {
+				return err
+			}
+			anchor = &fresh
 		}
-		if err := c.completeAutomaticReservation(ctx, &intent); err != nil {
+		refreshed.Admission = anchor
+		if err := c.Store.PutManagerFinding(ctx, refreshed); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// canonicalDescriptorTarget reads the fresh node-authorized canonical
-// descriptor and returns the exact automatic target, validating the local
-// verified Work projection and treating a present Busy worker task as
-// additional defense. Task identity never comes from registration provenance.
+const (
+	admissionPending  = "pending"
+	admissionDeferred = "deferred"
+	admissionAdmitted = "admitted"
+	admissionDeclined = "declined"
+)
+
+func liveAdmission(value string) bool {
+	return value == admissionPending || value == admissionDeferred
+}
+
+// validPolicyMode is the stable owner lineage predicate. Transient auto_steer
+// qualification lives in AutoSteerPolicy and must not be treated as terminal.
+func validPolicyMode(mode string) bool {
+	return mode == "recommend" || mode == "auto_steer"
+}
+
+func admissionReservationID(batchID string, findingID string) string {
+	return opaqueID("reservation_", batchID+"\x00"+findingID)
+}
+
+func admissionRequestID(batchID string, findingID string) string {
+	return opaqueID("req_manager_", batchID+"\x00"+findingID)
+}
+
+// captureAdmissionTarget captures the node-authorized canonical target at the
+// first observation, before any temporary policy or capability gate.
+func (c *Coordinator) captureAdmissionTarget(ctx context.Context, finding model.InsightFindingV1, source model.InsightsManagerSourceV1) (*model.InsightsManagerTargetV1, string) {
+	envelope, err := c.Control.GetInsightsManagerTarget(ctx, finding.FindingID, source.RegisteredSourceID)
+	if err != nil || envelope.FormatVersion != 1 || envelope.FindingID != finding.FindingID ||
+		envelope.FindingRevision != finding.Revision || envelope.Source != source ||
+		envelope.Target.TeamID == "" || envelope.Target.MemberID == "" {
+		return nil, "transport"
+	}
+	target := envelope.Target
+	return &target, "captured"
+}
+
+// freshTaskWitness reports the current live member task only when the helper
+// status is fresh and generation-bound. Missing or stale rows are unknown, not
+// evidence of a terminal task.
+func (c *Coordinator) freshTaskWitness(ctx context.Context, source model.InsightsManagerSourceV1) (*state.LocalManagedTaskAuthority, bool, error) {
+	task, err := c.Store.ManagedTaskAuthority(ctx, source.ServiceRegistrationID)
+	if err != nil {
+		return nil, false, err
+	}
+	if task == nil || !task.Busy || task.TaskID == nil || task.TaskAttempt == nil ||
+		task.ServiceGeneration != source.ServiceGeneration || task.SandboxGeneration != source.SandboxGeneration ||
+		task.ObservedAt.After(c.now().Add(5*time.Second)) || c.now().Sub(task.ObservedAt) > 120*time.Second {
+		return task, false, nil
+	}
+	return task, true, nil
+}
+
+// captureAdmissionAnchor persists the observation-time anchor: permanent Off or
+// removed-rule conditions decline, an existing episode dedupes, and otherwise
+// the canonical target or a fresh live-task witness anchors the episode.
+func (c *Coordinator) captureAdmissionAnchor(ctx context.Context, anchor *state.LocalManagerAdmission, finding model.InsightFindingV1, source model.InsightsManagerSourceV1, policyState *state.LocalManagerPolicy) error {
+	if policyState == nil {
+		// A truly absent initial policy is not a temporary readiness gate: the
+		// anchor declines explicitly and a later opt-in never revives it.
+		anchor.State, anchor.Reason = admissionDeclined, "policy_absent"
+		return nil
+	}
+	if policyState != nil && !validPolicyMode(policyState.Manifest.Mode) {
+		anchor.State, anchor.Reason = admissionDeclined, "policy_off"
+		return nil
+	}
+	if policyState != nil && !contains(policyState.Manifest.AllowedRules, finding.RuleID) {
+		anchor.State, anchor.Reason = admissionDeclined, "rule_not_allowed"
+		return nil
+	}
+	reservationID := admissionReservationID(anchor.BatchID, finding.FindingID)
+	reservation, err := c.Store.ManagerReservation(ctx, reservationID)
+	if err != nil {
+		return err
+	}
+	if reservation != nil {
+		anchor.State, anchor.Reason = admissionAdmitted, "existing_reservation"
+		return nil
+	}
+	attempted, err := c.automaticEpisodeAttempt(ctx, source, finding.FindingID, finding.Revision, anchor.Mode)
+	if err != nil {
+		return err
+	}
+	if attempted {
+		anchor.State, anchor.Reason = admissionAdmitted, "existing_episode"
+		return nil
+	}
+	if captured, reason := c.captureAdmissionTarget(ctx, finding, source); captured != nil {
+		anchor.Target, anchor.Reason = captured, reason
+		return nil
+	}
+	task, fresh, err := c.freshTaskWitness(ctx, source)
+	if err != nil {
+		return err
+	}
+	if fresh {
+		anchor.WitnessTaskID, anchor.WitnessTaskAttempt = task.TaskID, task.TaskAttempt
+		anchor.WitnessObservedAt, anchor.Reason = task.ObservedAt, "witness_anchored"
+		return nil
+	}
+	anchor.State, anchor.Reason = admissionDeclined, "unbound"
+	return nil
+}
+
+// sameAdmissionTask compares only the immutable team/member/task identity of an
+// anchor, including an explicit null task. Work/binding revisions are live
+// authority and are not frozen by the anchor.
+func sameAdmissionTask(anchor model.InsightsManagerTargetV1, target model.InsightsManagerTargetV1) bool {
+	equal := func(a, b *string) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }
+	equalInt := func(a, b *int64) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }
+	return anchor.TeamID == target.TeamID && anchor.MemberID == target.MemberID &&
+		equal(anchor.TaskID, target.TaskID) && equalInt(anchor.TaskAttempt, target.TaskAttempt)
+}
+
+// automaticEpisodeAttempt applies each mode's backend rule: automatic
+// auto_steer claims one attempt per stable findingId episode (revision- and
+// policy-revision-immune, matching the backend episode lookup by
+// sandbox+findingId), automatic recommend keeps its per-revision episode, and
+// manual reservations are never counted as automatic attempts.
+func (c *Coordinator) automaticEpisodeAttempt(ctx context.Context, source model.InsightsManagerSourceV1, findingID string, revision int64, mode string) (bool, error) {
+	reservations, err := c.Store.ManagerReservations(ctx)
+	if err != nil {
+		return false, err
+	}
+	for i := range reservations {
+		request := reservations[i].Request
+		if request.Manual || request.FindingID != findingID || request.Source.RegisteredSourceID != source.RegisteredSourceID {
+			continue
+		}
+		if mode == "auto_steer" {
+			return true, nil
+		}
+		if request.FindingRevision == revision {
+			return true, nil
+		}
+	}
+	runs, err := c.Store.ManagerRuns(ctx)
+	if err != nil {
+		return false, err
+	}
+	for i := range runs {
+		manifest := runs[i].Manifest
+		if manifest.Manual || manifest.FindingID != findingID || manifest.Source.RegisteredSourceID != source.RegisteredSourceID {
+			continue
+		}
+		if mode == "auto_steer" {
+			return true, nil
+		}
+		if manifest.FindingRevision == revision {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// recoverAdmissions reconsiders deferred automatic admissions at the
+// end-of-pass manager boundary. Only live (pending/deferred) anchors are
+// retried; declined and admitted anchors are terminal for the stable finding
+// episode, and legacy findings without an anchor are never backfilled.
+func (c *Coordinator) recoverAdmissions(ctx context.Context) error {
+	findings, err := c.Store.ManagerFindings(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range findings {
+		stored := &findings[i]
+		if stored.Admission == nil || !liveAdmission(stored.Admission.State) {
+			continue
+		}
+		if err := c.attemptAdmission(ctx, stored); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// attemptAdmission re-evaluates one durable anchor against the current policy
+// lineage, lease, qualification, capability, service and canonical authority.
+// Team/member/task/attempt are immutable; Work/binding comes from the current
+// canonical target and is revalidated against the verified local registration.
+func (c *Coordinator) attemptAdmission(ctx context.Context, stored *state.LocalManagerFinding) error {
+	admission := stored.Admission
+	if admission == nil || !liveAdmission(admission.State) {
+		return nil
+	}
+	now := c.now()
+	decline := func(reason string) error {
+		admission.State, admission.Reason, admission.EvaluatedAt = admissionDeclined, reason, now
+		return c.Store.PutManagerFinding(ctx, *stored)
+	}
+	deferAdmission := func(reason string) error {
+		admission.State, admission.Reason, admission.EvaluatedAt = admissionDeferred, reason, now
+		return c.Store.PutManagerFinding(ctx, *stored)
+	}
+	if stored.Finding.State != "open" {
+		return decline("finding_closed")
+	}
+	reservationID := admissionReservationID(admission.BatchID, stored.Finding.FindingID)
+	existing, err := c.Store.ManagerReservation(ctx, reservationID)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		admission.State, admission.Reason, admission.EvaluatedAt = admissionAdmitted, "existing_reservation", now
+		return c.Store.PutManagerFinding(ctx, *stored)
+	}
+	// Stable observed sandbox resolves the policy authority without depending
+	// on transient capability readiness.
+	policyState, err := c.Store.ManagerPolicy(ctx, admission.SandboxID)
+	if err != nil {
+		return err
+	}
+	if policyState == nil {
+		return deferAdmission("policy_pending")
+	}
+	policy := policyState.Manifest
+	if !validPolicyMode(policy.Mode) {
+		return decline("policy_off")
+	}
+	if admission.PolicyRevision == 0 || policy.PolicyRevision != admission.PolicyRevision || policy.RunGeneration != admission.RunGeneration || policy.Mode != admission.Mode {
+		return decline("policy_changed")
+	}
+	if !contains(policy.AllowedRules, admission.RuleID) {
+		return decline("rule_removed")
+	}
+	// Episode dedupe precedes any fresh canonical read or new attempt.
+	attempted, err := c.automaticEpisodeAttempt(ctx, stored.Source, stored.Finding.FindingID, stored.Finding.Revision, admission.Mode)
+	if err != nil {
+		return err
+	}
+	if attempted {
+		admission.State, admission.Reason, admission.EvaluatedAt = admissionAdmitted, "existing_episode", now
+		return c.Store.PutManagerFinding(ctx, *stored)
+	}
+	if !now.Before(policy.ValidUntil) || policy.ValidUntil.Sub(now) > 120*time.Second {
+		return deferAdmission("policy_window")
+	}
+	if !c.eligibleAutomatic(ctx, policy, stored.Source, stored.Finding) {
+		return deferAdmission("limits")
+	}
+	capability, err := c.Store.ManagerCapability(ctx, stored.Source.RegisteredSourceID)
+	if err != nil {
+		return err
+	}
+	if capability == nil || !capability.Available {
+		return deferAdmission("capability")
+	}
+	recipe := recipeForRule(stored.Finding.RuleID)
+	if !contains(capability.RecipeIDs, recipe) {
+		return deferAdmission("capability")
+	}
+	service, err := c.Store.ManagedService(ctx, stored.Source.ServiceRegistrationID)
+	if err != nil {
+		return err
+	}
+	if service == nil {
+		return deferAdmission("service")
+	}
+	if policy.Mode == "auto_steer" {
+		sandbox, err := c.Store.Sandbox(ctx, capability.SandboxID)
+		if err != nil {
+			return err
+		}
+		if !autoSteerQualified(policy, capability, sandbox) {
+			return deferAdmission("qualification")
+		}
+	}
+	envelope, err := c.Control.GetInsightsManagerTarget(ctx, stored.Finding.FindingID, stored.Source.RegisteredSourceID)
+	if err != nil || envelope.FormatVersion != 1 || envelope.FindingID != stored.Finding.FindingID ||
+		envelope.FindingRevision != stored.Finding.Revision || envelope.Source != stored.Source {
+		return deferAdmission("transport")
+	}
+	target := envelope.Target
+	if admission.Target == nil {
+		// Witness-anchored capture (canonical was unavailable at observation):
+		// only the exact observation-time task can complete the anchor.
+		if admission.WitnessTaskID == nil || admission.WitnessTaskAttempt == nil ||
+			target.TaskID == nil || target.TaskAttempt == nil ||
+			*target.TaskID != *admission.WitnessTaskID || *target.TaskAttempt != *admission.WitnessTaskAttempt {
+			return decline("task_changed")
+		}
+		identity := target
+		admission.Target = &identity
+	} else if !sameAdmissionTask(*admission.Target, target) {
+		return decline("task_changed")
+	}
+	if err := c.localWorkAuthority(ctx, stored.Source, target); err != nil {
+		return deferAdmission("work_pending")
+	}
+	if err := c.localBusyTaskConsistency(ctx, stored.Source, target); err != nil {
+		return deferAdmission("task_unknown")
+	}
+	expiresIn := int(policy.ValidUntil.Sub(now).Seconds())
+	if expiresIn > 120 {
+		expiresIn = 120
+	}
+	if expiresIn < 1 {
+		return deferAdmission("policy_window")
+	}
+	request := model.InsightsManagerReservationRequestV1{FormatVersion: 1, ReservationID: reservationID, RequestID: admissionRequestID(admission.BatchID, stored.Finding.FindingID), Manual: false, FindingID: stored.Finding.FindingID, FindingRevision: stored.Finding.Revision, PolicyRevision: policy.PolicyRevision, RuleID: admission.RuleID, RecipeID: recipe, ProviderRouteDigest: capability.ProviderRouteDigest, Source: stored.Source, Target: target, Budget: model.InsightsManagerBudgetV1{ModelRequests: policy.EffectiveLimits.PerRunModelRequests, InputTokens: policy.EffectiveLimits.PerRunInputTokens, OutputTokens: policy.EffectiveLimits.PerRunOutputTokens}, ExpiresInSeconds: expiresIn}
+	intent := state.LocalManagerReservation{Request: request, Phase: "pending"}
+	if err := c.Store.PutManagerReservation(ctx, intent); err != nil {
+		return err
+	}
+	admission.State, admission.Reason, admission.EvaluatedAt = admissionAdmitted, "admitted", now
+	if err := c.Store.PutManagerFinding(ctx, *stored); err != nil {
+		return err
+	}
+	return c.completeAutomaticReservation(ctx, &intent)
+}
+
 func (c *Coordinator) canonicalDescriptorTarget(ctx context.Context, finding model.InsightFindingV1, source model.InsightsManagerSourceV1, service *state.LocalManagedService) (model.InsightsManagerTargetV1, error) {
 	envelope, err := c.Control.GetInsightsManagerTarget(ctx, finding.FindingID, source.RegisteredSourceID)
 	if err != nil {

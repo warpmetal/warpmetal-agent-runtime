@@ -3,6 +3,7 @@ package insights
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -21,6 +22,37 @@ func (observer *managerAckObserver) ObserveAcknowledgedInsightBatch(_ context.Co
 	observer.batches = append(observer.batches, batch)
 	observer.receipts = append(observer.receipts, receipt)
 	return nil
+}
+
+type managerAckFailure struct{}
+
+func (managerAckFailure) ObserveAcknowledgedInsightBatch(context.Context, model.InsightBatchV1, model.InsightBatchReceiptV1) error {
+	return errors.New("injected manager observation failure")
+}
+
+// TestCollectorRetainsOutboxWhenManagerObservationFails is the r1498 guard for
+// the ACK crash gap: the durable observation must happen before the local ACK,
+// so a manager observation failure leaves the batch replayable in the outbox.
+func TestCollectorRetainsOutboxWhenManagerObservationFails(t *testing.T) {
+	fixture := readSandboxInsightFixture(t)
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 9, 27, 18, 0, 30, 0, time.UTC)
+	policy := currentInsightPolicy(now)
+	seedInsightAuthority(t, store, policy, now)
+	control := &fakeInsightControl{policy: model.InsightPolicyEnvelopeV1{Policies: []model.InsightPolicyV1{policy}}}
+	monitor := &fakeInsightMonitor{responses: []json.RawMessage{fixture.OpenResponse}}
+	collector := &Collector{Store: store, Control: control, Monitor: monitor, Lifecycle: &fakeInsightLifecycle{}, Manager: managerAckFailure{}, Now: func() time.Time { return now }}
+	if err := collector.RunOnce(context.Background()); err == nil {
+		t.Fatal("manager observation failure returned success")
+	}
+	outbox, err := store.InsightOutbox(context.Background())
+	if err != nil || len(outbox) != 1 || outbox[0].Batch.BatchID != control.submissions[0].BatchID {
+		t.Fatalf("outbox after manager observation failure = %#v %v", outbox, err)
+	}
 }
 
 func TestManagerAutomaticReviewSeesFindingOnlyAfterExactBatchAcknowledgement(t *testing.T) {
