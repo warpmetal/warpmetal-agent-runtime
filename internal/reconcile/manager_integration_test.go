@@ -45,6 +45,11 @@ func (manager *fakeManagerCoordinator) ApplyPolicies(_ context.Context, manifest
 	return nil
 }
 
+func (manager *fakeManagerCoordinator) ApplyLifecycle(_ context.Context, manifest model.Manifest) error {
+	manager.manifests = append(manager.manifests, manifest)
+	return nil
+}
+
 func (manager *fakeManagerCoordinator) Apply(_ context.Context, manifest model.Manifest) error {
 	manager.manifests = append(manager.manifests, manifest)
 	return nil

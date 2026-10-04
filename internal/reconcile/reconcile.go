@@ -109,6 +109,7 @@ type ManagerControl interface {
 	RenewPendingTakeovers(context.Context, model.Manifest) error
 	Recover(context.Context) error
 	ApplyPolicies(context.Context, model.Manifest) error
+	ApplyLifecycle(context.Context, model.Manifest) error
 	Apply(context.Context, model.Manifest) error
 	Reports(context.Context, continuity.StaleSourceSet) ([]model.InsightsManagerPolicyReportV1, []model.InsightsManagerRunReportV1, []model.InsightsTakeoverReportV1, error)
 	ReportsCurrent(context.Context, model.Manifest, []model.ContinuitySourceReportV1, continuity.StaleSourceSet) ([]model.InsightsManagerPolicyReportV1, []model.InsightsManagerRunReportV1, []model.InsightsTakeoverReportV1, error)
@@ -151,6 +152,47 @@ type Reconciler struct {
 	currentAuthority  *model.Manifest
 	managedWorkerMu   sync.Mutex
 	managedExecutions map[string]*managedWorkerExecution
+}
+
+// FeedbackManager is the narrow post-Report-ACK automatic manager boundary.
+// Manual review, takeover and unrelated recovery remain owned by the ordinary
+// heavy Recover/Apply lifecycle path.
+type FeedbackManager interface {
+	ReconsiderAdmissions(context.Context) error
+	DispatchReadyGuidance(context.Context) error
+	AdvanceAutomaticRuns(context.Context) error
+	AutomaticWorkPending(context.Context) (bool, error)
+}
+
+// AutomaticFeedback exposes the narrow automatic boundary of the configured
+// manager, when it supports it.
+func (r *Reconciler) AutomaticFeedback() (FeedbackManager, bool) {
+	value, ok := r.Manager.(FeedbackManager)
+	return value, ok
+}
+
+// ApplyFeedbackManifest validates a fresh post-ACK manifest under the existing
+// reconcile mutex with the full manifest validation and requires its desired
+// revision to equal the fully applied store revision. Only current manager
+// policies are applied; no lifecycle effects are executed here, so a changed
+// or unprocessed lifecycle authority defers to the next ordinary heavy pass.
+func (r *Reconciler) ApplyFeedbackManifest(ctx context.Context, manifest model.Manifest) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	lastRevision, err := r.Store.Revision(ctx)
+	if err != nil {
+		return err
+	}
+	if err := model.ValidateManifest(manifest, r.ServerID, lastRevision); err != nil {
+		return err
+	}
+	if manifest.DesiredRevision != lastRevision {
+		return errors.New("feedback manifest revision is not the fully applied authority")
+	}
+	if r.Manager != nil {
+		return r.Manager.ApplyPolicies(ctx, manifest)
+	}
+	return nil
 }
 
 func (r *Reconciler) setCurrentAuthority(manifest model.Manifest) {
@@ -402,7 +444,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) (er
 		}
 	}
 	if r.Manager != nil {
-		if err := r.Manager.Apply(ctx, manifest); err != nil {
+		if err := r.Manager.ApplyLifecycle(ctx, manifest); err != nil {
 			return fmt.Errorf("apply manager manifest: %w", err)
 		}
 	}
