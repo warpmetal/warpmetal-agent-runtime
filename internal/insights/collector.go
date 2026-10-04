@@ -390,13 +390,14 @@ func (c *Collector) collectSource(ctx context.Context, policy model.InsightPolic
 }
 
 func (c *Collector) acknowledge(ctx context.Context, batch model.InsightBatchV1, receipt model.InsightBatchReceiptV1) error {
-	if err := c.Store.AcknowledgeInsightBatch(ctx, batch.BatchID, receipt); err != nil {
-		return err
-	}
+	// Durable observation before the local ACK: a manager observation failure
+	// keeps the batch replayable in the outbox instead of losing the finding.
 	if c.Manager != nil {
-		return c.Manager.ObserveAcknowledgedInsightBatch(ctx, batch, receipt)
+		if err := c.Manager.ObserveAcknowledgedInsightBatch(ctx, batch, receipt); err != nil {
+			return err
+		}
 	}
-	return nil
+	return c.Store.AcknowledgeInsightBatch(ctx, batch.BatchID, receipt)
 }
 
 func (c *Collector) currentAuthority(ctx context.Context, policy model.InsightPolicyV1, ref model.InsightPolicySourceV1, now time.Time) (*state.LocalContinuitySource, *state.LocalSandbox, error) {

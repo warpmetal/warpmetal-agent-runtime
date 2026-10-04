@@ -304,6 +304,7 @@ func TestCoordinatorPersistsBeforeDispatchAndReconcilesLostStartAfterSQLiteReope
 			t.Fatal(err)
 		}
 		seedManagerCoordinatorAuthority(t, store, fixture)
+		seedManagerFinding(t, store, fixture)
 		helper := &fakeManagerHelper{loseStart: true, reviewOutput: managerReviewReceipt(t, fixture, "reconcile_review")}
 		control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
 		requireManagerStartReportBeforeHelper(t, helper, control)
@@ -356,6 +357,7 @@ func TestCoordinatorPersistsBeforeDispatchAndReconcilesLostStartAfterSQLiteReope
 				t.Fatal(err)
 			}
 			seedManagerCoordinatorAuthority(t, store, fixture)
+			seedManagerFinding(t, store, fixture)
 			helper := &fakeManagerHelper{reviewOutput: managerReviewReceipt(t, fixture, "start_review")}
 			control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
 			if refusal == "report refused" {
@@ -411,6 +413,7 @@ func TestCoordinatorPersistsBeforeDispatchAndReconcilesLostStartAfterSQLiteReope
 			t.Fatal(err)
 		}
 		seedManagerCoordinatorAuthority(t, store, fixture)
+		seedManagerFinding(t, store, fixture)
 		helper := &fakeManagerHelper{reviewOutput: managerReviewReceipt(t, fixture, "start_review")}
 		control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review), startReportLoseOnce: true}
 		now := fixture.Review.ValidUntil.Add(-30 * time.Second)
@@ -464,6 +467,7 @@ func TestCoordinatorPersistsBeforeDispatchAndReconcilesLostStartAfterSQLiteReope
 				t.Fatal(err)
 			}
 			seedManagerCoordinatorAuthority(t, store, fixture)
+			seedManagerFinding(t, store, fixture)
 			helper := &fakeManagerHelper{reviewOutput: managerReviewReceipt(t, fixture, "start_review")}
 			control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
 			now := fixture.Review.ValidUntil.Add(-30 * time.Second)
@@ -544,6 +548,7 @@ func TestCoordinatorReportsActualTerminalProposalOutcomes(t *testing.T) {
 			}
 			defer store.Close()
 			seedManagerCoordinatorAuthority(t, store, fixture)
+			seedManagerFinding(t, store, fixture)
 			helper := &fakeManagerHelper{reviewOutput: managerTerminalReceipt(t, fixture, terminal.status, terminal.outcome)}
 			control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
 			now := fixture.Review.ValidUntil.Add(-30 * time.Second)
@@ -656,6 +661,7 @@ func TestCoordinatorContinuesDurableReviewingRunWithoutRestartingIt(t *testing.T
 	}
 	defer store.Close()
 	seedManagerCoordinatorAuthority(t, store, fixture)
+	seedManagerFinding(t, store, fixture)
 	reviewing := managerReviewReceipt(t, fixture, "start_review")
 	var progress map[string]any
 	if err := json.Unmarshal(reviewing, &progress); err != nil {
@@ -719,7 +725,13 @@ func TestCoordinatorAutomaticReviewStartsOnceAfterACKAndEnforcesCooldown(t *test
 	if err := coordinator.ObserveAcknowledgedInsightBatch(context.Background(), batch, receipt); err != nil {
 		t.Fatal(err)
 	}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
 	if err := coordinator.ObserveAcknowledgedInsightBatch(context.Background(), batch, receipt); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
 		t.Fatal(err)
 	}
 	if len(control.reservations) != 1 || len(helper.calls) != 1 || helper.calls[0].Payload["action"] != "start_review" {
@@ -731,6 +743,9 @@ func TestCoordinatorAutomaticReviewStartsOnceAfterACKAndEnforcesCooldown(t *test
 	cooldown.Findings[0].Revision = 1
 	if err := coordinator.ObserveAcknowledgedInsightBatch(context.Background(), cooldown,
 		model.InsightBatchReceiptV1{BatchID: cooldown.BatchID, Accepted: 1, ThroughSequence: cooldown.ThroughSequence}); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
 		t.Fatal(err)
 	}
 	if len(control.reservations) != 1 || len(helper.calls) != 1 {
@@ -753,6 +768,9 @@ func TestCoordinatorAutomaticReviewStartsOnceAfterACKAndEnforcesCooldown(t *test
 		model.InsightBatchReceiptV1{BatchID: offBatch.BatchID, Accepted: 1, ThroughSequence: offBatch.ThroughSequence}); err != nil {
 		t.Fatal(err)
 	}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
 	if len(control.reservations) != 1 || len(helper.calls) != 1 {
 		t.Fatalf("Off policy admitted review: reservations=%d helper=%d", len(control.reservations), len(helper.calls))
 	}
@@ -770,6 +788,9 @@ func TestCoordinatorAutomaticReviewStartsOnceAfterACKAndEnforcesCooldown(t *test
 	expiredBatch.Findings[0].FindingID = "finding_insights0004"
 	if err := coordinator.ObserveAcknowledgedInsightBatch(context.Background(), expiredBatch,
 		model.InsightBatchReceiptV1{BatchID: expiredBatch.BatchID, Accepted: 1, ThroughSequence: expiredBatch.ThroughSequence}); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
 		t.Fatal(err)
 	}
 	if len(control.reservations) != 1 || len(helper.calls) != 1 {
@@ -798,7 +819,10 @@ func TestCoordinatorReplaysExactPersistedReservationAfterLostReplyAndReopen(t *t
 	}
 	batch := managerInsightBatch(fixture, policy.PolicyRevision, "batch_manager_reservation_lost0001")
 	if err := coordinator.ObserveAcknowledgedInsightBatch(context.Background(), batch,
-		model.InsightBatchReceiptV1{BatchID: batch.BatchID, Accepted: 1, ThroughSequence: batch.ThroughSequence}); err == nil {
+		model.InsightBatchReceiptV1{BatchID: batch.BatchID, Accepted: 1, ThroughSequence: batch.ThroughSequence}); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Apply(context.Background(), model.Manifest{InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{policy}}); err == nil {
 		t.Fatal("lost reservation response returned success")
 	}
 	if len(helper.calls) != 0 {
@@ -869,6 +893,10 @@ func TestCoordinatorOffExpiredAndManagerSourceNeverReserve(t *testing.T) {
 				model.InsightBatchReceiptV1{BatchID: batch.BatchID, Accepted: 1, ThroughSequence: batch.ThroughSequence}); err != nil {
 				t.Fatal(err)
 			}
+			if err := coordinator.Apply(context.Background(), model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 2,
+				InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{policy}}); err != nil {
+				t.Fatal(err)
+			}
 			if len(control.reservations) != 0 || len(helper.calls) != 0 {
 				t.Fatalf("denied manager episode crossed boundary: reservations=%#v helper=%#v", control.reservations, helper.calls)
 			}
@@ -903,6 +931,10 @@ func TestCoordinatorChargesLocalConcurrentAndFailedRunCooldownBeforeBackendReser
 	batch := managerInsightBatch(fixture, fixture.Policy.PolicyRevision, "batch_manager_localcap0001")
 	if err := coordinator.ObserveAcknowledgedInsightBatch(context.Background(), batch,
 		model.InsightBatchReceiptV1{BatchID: batch.BatchID, Accepted: 1, ThroughSequence: batch.ThroughSequence}); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Apply(context.Background(), model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 2,
+		InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{fixture.Policy}}); err != nil {
 		t.Fatal(err)
 	}
 	if len(control.reservations) != 0 || len(helper.calls) != 0 {
@@ -1109,6 +1141,7 @@ func TestCoordinatorRequiresFreshExactHostTaskLeaseForTaskOnlyReview(t *testing.
 			}
 			defer store.Close()
 			seedManagerCoordinatorAuthority(t, store, fixture)
+			seedManagerFinding(t, store, fixture)
 			review := fixture.Review
 			review.Target.TaskID = fixture.Takeover.Target.TaskID
 			review.Target.TaskAttempt = fixture.Takeover.Target.TaskAttempt
@@ -1235,6 +1268,22 @@ func loadManagerCoordinatorFixture(t *testing.T) managerCoordinatorFixture {
 // continuity source and manager capability. An optional explicit capability
 // lets a caller seed one full initial capability through the same validated
 // store boundary; ordinary calls keep the controlled default literal unchanged.
+// seedManagerFinding records an acknowledged finding without an admission
+// anchor, i.e. the legacy shape that must never be backfilled.
+func seedManagerFinding(t *testing.T, store *state.Store, fixture managerCoordinatorFixture) {
+	t.Helper()
+	ctx := context.Background()
+	source := fixture.Review.Source
+	finding := model.InsightFindingV1{FindingID: fixture.Review.FindingID, RuleID: fixture.Review.RuleID, State: "open",
+		Revision: fixture.Review.FindingRevision, FirstSequence: 1, LastSequence: 8, Count: 4, Threshold: 3,
+		MatchedCallIDs: []string{"call_manager0001"}, FirstObservedAt: fixture.Review.ValidUntil.Add(-time.Minute),
+		LastObservedAt: fixture.Review.ValidUntil.Add(-time.Minute), Coverage: "complete", ToolCategory: "shell", Phase: "tool"}
+	if err := store.PutManagerFinding(ctx, state.LocalManagerFinding{Finding: finding, Source: source, PolicyRevision: fixture.Review.PolicyRevision, JournalGeneration: "journal_manager0001",
+		Acknowledged: true}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func seedManagerCoordinatorPrerequisites(t *testing.T, store *state.Store, fixture managerCoordinatorFixture, explicit ...state.LocalManagerCapability) {
 	t.Helper()
 	if len(explicit) > 1 {
@@ -1300,16 +1349,6 @@ func seedManagerCoordinatorPrerequisites(t *testing.T, store *state.Store, fixtu
 func seedManagerCoordinatorAuthority(t *testing.T, store *state.Store, fixture managerCoordinatorFixture) {
 	t.Helper()
 	seedManagerCoordinatorPrerequisites(t, store, fixture)
-	ctx := context.Background()
-	source := fixture.Review.Source
-	finding := model.InsightFindingV1{FindingID: fixture.Review.FindingID, RuleID: fixture.Review.RuleID, State: "open",
-		Revision: fixture.Review.FindingRevision, FirstSequence: 1, LastSequence: 8, Count: 4, Threshold: 3,
-		MatchedCallIDs: []string{"call_manager0001"}, FirstObservedAt: fixture.Review.ValidUntil.Add(-time.Minute),
-		LastObservedAt: fixture.Review.ValidUntil.Add(-time.Minute), Coverage: "complete", ToolCategory: "shell", Phase: "tool"}
-	if err := store.PutManagerFinding(ctx, state.LocalManagerFinding{Finding: finding, Source: source, PolicyRevision: fixture.Review.PolicyRevision, JournalGeneration: "journal_manager0001",
-		Acknowledged: true}); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestCoordinatorRederivesSourceUnavailableAtReport(t *testing.T) {
@@ -1670,6 +1709,9 @@ func q2LegacyJourney(t *testing.T) (managerCoordinatorFixture, *state.Store, *fa
 	if err := coordinator.ObserveAcknowledgedInsightBatch(context.Background(), batch, receipt); err != nil {
 		t.Fatal(err)
 	}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
 	if len(control.reservations) != 1 || len(q2ActionCalls(helper.calls, "start_review")) != 1 {
 		t.Fatalf("legacy journey precondition: reservations=%d start_review=%d", len(control.reservations), len(q2ActionCalls(helper.calls, "start_review")))
 	}
@@ -1728,7 +1770,6 @@ func q2QualifiedJourney(t *testing.T) (managerCoordinatorFixture, *state.Store, 
 	}
 	qualified = q2MergeQualifiedCapability(t, qualified)
 	seedManagerCoordinatorPrerequisites(t, store, fixture, qualified)
-	q2SeedManagerFinding(t, store, fixture)
 	report := model.InsightsManagerPolicyReportV1{FormatVersion: 1, SandboxID: policy.SandboxID,
 		SandboxGeneration: fixture.Review.Source.SandboxGeneration, PolicyRevision: policy.PolicyRevision, RunGeneration: policy.RunGeneration,
 		Status: "applied", Recommend: model.InsightsManagerCapabilityV1{Available: true},
@@ -1745,6 +1786,7 @@ func q2QualifiedJourney(t *testing.T) (managerCoordinatorFixture, *state.Store, 
 	batch := managerInsightBatch(fixture, fixture.AutomaticReservation.PolicyRevision, "batch_q2_qualified0001")
 	receipt := model.InsightBatchReceiptV1{BatchID: batch.BatchID, Accepted: len(batch.Findings), ThroughSequence: batch.ThroughSequence}
 	_ = coordinator.ObserveAcknowledgedInsightBatch(context.Background(), batch, receipt)
+	_ = coordinator.Apply(context.Background(), manifest)
 	admitted := len(control.reservations) == 1 && len(q2ActionCalls(helper.calls, "start_review")) == 1 &&
 		len(control.reports) > 0 && control.reports[len(control.reports)-1].State == "recommended"
 	terminal := model.InsightsManagerRunReportV1{}
