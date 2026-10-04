@@ -304,7 +304,7 @@ func TestCoordinatorPersistsBeforeDispatchAndReconcilesLostStartAfterSQLiteReope
 			t.Fatal(err)
 		}
 		seedManagerCoordinatorAuthority(t, store, fixture)
-	seedManagerFinding(t, store, fixture)
+		seedManagerFinding(t, store, fixture)
 		helper := &fakeManagerHelper{loseStart: true, reviewOutput: managerReviewReceipt(t, fixture, "reconcile_review")}
 		control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
 		requireManagerStartReportBeforeHelper(t, helper, control)
@@ -357,7 +357,7 @@ func TestCoordinatorPersistsBeforeDispatchAndReconcilesLostStartAfterSQLiteReope
 				t.Fatal(err)
 			}
 			seedManagerCoordinatorAuthority(t, store, fixture)
-	seedManagerFinding(t, store, fixture)
+			seedManagerFinding(t, store, fixture)
 			helper := &fakeManagerHelper{reviewOutput: managerReviewReceipt(t, fixture, "start_review")}
 			control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
 			if refusal == "report refused" {
@@ -413,7 +413,7 @@ func TestCoordinatorPersistsBeforeDispatchAndReconcilesLostStartAfterSQLiteReope
 			t.Fatal(err)
 		}
 		seedManagerCoordinatorAuthority(t, store, fixture)
-	seedManagerFinding(t, store, fixture)
+		seedManagerFinding(t, store, fixture)
 		helper := &fakeManagerHelper{reviewOutput: managerReviewReceipt(t, fixture, "start_review")}
 		control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review), startReportLoseOnce: true}
 		now := fixture.Review.ValidUntil.Add(-30 * time.Second)
@@ -467,7 +467,7 @@ func TestCoordinatorPersistsBeforeDispatchAndReconcilesLostStartAfterSQLiteReope
 				t.Fatal(err)
 			}
 			seedManagerCoordinatorAuthority(t, store, fixture)
-	seedManagerFinding(t, store, fixture)
+			seedManagerFinding(t, store, fixture)
 			helper := &fakeManagerHelper{reviewOutput: managerReviewReceipt(t, fixture, "start_review")}
 			control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
 			now := fixture.Review.ValidUntil.Add(-30 * time.Second)
@@ -548,7 +548,7 @@ func TestCoordinatorReportsActualTerminalProposalOutcomes(t *testing.T) {
 			}
 			defer store.Close()
 			seedManagerCoordinatorAuthority(t, store, fixture)
-	seedManagerFinding(t, store, fixture)
+			seedManagerFinding(t, store, fixture)
 			helper := &fakeManagerHelper{reviewOutput: managerTerminalReceipt(t, fixture, terminal.status, terminal.outcome)}
 			control := &fakeManagerControl{runForReport: managerRequestForReview(fixture.Review)}
 			now := fixture.Review.ValidUntil.Add(-30 * time.Second)
@@ -1141,7 +1141,7 @@ func TestCoordinatorRequiresFreshExactHostTaskLeaseForTaskOnlyReview(t *testing.
 			}
 			defer store.Close()
 			seedManagerCoordinatorAuthority(t, store, fixture)
-	seedManagerFinding(t, store, fixture)
+			seedManagerFinding(t, store, fixture)
 			review := fixture.Review
 			review.Target.TaskID = fixture.Takeover.Target.TaskID
 			review.Target.TaskAttempt = fixture.Takeover.Target.TaskAttempt
