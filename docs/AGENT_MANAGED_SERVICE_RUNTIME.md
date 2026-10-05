@@ -75,9 +75,12 @@ For an active service, Runtime performs this sequence:
    supervisor `enroll` action with the bound Team/member/generation/process
    tuple. The sandbox exchange provides the current derived role and lease.
 5. Persist `creationDispatched` before the one possible `start` with
-   `sessionMode:create_initial`. Once set, every retry, restart, recovery,
-   upgrade and rollback uses `lookup_only`, even if the current desired entry
-   still says `create_initial`. Unknown or lost responses fail closed.
+   `sessionMode:create_initial`. The fresh startup monitor intent below is
+   resolved before that bit is persisted, so a policy hold cannot consume
+   `create_initial` and force later `lookup_only` recovery. Once set, every
+   retry, restart, recovery, upgrade and rollback uses `lookup_only`, even if
+   the current desired entry still says `create_initial`. Unknown or lost
+   responses fail closed.
 6. Invoke the existing packaged supervisor `start` with exact container
    `projectRoot` and the all-or-none `instructionText`, `instructionDigest`,
    and `instructionRevision` fields. A ready receipt must return the exact
@@ -105,6 +108,88 @@ run `/usr/local/bin/warpmetal-opencode-supervisor`; worker actions run
 `/usr/local/libexec/warpmetal-agent-teams/warpmetal_team_worker.py`. Neither
 seam accepts an executable, argv, shell, host path, or arbitrary action.
 
+## Fresh startup monitor intent
+
+Monitoring is per sandbox. Before `creationDispatched` is persisted for an
+actual spawn, Runtime performs one fresh, bounded read of the existing
+authenticated `InsightPolicies` operation through the already-wired managed
+control client. The read is a child of the reconcile context and never depends
+on a cache refreshed by the post-ACK feedback phase, so a hold retries on the
+next pass without a permanent loop.
+
+- Any read failure holds admission and is never interpreted as disabled.
+- A previously applied row is not authority: a service disabled earlier may
+  have just been enabled.
+- Only a successful empty response with no applied policy row proves a
+  never-configured service and composes `monitorEnabled:false`.
+- A known service (any applied row) with a missing or expired entry holds.
+- A fresh disabled entry composes `monitorEnabled:false` without monitor
+  identity; a fresh enabled entry composes `monitorEnabled:true`.
+- If a `ContinuitySource` row exists, its sandbox/service generations, workspace
+  epoch, running lifecycle and native session are validated strictly and reused
+  exactly. When no source row exists yet (a new managed service on an already
+  monitored sandbox), the monitor source ID is derived with the existing
+  `managedSourceID(serviceRegistrationId)` and the workspace epoch from the
+  already validated manifest/project. A policy source ref for that derived ID
+  without a local source holds rather than inventing or replacing a session.
+- Source-ref freshness is collection eligibility only. Stale or omitted refs do
+  not block retained bootstrap; a ref matching the retained source is validated
+  strictly against it.
+- Native session authority is unchanged: `create_initial` remains the one
+  possible start before `creationDispatched`, `lookup_only` afterwards.
+
+## Shared launch composition
+
+Ordinary managed start, safe-idle mismatch re-establishment and monitor restart
+all build one typed launch request: sandbox/instance/profile/profile digest,
+pinned version, port, project root, session mode, the all-or-none instruction
+tuple, `runtimeContractVersion` when present, and the explicit monitor intent.
+No path silently starts unmonitored while an enabled policy applies.
+
+## Current writer proof and legacy receipts
+
+The packaged supervisor start/status receipts add only these fields:
+`monitorReadinessVersion`, `monitorEnabled`, `monitorSourceInstanceId`,
+`monitorWorkspaceEpoch`, `monitorWriterReady`, `monitorJournalGeneration`.
+Version 1 for a configured-enabled process requires the exact source/epoch and
+current writer readiness before worker admission; `monitorJournalGeneration` is
+recorded evidence, not an admission gate, and journal readability or
+non-emptiness is never readiness. Configured-disabled requires no writer fields.
+
+A receipt missing all of these fields is an explicitly legacy receipt: existing
+supported behavior is preserved, but it cannot certify the new automatic
+eligibility and Runtime records no qualification for it. Unknown versions fail
+closed, and Runtime consumes the existing supervisor `error` field for the
+mismatch signal below.
+
+## Safe-idle mismatch and equal-policy verification
+
+A current-capable supervisor start against a running process whose monitor tuple
+differs from the request returns `status:"failed"` with error
+`monitor_configuration_mismatch` instead of ready. Runtime then performs at most
+one re-establishment through the shared composition for either monitor intent
+(enabled or explicit disabled), only when the pinned retained source is at
+`NoAdmittedExecution`. An active worker task is never restarted; the mismatch
+holds at the safe-idle boundary and retries later.
+
+An equal policy revision is not by itself a no-op. Runtime probes the current
+process and returns only when the status receipt proves the current monitor
+effect. That verification may complete while a worker task is active; only an
+actual restart requires the safe-idle boundary.
+
+## Compatibility and qualification limits
+
+- Current-image qualification requires `monitorReadinessVersion:1` writer
+  readiness. Legacy images keep legacy behavior but are not qualified for the
+  new automatic eligibility.
+- This contract adds no endpoint, policy ledger, second refresh loop, state
+  schema change or Runtime `/proc` access; the supervisor owns current process
+  identity and writer proof.
+- No image allowlist, release pin, publication or deployment change is made
+  here. Rollout order and installed-gate execution remain with the integration
+  owner; the installed gate must use image bytes with the corrected Runtime
+  export and the frozen tests.
+
 ## Lifecycle and recovery
 
 `paused` requires a current supervisor drain acknowledgement and retains the
@@ -131,5 +216,10 @@ Reconciler producer and ordinary daemon wiring. The local journey reopens the
 SQLite database and constructs a new reconciler after an ambiguous initial
 start, proves the retry is `lookup_only`, then reopens it again before
 pause/stop/retire to prove independent capture barriers and source tombstones
-survive daemon restart. Live Linux/Podman and deployed-candidate validation
-remains deferred by direction.
+survive daemon restart. The same journey also covers the retained startup
+monitor contract: fresh enabled intent after a stale cache, stale/omitted
+source refs, explicit disabled authority, new-service derivation without a
+source row, expired hold, enabled and explicit-disabled mismatch
+re-establishment with an active-task hold, and equal-policy verification while
+active. Live Linux/Podman and deployed-candidate validation remains deferred by
+direction.

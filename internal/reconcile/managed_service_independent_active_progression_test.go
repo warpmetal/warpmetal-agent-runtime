@@ -26,6 +26,10 @@ func (control *isolatedServiceControl) ManagedServiceEndpoint() string {
 	return "https://api.warpmetal.example"
 }
 
+func (control *isolatedServiceControl) InsightPolicies(context.Context) (model.InsightPolicyEnvelopeV1, error) {
+	return model.InsightPolicyEnvelopeV1{}, nil
+}
+
 func (control *isolatedServiceControl) ManagedServiceEnrollment(ctx context.Context, serviceID string, request model.ManagedServiceFetchRequestV1) (model.ManagedServiceEnrollmentV1, error) {
 	inner, ok := control.byService[serviceID]
 	if !ok {

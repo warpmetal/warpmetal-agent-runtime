@@ -61,10 +61,24 @@ type fakeManagedControl struct {
 	enrollErr    error
 	enrollments  []model.ManagedServiceFetchRequestV1
 	instructions []model.ManagedServiceFetchRequestV1
+	// insightPolicies is the fresh startup policy read used by managed spawn
+	// composition. Empty means no configured policy for the sandbox.
+	insightPolicies    model.InsightPolicyEnvelopeV1
+	insightPoliciesErr error
 }
 
 func (control *fakeManagedControl) ManagedServiceEndpoint() string {
 	return "https://api.warpmetal.example"
+}
+
+// InsightPolicies is the fresh startup policy read. Tests set the envelope and
+// error explicitly; the default is an empty envelope (never-configured
+// service, default-disabled startup).
+func (control *fakeManagedControl) InsightPolicies(context.Context) (model.InsightPolicyEnvelopeV1, error) {
+	if control.insightPoliciesErr != nil {
+		return model.InsightPolicyEnvelopeV1{}, control.insightPoliciesErr
+	}
+	return control.insightPolicies, nil
 }
 
 func (control *fakeManagedControl) ManagedServiceEnrollment(_ context.Context, serviceID string, request model.ManagedServiceFetchRequestV1) (model.ManagedServiceEnrollmentV1, error) {
@@ -140,6 +154,16 @@ type fakeManagedRuntime struct {
 	actualRebindReceipt        bool
 	sourceRegistrationMismatch bool
 	workerStatusReceipt        []byte
+	// startMismatchOnce answers the next start with failed/
+	// monitor_configuration_mismatch, modelling a live process whose monitor
+	// tuple differs from the fresh intent.
+	startMismatchOnce        bool
+	statusMonitorVersion     int
+	statusMonitorEnabled     bool
+	statusMonitorSourceID    string
+	statusMonitorEpoch       string
+	statusMonitorWriterReady bool
+	statusMonitorGeneration  string
 	// statusProbe, when set, answers a supervisor status probe. A nil payload
 	// with a nil error falls through to the fixture's default status receipt.
 	statusProbe func(sandboxID string, request map[string]any) ([]byte, error)
@@ -197,14 +221,27 @@ func (runtime *fakeManagedRuntime) ExecManagedSupervisor(_ context.Context, _ st
 		if action == containers.ManagedSupervisorStart && runtime.failStart && runtime.startCalls == 1 {
 			return nil, nil, errors.New("ambiguous lost start response")
 		}
+		if action == containers.ManagedSupervisorStart && runtime.startMismatchOnce {
+			runtime.startMismatchOnce = false
+			payload, err := json.Marshal(map[string]any{
+				"schemaVersion": 1, "command": "start", "status": "failed", "phase": "running",
+				"ready": false, "error": "monitor_configuration_mismatch",
+				"instance": "default", "sandboxId": runtime.fixture.ServiceManifest.Identity.SandboxID,
+			})
+			return payload, nil, err
+		}
 		instruction := runtime.fixture.InstructionResponse
+		version := "2.0.14"
+		if runtime.fixture.SetupManifest.Materializer.Bin != nil {
+			version = runtime.fixture.SetupManifest.Materializer.Bin.Version
+		}
 		command := string(action)
 		status := "ready"
-		payload, err := json.Marshal(map[string]any{
+		receipt := map[string]any{
 			"schemaVersion": 1, "command": command, "status": status, "phase": "running", "ready": true,
 			"instance": "default", "sandboxId": runtime.fixture.ServiceManifest.Identity.SandboxID,
 			"profileId": "opencode", "profileDigest": runtime.fixture.ServiceManifest.Profile.ProfileDigest,
-			"profileRevision": runtime.fixture.ServiceManifest.Profile.ProfileRevision, "version": "2.0.14", "port": 18443,
+			"profileRevision": runtime.fixture.ServiceManifest.Profile.ProfileRevision, "version": version, "port": 18443,
 			"sessionId": "ses_managedservice0001", "sessionCreated": false, "sessionReused": true,
 			"sessionCreatedCount": 1, "conversationCount": 0, "sessionMode": "lookup_only",
 			"nativeProjectId":      "0123456789abcdef0123456789abcdef01234567",
@@ -218,7 +255,16 @@ func (runtime *fakeManagedRuntime) ExecManagedSupervisor(_ context.Context, _ st
 			"managerProviderRouteDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
 			"managerRecommendAvailable":  true, "managerCapabilityReason": nil,
 			"managerRecipeIds": []string{"inspect_first_failure@1", "check_repeated_operation@1", "refine_query@1", "inspect_active_phase@1"},
-		})
+			"monitorEnabled":   request["monitorEnabled"] == true,
+		}
+		if request["monitorEnabled"] == true {
+			receipt["monitorSourceInstanceId"] = request["monitorSourceInstanceId"]
+			receipt["monitorWorkspaceEpoch"] = request["monitorWorkspaceEpoch"]
+			receipt["monitorReadinessVersion"] = 1
+			receipt["monitorWriterReady"] = true
+			receipt["monitorJournalGeneration"] = "journal_fixture000000000000000000000000"
+		}
+		payload, err := json.Marshal(receipt)
 		return payload, nil, err
 	case containers.ManagedSupervisorRegisterSource:
 		registration := request["registration"].(map[string]any)
@@ -249,7 +295,7 @@ func (runtime *fakeManagedRuntime) ExecManagedSupervisor(_ context.Context, _ st
 			}
 		}
 		instruction := runtime.fixture.InstructionResponse
-		payload, err := json.Marshal(map[string]any{
+		receipt := map[string]any{
 			"schemaVersion": 1, "command": "status", "status": "running", "phase": "running", "ready": true,
 			"sessionId": "ses_managedservice0001", "nativeProjectId": "0123456789abcdef0123456789abcdef01234567",
 			"nativeLocationDigest": "sha256:d9cf96858af585c5acc19643dfba975c35894edd0b85f88e96e82f88988beab6",
@@ -262,7 +308,18 @@ func (runtime *fakeManagedRuntime) ExecManagedSupervisor(_ context.Context, _ st
 			"managerProviderRouteDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
 			"managerRecommendAvailable":  true, "managerCapabilityReason": nil,
 			"managerRecipeIds": []string{"inspect_first_failure@1", "check_repeated_operation@1", "refine_query@1", "inspect_active_phase@1"},
-		})
+		}
+		if runtime.statusMonitorVersion == 1 {
+			receipt["monitorReadinessVersion"] = 1
+			receipt["monitorEnabled"] = runtime.statusMonitorEnabled
+			if runtime.statusMonitorEnabled {
+				receipt["monitorSourceInstanceId"] = runtime.statusMonitorSourceID
+				receipt["monitorWorkspaceEpoch"] = runtime.statusMonitorEpoch
+				receipt["monitorWriterReady"] = runtime.statusMonitorWriterReady
+				receipt["monitorJournalGeneration"] = runtime.statusMonitorGeneration
+			}
+		}
+		payload, err := json.Marshal(receipt)
 		return payload, nil, err
 	case containers.ManagedSupervisorStop:
 		return []byte(`{"schemaVersion":1,"command":"stop","status":"stopped","phase":"stopped"}`), nil, nil
