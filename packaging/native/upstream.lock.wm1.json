@@ -10,22 +10,22 @@
     "install": "frozen-lockfile-ignore-scripts"
   },
   "patch": {
-    "file": "warpmetal-atomic-input-v2.patch",
+    "file": "warpmetal-atomic-input-v1.patch",
     "status": "complete",
-    "digest": "sha256:f785bab893ed8933297459f39015e7158aeceeb97f7cbcbd33920561bb189486"
+    "digest": "sha256:5bcf0104d17a31d5141d9ad773b7ca7fbeddeb71a4a36689d5baee9f72f0f47b"
   },
   "build": {
     "target": "opencode-linux-x64",
-    "version": "2.0.14-wm.2",
+    "version": "2.0.14-wm.1",
     "channel": "latest",
     "bunCompileRelease": "bun-v1.4.2"
   },
   "archive": {
-    "name": "opencode-cli-linux-x64-2.0.14-wm.2.tgz",
+    "name": "opencode-cli-linux-x64-2.0.14-wm.1.tgz",
     "member": "package/bin/opencode"
   },
   "release": {
-    "tag": "opencode-v2.0.14-wm.2",
+    "tag": "opencode-v2.0.14-wm.1",
     "repository": "warpmetal/warpmetal-agent-runtime"
   }
 }

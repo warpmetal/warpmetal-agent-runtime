@@ -110,8 +110,8 @@ if toolchain.get("bun") != "1.4.2":
     sys.exit("lock toolchain.bun must be 1.4.2")
 if toolchain.get("install") != "frozen-lockfile-ignore-scripts":
     sys.exit("lock toolchain.install must be frozen-lockfile-ignore-scripts")
-if patch.get("file") != "warpmetal-atomic-input-v1.patch":
-    sys.exit("lock patch.file must be warpmetal-atomic-input-v1.patch")
+if patch.get("file") != "warpmetal-atomic-input-v2.patch":
+    sys.exit("lock patch.file must be warpmetal-atomic-input-v2.patch")
 if patch.get("status") != "complete":
     sys.exit("patch_lock_incomplete: root must seal the canonical patch digest before build")
 digest = patch.get("digest")
@@ -126,18 +126,18 @@ if actual != digest:
     sys.exit("patch_digest_mismatch: root-sealed digest does not match the patch file")
 if build.get("target") != "opencode-linux-x64":
     sys.exit("lock build.target must be opencode-linux-x64")
-if build.get("version") != "2.0.14-wm.1":
-    sys.exit("lock build.version must be 2.0.14-wm.1")
+if build.get("version") != "2.0.14-wm.2":
+    sys.exit("lock build.version must be 2.0.14-wm.2")
 if build.get("channel") != "latest":
     sys.exit("lock build.channel must be latest")
 if build.get("bunCompileRelease") != "bun-v1.4.2":
     sys.exit("lock build.bunCompileRelease must be bun-v1.4.2")
 if archive.get("member") != "package/bin/opencode":
     sys.exit("lock archive.member must be package/bin/opencode")
-if archive.get("name") != "opencode-cli-linux-x64-2.0.14-wm.1.tgz":
-    sys.exit("lock archive.name must be opencode-cli-linux-x64-2.0.14-wm.1.tgz")
-if release.get("tag") != "opencode-v2.0.14-wm.1":
-    sys.exit("lock release.tag must be opencode-v2.0.14-wm.1")
+if archive.get("name") != "opencode-cli-linux-x64-2.0.14-wm.2.tgz":
+    sys.exit("lock archive.name must be opencode-cli-linux-x64-2.0.14-wm.2.tgz")
+if release.get("tag") != "opencode-v2.0.14-wm.2":
+    sys.exit("lock release.tag must be opencode-v2.0.14-wm.2")
 if release.get("repository") != "warpmetal/warpmetal-agent-runtime":
     sys.exit("lock release.repository must be warpmetal/warpmetal-agent-runtime")
 print("\t".join([
@@ -236,7 +236,7 @@ BASELINE_COMMIT=$(git -C "$SRC" rev-parse HEAD)
 
 if [ "$RUN_TESTS" = "1" ]; then
   ( cd "$SRC/packages/core" && "$BUN" run test test/session-prompt.test.ts test/session-runner.test.ts )
-  ( cd "$SRC/packages/server" && "$BUN" test --only-failures test/session-guard.test.ts )
+  ( cd "$SRC/packages/server" && "$BUN" test --only-failures test/session-guard.test.ts test/session-guard-durability.test.ts )
   ( cd "$SRC/packages/schema" && "$BUN" test --only-failures test/event-manifest.test.ts )
 fi
 
@@ -361,7 +361,7 @@ invocation = {
 }
 materials = [
     {"uri": "git+https://github.com/anomalyco/opencode", "digest": {"sha1": revision}},
-    {"uri": "warpmetal-atomic-input-v1.patch", "digest": {"sha256": digest.split(":", 1)[1]}},
+    {"uri": "warpmetal-atomic-input-v2.patch", "digest": {"sha256": digest.split(":", 1)[1]}},
 ]
 if builder_sha:
     materials.append({"uri": "git+https://github.com/warpmetal/warpmetal-agent-runtime", "digest": {"sha1": builder_sha}})

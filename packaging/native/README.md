@@ -11,12 +11,12 @@ and never uses upstream/npm identities.
 - Toolchain: Bun `1.4.2`, frozen lockfile, `--ignore-scripts` install; the CLI
   build runs with `--skip-install` and the pinned Bun directory is prepended to
   `PATH` so generator/build children resolve the same Bun
-- Custom version: `2.0.14-wm.1` (`OPENCODE_CHANNEL=latest`,
+- Custom version: `2.0.14-wm.2` (`OPENCODE_CHANNEL=latest`,
   `--target=opencode-linux-x64`)
 - Archive: `package/bin/opencode` npm layout (the existing approved
   `archive-binary` profile decoder accepts this member) plus `package.json`,
   `LICENSE` and `warpmetal-native-manifest.json`
-- Public release: tag `opencode-v2.0.14-wm.1` in this Runtime repository,
+- Public release: tag `opencode-v2.0.14-wm.2` in this Runtime repository,
   independent from every existing `v*` Runtime release, never `--latest`, and
   never published to npm or any official upstream repository
 
@@ -26,7 +26,7 @@ and never uses upstream/npm identities.
   `patch.digest` is `null` until the root seal step. `build.sh` refuses every
   subcommand while the lock is incomplete or the digest does not match the
   patch bytes.
-- `warpmetal-atomic-input-v1.patch` — **owned by the root seal step**, not by
+- `warpmetal-atomic-input-v2.patch` — **owned by the root seal step**, not by
   this tooling. Root writes the single canonical `git diff --binary` against
   the exact upstream revision, then sets `patch.status` to `complete` and
   `patch.digest` to `sha256:<64 hex>` of those exact bytes. The patch never
@@ -46,7 +46,7 @@ and never uses upstream/npm identities.
   builder/buildType/invocation/materials/metadata, with artifact and binary
   SHA256 in `invocation.parameters`; cosign 2.5.3 wraps it into the signed
   in-toto statement with the archive subject), and runs the smoke assertions
-  (exact `opencode v2.0.14-wm.1` `--version` output; with `--smoke`, `smoke.py`
+  (exact `opencode v2.0.14-wm.2` `--version` output; with `--smoke`, `smoke.py`
   starts the server with an isolated home/XDG tree and verifies the real
   authenticated guard API).
   The ephemeral baseline commit is never pushed and is never presented as
@@ -74,7 +74,7 @@ and never uses upstream/npm identities.
 
 ```sh
 # 1. Root writes the canonical patch and seals the lock.
-sha256sum packaging/native/warpmetal-atomic-input-v1.patch
+sha256sum packaging/native/warpmetal-atomic-input-v2.patch
 # set patch.status = "complete" and patch.digest = the exact sv hash
 
 # 2. Local reproduction (isolated official checkout + disposable output).
@@ -86,16 +86,16 @@ git -C /tmp/opencode-08462140 checkout --detach FETCH_HEAD
 packaging/native/build.sh verify \
   --lock packaging/native/upstream.lock.json \
   --source /tmp/opencode-08462140 \
-  --patch packaging/native/warpmetal-atomic-input-v1.patch
+  --patch packaging/native/warpmetal-atomic-input-v2.patch
 packaging/native/build.sh build \
   --lock packaging/native/upstream.lock.json \
   --source /tmp/opencode-08462140 \
-  --patch packaging/native/warpmetal-atomic-input-v1.patch \
+  --patch packaging/native/warpmetal-atomic-input-v2.patch \
   --out /tmp/native-package --bun /path/to/bun-1.4.2 --tests --smoke
 
 # 3. Publish only through the tag workflow on main ancestry.
-git tag opencode-v2.0.14-wm.1 <main-ancestor-commit>
-git push origin opencode-v2.0.14-wm.1
+git tag opencode-v2.0.14-wm.2 <main-ancestor-commit>
+git push origin opencode-v2.0.14-wm.2
 ```
 
 The workflow asserts the exact tag, main ancestry, and custom identity before
@@ -111,14 +111,14 @@ directory, which is not a git repository), the same immutable tag is recovered
 without moving it:
 
 - `workflow_dispatch` on this workflow offers exactly one closed choice,
-  `release_tag = opencode-v2.0.14-wm.1`; there is no arbitrary ref, free-form
+  `release_tag = opencode-v2.0.14-wm.2`; there is no arbitrary ref, free-form
   input or admin override.
 - The publish job derives a job-local `RELEASE_TAG` from that input on dispatch
   and from `github.ref_name` on tag push, checks out that immutable tag with
   `fetch-depth: 0`, and asserts the exact tag, `HEAD == tag commit` and main
   ancestry. The corrected workflow runs from main, so the keyless cosign OIDC
   signer identity for a recovery run is `@refs/heads/main`, while the normal
-  tag run signs as `@refs/tags/opencode-v2.0.14-wm.1`; the checked-out source
+  tag run signs as `@refs/tags/opencode-v2.0.14-wm.2`; the checked-out source
   is always the immutable original tag.
 - Upstream `08462140...` and the canonical patch digest
   `sha256:5bcf0104...` are unchanged.
