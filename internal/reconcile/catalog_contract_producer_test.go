@@ -425,6 +425,10 @@ func (control *bridgeFailingControl) ManagedServiceEndpoint() string {
 	return "https://api.warpmetal.example"
 }
 
+func (control *bridgeFailingControl) InsightPolicies(context.Context) (model.InsightPolicyEnvelopeV1, error) {
+	return model.InsightPolicyEnvelopeV1{}, nil
+}
+
 func (control *bridgeFailingControl) ManagedServiceEnrollment(_ context.Context, serviceID string, _ model.ManagedServiceFetchRequestV1) (model.ManagedServiceEnrollmentV1, error) {
 	if control.failureServiceID != "" && serviceID == control.failureServiceID {
 		return model.ManagedServiceEnrollmentV1{}, errors.New("control-plane response 401 (enrollment_rejected)")

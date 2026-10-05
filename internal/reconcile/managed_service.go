@@ -40,6 +40,7 @@ type managedSupervisorReceipt struct {
 	Status                     string                          `json:"status"`
 	Phase                      string                          `json:"phase"`
 	Reason                     string                          `json:"reason"`
+	Error                      string                          `json:"error"`
 	Instance                   string                          `json:"instance"`
 	SandboxID                  string                          `json:"sandboxId"`
 	ProfileID                  string                          `json:"profileId"`
@@ -73,6 +74,12 @@ type managedSupervisorReceipt struct {
 	ManagerCapabilityReason    *string                         `json:"managerCapabilityReason"`
 	ManagerRecipeIDs           []string                        `json:"managerRecipeIds"`
 	NativeGuard                *model.NativeGuardObservationV1 `json:"nativeGuard,omitempty"`
+	MonitorReadinessVersion    int                             `json:"monitorReadinessVersion"`
+	MonitorEnabled             bool                            `json:"monitorEnabled"`
+	MonitorSourceInstanceID    string                          `json:"monitorSourceInstanceId"`
+	MonitorWorkspaceEpoch      string                          `json:"monitorWorkspaceEpoch"`
+	MonitorWriterReady         bool                            `json:"monitorWriterReady"`
+	MonitorJournalGeneration   string                          `json:"monitorJournalGeneration"`
 	Applied                    bool                            `json:"applied"`
 	Restarted                  bool                            `json:"restarted"`
 	BindingRevision            int64                           `json:"bindingRevision"`
@@ -210,6 +217,245 @@ func (r *Reconciler) reconcileManagedServices(ctx context.Context, manifest mode
 	return deferred, fatal
 }
 
+const (
+	// managedMonitorPolicyReadTimeout bounds the fresh startup policy read. It
+	// is a child of the reconcile context so a slow control plane cannot hold
+	// the pass beyond the ordinary reconcile timeout.
+	managedMonitorPolicyReadTimeout = 5 * time.Second
+)
+
+// managedMonitorIntent is the explicit monitor decision for one actual spawn.
+type managedMonitorIntent struct {
+	Enabled          bool
+	SourceInstanceID string
+	WorkspaceEpoch   string
+}
+
+// managedLaunchComposition is the single typed launch tuple shared by the
+// ordinary managed start and the monitor restart paths. Every actual spawn
+// carries explicit monitor intent.
+type managedLaunchComposition struct {
+	SandboxID              string
+	Instance               string
+	ProfileID              string
+	ProfileDigest          string
+	Version                string
+	Port                   int
+	ProjectRoot            string
+	SessionMode            string
+	InstructionText        string
+	InstructionDigest      string
+	InstructionRevision    int64
+	RuntimeContractVersion string
+	Monitor                managedMonitorIntent
+}
+
+func (composition managedLaunchComposition) request() map[string]any {
+	request := map[string]any{
+		"schemaVersion":       1,
+		"sandboxId":           composition.SandboxID,
+		"instance":            composition.Instance,
+		"profileId":           composition.ProfileID,
+		"profileDigest":       composition.ProfileDigest,
+		"version":             composition.Version,
+		"port":                composition.Port,
+		"projectRoot":         composition.ProjectRoot,
+		"sessionMode":         composition.SessionMode,
+		"instructionText":     composition.InstructionText,
+		"instructionDigest":   composition.InstructionDigest,
+		"instructionRevision": composition.InstructionRevision,
+		"monitorEnabled":      composition.Monitor.Enabled,
+	}
+	if composition.RuntimeContractVersion != "" {
+		request["runtimeContractVersion"] = composition.RuntimeContractVersion
+	}
+	if composition.Monitor.Enabled {
+		request["monitorSourceInstanceId"] = composition.Monitor.SourceInstanceID
+		request["monitorWorkspaceEpoch"] = composition.Monitor.WorkspaceEpoch
+	}
+	return request
+}
+
+// managedStartupMonitorIntent resolves the explicit monitor intent for one
+// actual spawn from the current authenticated policy read. Startup permission
+// is the fresh per-sandbox entry plus the pinned retained source/session.
+// Source collection eligibility (for example the backend's 120s observation
+// window) remains the collector's concern and never blocks retained bootstrap.
+func (r *Reconciler) managedStartupMonitorIntent(ctx context.Context, desired model.ManagedServiceV1) (managedMonitorIntent, error) {
+	sourceID := managedSourceID(desired.Identity.ServiceRegistrationID)
+	previous, err := r.Store.InsightPolicyState(ctx, sourceID)
+	if err != nil {
+		return managedMonitorIntent{}, err
+	}
+	source, err := r.Store.ContinuitySource(ctx, sourceID)
+	if err != nil {
+		return managedMonitorIntent{}, err
+	}
+	readContext, cancelRead := context.WithTimeout(ctx, managedMonitorPolicyReadTimeout)
+	envelope, readErr := r.ManagedControl.InsightPolicies(readContext)
+	cancelRead()
+	if readErr != nil {
+		// Any read failure holds. An old applied row cannot prove the current
+		// intent: a previously disabled service may have just been enabled.
+		return managedMonitorIntent{}, fmt.Errorf("current insight policy read failed: %w", readErr)
+	}
+	var policy *model.InsightPolicyV1
+	for index := range envelope.Policies {
+		if envelope.Policies[index].SandboxID == desired.Identity.SandboxID {
+			policy = &envelope.Policies[index]
+			break
+		}
+	}
+	if policy == nil {
+		if previous != nil {
+			// A known service with a successful empty response is not proof of
+			// never-configured; hold rather than silently composing disabled.
+			return managedMonitorIntent{}, errors.New("current insight policy is missing for a known service")
+		}
+		// Only a successful empty response for a never-configured service
+		// proves default-disabled startup.
+		return managedMonitorIntent{}, nil
+	}
+	if !policy.ExpiresAt.After(r.now()) {
+		return managedMonitorIntent{}, errors.New("current insight policy lease is expired")
+	}
+	if !policy.Enabled {
+		// Explicit current disabled authority composes false without identity.
+		return managedMonitorIntent{}, nil
+	}
+	var sourceInstanceID string
+	var workspaceEpoch string
+	if source == nil {
+		// Monitoring is per sandbox: an enabled sandbox may start a new managed
+		// service before that service has a ContinuitySource row. Derive the
+		// monitor identity from the existing managed authority instead of
+		// permanently blocking create_initial. A policy ref for this derived
+		// source would imply a retained session we do not have; never invent or
+		// replace it.
+		for _, ref := range policy.Sources {
+			if ref.RegisteredSourceID == sourceID {
+				return managedMonitorIntent{}, errors.New("current insight policy source ref exists without a retained local source")
+			}
+		}
+		sourceInstanceID = sourceID
+		workspaceEpoch = desired.Workspace.WorkspaceEpoch
+	} else {
+		// A retained source row exists: strictly validate its tuple/session and
+		// reuse it. Source-ref freshness stays collection eligibility only.
+		if source.Lifecycle != "running" ||
+			source.Report.SandboxID != desired.Identity.SandboxID ||
+			source.Report.SandboxGeneration != desired.Identity.SandboxGeneration ||
+			source.Report.ServiceRegistrationID != desired.Identity.ServiceRegistrationID ||
+			source.Report.ServiceGeneration != desired.Identity.ExpectedServiceGeneration ||
+			source.Report.WorkspaceEpoch != desired.Workspace.WorkspaceEpoch ||
+			source.Report.NativeSessionID == "" {
+			return managedMonitorIntent{}, errors.New("retained source does not match the authenticated managed authority")
+		}
+		for _, ref := range policy.Sources {
+			if ref.RegisteredSourceID != source.Report.RegisteredSourceID {
+				continue
+			}
+			if ref.ServiceRegistrationID != source.Report.ServiceRegistrationID ||
+				ref.SandboxGeneration != source.Report.SandboxGeneration ||
+				ref.ServiceGeneration != source.Report.ServiceGeneration ||
+				ref.WorkspaceEpoch != source.Report.WorkspaceEpoch ||
+				ref.NativeSessionID != source.Report.NativeSessionID {
+				return managedMonitorIntent{}, errors.New("current insight policy source ref does not match the pinned retained source")
+			}
+		}
+		sourceInstanceID = source.Report.RegisteredSourceID
+		workspaceEpoch = source.Report.WorkspaceEpoch
+	}
+	return managedMonitorIntent{
+		Enabled:          true,
+		SourceInstanceID: sourceInstanceID,
+		WorkspaceEpoch:   workspaceEpoch,
+	}, nil
+}
+
+// validateManagedMonitorReceipt enforces the explicit monitor intent on the
+// current process receipt. Legacy receipts keep legacy behavior but are never
+// claimed as qualified for the current writer-proof guarantee.
+func validateManagedMonitorReceipt(intent managedMonitorIntent, receipt *managedSupervisorReceipt) error {
+	if receipt.MonitorReadinessVersion == 0 && !receipt.MonitorEnabled &&
+		receipt.MonitorSourceInstanceID == "" && receipt.MonitorWorkspaceEpoch == "" &&
+		!receipt.MonitorWriterReady && receipt.MonitorJournalGeneration == "" {
+		// Legacy supervisor receipt: compatibility is preserved, qualification
+		// for the current writer-proof guarantee is explicitly not claimed.
+		return nil
+	}
+	if !intent.Enabled {
+		if receipt.MonitorEnabled {
+			return errors.New("managed receipt reported monitoring without current intent")
+		}
+		return nil
+	}
+	if !receipt.MonitorEnabled || receipt.MonitorSourceInstanceID != intent.SourceInstanceID ||
+		receipt.MonitorWorkspaceEpoch != intent.WorkspaceEpoch {
+		return errors.New("managed receipt lost the explicit monitor configuration")
+	}
+	switch receipt.MonitorReadinessVersion {
+	case 1:
+		if !receipt.MonitorWriterReady {
+			return errors.New("managed receipt did not prove current writer readiness")
+		}
+		return nil
+	default:
+		return fmt.Errorf("managed receipt reported unknown monitor readiness version %d", receipt.MonitorReadinessVersion)
+	}
+}
+
+// reestablishManagedMonitorIntent performs the single bounded recovery for a
+// live process whose current monitor configuration does not match the fresh
+// startup intent. It reuses the existing safe-idle authority check and the
+// shared launch composition; it never restarts an active task and never loops
+// beyond the current pass.
+func (r *Reconciler) reestablishManagedMonitorIntent(
+	ctx context.Context, desired model.ManagedServiceV1, project workspacecatalog.RegisteredProject,
+	version string, instruction model.ManagedServiceInstructionV1, intent managedMonitorIntent,
+) ([]byte, error) {
+	sourceID := managedSourceID(desired.Identity.ServiceRegistrationID)
+	source, err := r.Store.ContinuitySource(ctx, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	if source == nil || source.Lifecycle != "running" || !source.NoAdmittedExecution {
+		return nil, errors.New("managed monitor re-establishment requires a pinned retained source at a safe idle boundary")
+	}
+	restartRequest := managedLaunchComposition{
+		SandboxID:              desired.Identity.SandboxID,
+		Instance:               desired.Identity.Instance,
+		ProfileID:              desired.Profile.ProfileID,
+		ProfileDigest:          desired.Profile.ProfileDigest,
+		Version:                version,
+		Port:                   managedServicePort,
+		ProjectRoot:            project.ContainerRoot,
+		SessionMode:            "lookup_only",
+		InstructionText:        instruction.Content,
+		InstructionDigest:      instruction.InstructionDigest,
+		InstructionRevision:    instruction.InstructionRevision,
+		RuntimeContractVersion: desired.RuntimeContractVersion,
+		Monitor:                intent,
+	}.request()
+	payload, _ := json.Marshal(restartRequest)
+	receiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, desired.Identity.SandboxID, containers.ManagedSupervisorRestart, payload)
+	if err != nil {
+		return nil, err
+	}
+	restarted, err := validateManagedSupervisorReceipt(receiptJSON, "restart", "ready")
+	if err != nil || !restarted.Ready || restarted.SessionID != source.Report.NativeSessionID ||
+		restarted.NativeProjectID != source.Report.NativeProjectID ||
+		restarted.NativeLocationDigest != source.Report.NativeLocationDigest ||
+		restarted.InstructionRevision != instruction.InstructionRevision ||
+		restarted.InstructionDigest != instruction.InstructionDigest || !restarted.InstructionApplied {
+		return nil, errors.Join(err, errors.New("managed monitor re-establishment did not preserve current native authority"))
+	}
+	if err := validateManagedMonitorReceipt(intent, restarted); err != nil {
+		return nil, err
+	}
+	return receiptJSON, nil
+}
+
 func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.ManagedServiceV1) error {
 	// A durably completed stop/retirement is an acknowledgement of that exact
 	// intent, not authority to stop a later sandbox generation or registration.
@@ -320,6 +566,13 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 	if err != nil {
 		return r.failManagedService(ctx, desired, "authority_rebind_failed", err)
 	}
+	// Fresh authenticated policy read before the creation-dispatched marker:
+	// failing here must not consume create_initial and force later lookup_only
+	// session_missing loops.
+	monitorIntent, err := r.managedStartupMonitorIntent(ctx, desired)
+	if err != nil {
+		return err
+	}
 	sessionMode := local.RecoverySessionMode()
 	if err := r.Store.MarkManagedServiceCreationDispatched(ctx, desired.Identity.ServiceRegistrationID, desired.ConfigDigest); err != nil {
 		return err
@@ -332,17 +585,22 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 	if desired.Profile.ProfileID == "opencode" && setupManifest.Materializer.Bin != nil {
 		version = setupManifest.Materializer.Bin.Version
 	}
-	startRequest := map[string]any{
-		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
-		"profileId": desired.Profile.ProfileID, "profileDigest": desired.Profile.ProfileDigest,
-		"version": version, "port": managedServicePort,
-		"projectRoot": project.ContainerRoot, "sessionMode": sessionMode,
-		"instructionText": instruction.Content, "instructionDigest": instruction.InstructionDigest,
-		"instructionRevision": instruction.InstructionRevision,
-	}
-	if version := desired.RuntimeContractVersion; version != "" {
-		startRequest["runtimeContractVersion"] = version
-	}
+	// Fresh policy read already resolved before the creation-dispatched marker.
+	startRequest := managedLaunchComposition{
+		SandboxID:              desired.Identity.SandboxID,
+		Instance:               desired.Identity.Instance,
+		ProfileID:              desired.Profile.ProfileID,
+		ProfileDigest:          desired.Profile.ProfileDigest,
+		Version:                version,
+		Port:                   managedServicePort,
+		ProjectRoot:            project.ContainerRoot,
+		SessionMode:            sessionMode,
+		InstructionText:        instruction.Content,
+		InstructionDigest:      instruction.InstructionDigest,
+		InstructionRevision:    instruction.InstructionRevision,
+		RuntimeContractVersion: desired.RuntimeContractVersion,
+		Monitor:                monitorIntent,
+	}.request()
 	startPayload, _ := json.Marshal(startRequest)
 	startReceiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, desired.Identity.SandboxID, containers.ManagedSupervisorStart, startPayload)
 	if err != nil {
@@ -350,8 +608,26 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 	}
 	var startReceipt managedSupervisorReceipt
 	err = decodeManagedSupervisorReceipt(startReceiptJSON, &startReceipt)
+	reestablished := false
+	if startReceipt.Status == "failed" &&
+		(startReceipt.Error == "monitor_configuration_mismatch" || startReceipt.Reason == "monitor_configuration_mismatch") {
+		// A live native process is running without the requested monitor
+		// configuration. Re-establish the fresh intent once through the
+		// existing safe-idle authority: only when the pinned retained source
+		// proves no admitted execution, and never by restarting an active task.
+		// This applies to explicit disabled intent as well, so a running
+		// enabled configuration can be turned off without starving the
+		// collector.
+		restarted, restartErr := r.reestablishManagedMonitorIntent(ctx, desired, project, version, instruction, monitorIntent)
+		if restartErr != nil {
+			return restartErr
+		}
+		startReceiptJSON = restarted
+		err = decodeManagedSupervisorReceipt(startReceiptJSON, &startReceipt)
+		reestablished = true
+	}
 	validStartStatus := startReceipt.Status == "ready" || startReceipt.Status == "already_running"
-	if startReceipt.SchemaVersion != 1 || startReceipt.Command != "start" {
+	if startReceipt.SchemaVersion != 1 || (startReceipt.Command != "start" && !(reestablished && startReceipt.Command == "restart")) {
 		validStartStatus = false
 	}
 	if err != nil || !validStartStatus || !startReceipt.Ready || startReceipt.Phase != "running" || startReceipt.SessionID == "" ||
@@ -366,6 +642,9 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 			err = errors.New("managed start receipt did not prove native and instruction readiness")
 		}
 		return r.failManagedService(ctx, desired, "invalid_start_receipt", err)
+	}
+	if err := validateManagedMonitorReceipt(monitorIntent, &startReceipt); err != nil {
+		return r.failManagedService(ctx, desired, "invalid_monitor_receipt", err)
 	}
 	statusRequest := map[string]any{
 		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
@@ -391,6 +670,9 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 			err = errors.New("managed status did not preserve exact native readiness")
 		}
 		return r.failManagedService(ctx, desired, "invalid_native_status", err)
+	}
+	if err := validateManagedMonitorReceipt(monitorIntent, statusReceipt); err != nil {
+		return r.failManagedService(ctx, desired, "invalid_monitor_receipt", err)
 	}
 	workerReceipts, err := r.runManagedWorkerBoundary(ctx, desired)
 	if err != nil {
@@ -1167,6 +1449,7 @@ var managedSupervisorReceiptFields = func() map[string]bool {
 		"managerPluginDigest", "managerPluginLoaded", "managerProfile", "managerProviderId", "managerModelId",
 		"managerNativeProtocol", "managerProviderRouteDigest", "managerRecommendAvailable", "managerCapabilityReason", "managerRecipeIds",
 		"nativeGuard",
+		"monitorReadinessVersion", "monitorEnabled", "monitorSourceInstanceId", "monitorWorkspaceEpoch", "monitorWriterReady", "monitorJournalGeneration",
 		"mappingId", "operationId", "registeredSourceId", "serviceGeneration", "serviceRegistrationId",
 		"targetWorkId", "targetWorkspace", "workspaceEpoch",
 	}

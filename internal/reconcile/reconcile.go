@@ -90,6 +90,10 @@ type ManagedServiceControl interface {
 	ManagedServiceEnrollment(context.Context, string, model.ManagedServiceFetchRequestV1) (model.ManagedServiceEnrollmentV1, error)
 	ManagedServiceInstructions(context.Context, string, model.ManagedServiceFetchRequestV1) (model.ManagedServiceInstructionV1, error)
 	ManagedServiceEndpoint() string
+	// InsightPolicies is the existing authenticated policy read. It is used at
+	// the actual managed spawn boundary so startup intent never depends on a
+	// cache that is only refreshed after a successful reconcile pass.
+	InsightPolicies(context.Context) (model.InsightPolicyEnvelopeV1, error)
 }
 
 type ManagedSandboxRuntime interface {
