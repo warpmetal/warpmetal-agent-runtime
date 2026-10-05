@@ -45,7 +45,10 @@ type boundaryRefusal struct{ code string }
 func (e boundaryRefusal) Error() string { return "continuity helper refused: " + e.code }
 
 func (c *Coordinator) Apply(ctx context.Context, manifest model.Manifest) error {
-	if err := c.applyRegistrations(ctx, manifest); err != nil {
+	if err := c.applyRegistrationMetadata(ctx, manifest); err != nil {
+		return err
+	}
+	if err := c.applyRegistrationProjections(ctx, manifest); err != nil {
 		return err
 	}
 	for _, operation := range manifest.ContinuityOperations {
@@ -83,7 +86,7 @@ func (c *Coordinator) Acknowledge(ctx context.Context, manifest model.Manifest) 
 	if err != nil {
 		return err
 	}
-	if err := c.applyRegistrations(ctx, manifest); err != nil {
+	if err := c.applyRegistrationMetadata(ctx, manifest); err != nil {
 		return err
 	}
 	owners := make([]model.ContinuityRegistrationV1, 0, len(prior)+len(manifest.ContinuityRegistrations))
@@ -94,15 +97,17 @@ func (c *Coordinator) Acknowledge(ctx context.Context, manifest model.Manifest) 
 	return c.retireAcknowledgedOperations(ctx, manifest, owners)
 }
 
-// applyRegistrations applies the manifest's continuity registration state. The
-// fresh manifest re-lists the backend's binding-reactivation pair: the revoked
-// predecessor beside the active successor under one binding ID. Only the
-// effective registration per binding is durable state, resolved exactly as the
-// validated manifest semantics require; the re-listed predecessor is historical
-// manifest context and must never overwrite or downgrade the newer durable
-// successor. Resolution is deterministic and order-independent, and every
-// unsupported duplicate shape fails closed before any write.
-func (c *Coordinator) applyRegistrations(ctx context.Context, manifest model.Manifest) error {
+// applyRegistrationMetadata applies the manifest's continuity registration state
+// as durable metadata only. The fresh manifest re-lists the backend's
+// binding-reactivation pair: the revoked predecessor beside the active successor
+// under one binding ID. Only the effective registration per binding is durable
+// state, resolved exactly as the validated manifest semantics require; the
+// re-listed predecessor is historical manifest context and must never overwrite
+// or downgrade the newer durable successor. Resolution is deterministic and
+// order-independent, and every unsupported duplicate shape fails closed before
+// any write. Readiness-dependent projection belongs to the post-service Apply
+// stage (applyRegistrationProjections), not to the pre-failure Acknowledge pass.
+func (c *Coordinator) applyRegistrationMetadata(ctx context.Context, manifest model.Manifest) error {
 	effective, err := model.EffectiveContinuityRegistrations(manifest.ContinuityRegistrations)
 	if err != nil {
 		return err
@@ -120,13 +125,9 @@ func (c *Coordinator) applyRegistrations(ctx context.Context, manifest model.Man
 		// registration. Re-applying the manifest after a later source
 		// observation must not rewrite the verified/revoked/failed receipt the
 		// control plane already accepted; freshness is enforced at capture
-		// admission, not by rewriting registration history. The box-side
-		// projection is still repaired from the trusted registration identity.
+		// admission, not by rewriting registration history.
 		if existing != nil && existing.ObservedStatus != "pending" &&
 			reflect.DeepEqual(existing.Manifest, desired) {
-			if err := c.repairRegistrationProjection(ctx, manifest, desired, existing.ObservedStatus); err != nil {
-				return err
-			}
 			continue
 		}
 		local := state.LocalContinuityRegistration{Manifest: desired, ObservedStatus: "failed", ErrorCode: "source_unavailable"}
@@ -146,7 +147,33 @@ func (c *Coordinator) applyRegistrations(ctx context.Context, manifest model.Man
 		if err := c.Store.PutContinuityRegistration(ctx, local); err != nil {
 			return err
 		}
-		if err := c.repairRegistrationProjection(ctx, manifest, desired, local.ObservedStatus); err != nil {
+	}
+	return nil
+}
+
+// applyRegistrationProjections runs the readiness-dependent box-side projection
+// for every durable registration at the existing post-service Apply stage. The
+// pre-failure Acknowledge pass keeps authority/retirement metadata only, so a
+// failed managed service can no longer starve service recovery or block
+// independent healthy services.
+func (c *Coordinator) applyRegistrationProjections(ctx context.Context, manifest model.Manifest) error {
+	effective, err := model.EffectiveContinuityRegistrations(manifest.ContinuityRegistrations)
+	if err != nil {
+		return err
+	}
+	ordered := append([]model.ContinuityRegistrationV1(nil), effective...)
+	sort.SliceStable(ordered, func(left, right int) bool {
+		return ordered[left].Binding.BindingID < ordered[right].Binding.BindingID
+	})
+	for _, desired := range ordered {
+		existing, err := c.Store.ContinuityRegistration(ctx, desired.Binding.BindingID)
+		if err != nil {
+			return err
+		}
+		if existing == nil || existing.ObservedStatus == "pending" {
+			continue
+		}
+		if err := c.repairRegistrationProjection(ctx, manifest, desired, existing.ObservedStatus); err != nil {
 			return err
 		}
 	}

@@ -341,9 +341,11 @@ func (r *Reconciler) managedStartupMonitorIntent(ctx context.Context, desired mo
 		workspaceEpoch = desired.Workspace.WorkspaceEpoch
 	} else {
 		// A retained source row exists: strictly validate its tuple/session and
-		// reuse it. Source-ref freshness stays collection eligibility only.
-		if source.Lifecycle != "running" ||
-			source.Report.SandboxID != desired.Identity.SandboxID ||
+		// reuse it. Current desired-active authority plus the exact pinned tuple
+		// is the recovery authority; a lifecycle stopped by a transient control
+		// failure is derived failure state, not an intent. Explicit Stop/retire
+		// never reaches this active path.
+		if source.Report.SandboxID != desired.Identity.SandboxID ||
 			source.Report.SandboxGeneration != desired.Identity.SandboxGeneration ||
 			source.Report.ServiceRegistrationID != desired.Identity.ServiceRegistrationID ||
 			source.Report.ServiceGeneration != desired.Identity.ExpectedServiceGeneration ||
@@ -419,8 +421,14 @@ func (r *Reconciler) reestablishManagedMonitorIntent(
 	if err != nil {
 		return nil, err
 	}
-	if source == nil || source.Lifecycle != "running" || !source.NoAdmittedExecution {
-		return nil, errors.New("managed monitor re-establishment requires a pinned retained source at a safe idle boundary")
+	if source == nil || !source.NoAdmittedExecution ||
+		source.Report.SandboxID != desired.Identity.SandboxID ||
+		source.Report.SandboxGeneration != desired.Identity.SandboxGeneration ||
+		source.Report.ServiceRegistrationID != desired.Identity.ServiceRegistrationID ||
+		source.Report.ServiceGeneration != desired.Identity.ExpectedServiceGeneration ||
+		source.Report.WorkspaceEpoch != desired.Workspace.WorkspaceEpoch ||
+		source.Report.NativeSessionID == "" {
+		return nil, errors.New("managed monitor re-establishment requires the pinned retained source at a safe idle boundary")
 	}
 	restartRequest := managedLaunchComposition{
 		SandboxID:              desired.Identity.SandboxID,
@@ -573,6 +581,10 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 	if err != nil {
 		return err
 	}
+	pinnedSource, err := r.Store.ContinuitySource(ctx, managedSourceID(desired.Identity.ServiceRegistrationID))
+	if err != nil {
+		return err
+	}
 	sessionMode := local.RecoverySessionMode()
 	if err := r.Store.MarkManagedServiceCreationDispatched(ctx, desired.Identity.ServiceRegistrationID, desired.ConfigDigest); err != nil {
 		return err
@@ -645,6 +657,9 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 	}
 	if err := validateManagedMonitorReceipt(monitorIntent, &startReceipt); err != nil {
 		return r.failManagedService(ctx, desired, "invalid_monitor_receipt", err)
+	}
+	if pinnedSource != nil && pinnedSource.Report.NativeSessionID != "" && startReceipt.SessionID != pinnedSource.Report.NativeSessionID {
+		return r.failManagedService(ctx, desired, "native_session_changed", errors.New("managed start did not preserve the retained native session"))
 	}
 	statusRequest := map[string]any{
 		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
@@ -1327,13 +1342,23 @@ func (r *Reconciler) failManagedService(ctx context.Context, desired model.Manag
 			source.Report.Availability = "unavailable"
 			source.Report.Reason = &reason
 			source.Report.LastObservedAt = r.now()
-			source.Lifecycle = "stopped"
-			source.LifecycleRevision = desired.ActionRevision
+			if !transientManagedControlFailure(code) {
+				source.Lifecycle = "stopped"
+				source.LifecycleRevision = desired.ActionRevision
+			}
 			tombstoneErr = r.Store.PutContinuitySource(ctx, *source)
 		}
 	}
 	updateErr := r.Store.UpdateManagedService(ctx, desired.Identity.ServiceRegistrationID, "failed", &report, code)
 	return errors.Join(cause, tombstoneErr, updateErr)
+}
+
+// transientManagedControlFailure reports control-plane fetch failures that do
+// not by themselves prove the actual process lifecycle changed. Such failures
+// mark the source unavailable while keeping it recoverable under fresh
+// desired-active authority; only explicit outcomes rewrite the lifecycle.
+func transientManagedControlFailure(code string) bool {
+	return code == "enrollment_unavailable" || code == "instruction_unavailable"
 }
 
 func (r *Reconciler) progressManagedService(ctx context.Context, desired model.ManagedServiceV1, privateCode string, cause error) error {
