@@ -177,6 +177,28 @@ process and returns only when the status receipt proves the current monitor
 effect. That verification may complete while a worker task is active; only an
 actual restart requires the safe-idle boundary.
 
+## Retained recovery and projection ownership
+
+The pre-failure acknowledgement phase owns continuity registration metadata and
+operation retirement only; the readiness-dependent box-side projection runs at
+the existing post-service `Apply` stage (`applyRegistrationProjections`). A
+failed managed service therefore cannot starve service recovery or block
+independent healthy services in the same pass, while acknowledgement and
+retirement authority stay exactly where they were.
+
+A retained source stopped by a transient enrollment or instruction failure is
+recoverable under the fresh authenticated desired-active manifest when the exact
+pinned tuple matches (sandbox/service generations, workspace epoch and retained
+native session). Recovery does not flip rows directly: the lifecycle returns to
+running only through the ordinary successful start, and the start receipt must
+preserve the retained native session (`native_session_changed` otherwise fails
+closed). Deliberate current Stop/retire never reaches the active path and stays
+authoritative. Transient control-fetch failures mark the source unavailable
+without rewriting its lifecycle, so a temporary control-plane outage cannot
+misrepresent the actual process lifecycle. The safe-idle monitor
+re-establishment keeps the `NoAdmittedExecution` gate plus the exact pinned
+tuple and never restarts an active task.
+
 ## Compatibility and qualification limits
 
 - Current-image qualification requires `monitorReadinessVersion:1` writer
