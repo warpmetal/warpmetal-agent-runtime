@@ -9,6 +9,12 @@ fixture nonce, then verifies:
     fresh inactive session (expected nativeGuardVersion, null watermarks,
     active false, numeric epoch-millisecond observedAt, non-negative
     logCursor)
+  - default retention: an unguarded queue/resume=false input becomes visible in
+    the durable guard snapshot (non-null inputSeq); no provider credentials are
+    inherited, so no paid model execution can occur
+  - a wrong-sessionID guard in the exact tested guard shape is refused with the
+    deterministic typed code guard_session_mismatch, and its closed receipt plus
+    the input watermark survive a genuine server restart
 
 The nonce is a per-run fixture, never printed, never inherited by children
 other than the server process, and the curl config is removed afterwards.
@@ -28,6 +34,20 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+GUARD_RECEIPT_KEYS = {
+    "formatVersion",
+    "sessionID",
+    "inboxID",
+    "guardID",
+    "bindingDigest",
+    "state",
+    "admittedAt",
+    "availableAt",
+    "settledAt",
+    "refusalCode",
+    "logCursor",
+}
 
 GUARD_KEYS = {
     "formatVersion",
@@ -130,13 +150,14 @@ def main() -> int:
         "OPENCODE_DISABLE_FILEWATCHER": "1",
     }
 
-    port = free_port()
-    base = f"http://127.0.0.1:{port}"
     log_path = work / "server.log"
     process: subprocess.Popen[bytes] | None = None
-    try:
-        with log_path.open("wb") as log:
-            process = subprocess.Popen(
+
+    def launch(log_mode: str = "wb") -> tuple[subprocess.Popen[bytes], str]:
+        port = free_port()
+        base = f"http://127.0.0.1:{port}"
+        with log_path.open(log_mode) as log:
+            launched = subprocess.Popen(
                 [str(binary), "serve", "--hostname", "127.0.0.1", "--port", str(port)],
                 cwd=str(cwd),
                 env=environment,
@@ -145,16 +166,43 @@ def main() -> int:
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
-        ready = False
         for _ in range(60):
             if quiet_status(config, f"{base}/api/session") == "200":
-                ready = True
-                break
-            if process.poll() is not None:
+                return launched, base
+            if launched.poll() is not None:
                 fail("server_exited_early")
             time.sleep(1)
-        if not ready:
-            fail("server_not_ready")
+        fail("server_not_ready")
+
+    def stop(instance: subprocess.Popen[bytes]) -> None:
+        if instance.poll() is None:
+            try:
+                os.killpg(instance.pid, signal.SIGTERM)
+                instance.wait(timeout=10)
+            except (ProcessLookupError, subprocess.TimeoutExpired):
+                try:
+                    os.killpg(instance.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+    def post_json(url: str, payload: dict) -> tuple[str, str]:
+        body_path = work / "response.json"
+        status = run_curl(
+            config,
+            ["-X", "POST", "-H", "content-type: application/json", "-d", json.dumps(payload),
+             "-o", str(body_path), "-w", "%{http_code}", url],
+        ).strip()
+        return status, body_path.read_text(encoding="utf-8") if body_path.exists() else ""
+
+    def guard_receipt(base: str, inbox_id: str, guard_id: str) -> dict:
+        raw = run_curl(
+            config,
+            [f"{base}/api/session/{session_id}/inbox/{inbox_id}/guard-receipt?guardID={guard_id}"],
+        )
+        return json.loads(raw)["data"]
+
+    try:
+        process, base = launch()
 
         # Anonymous access must be rejected; no credential material is sent.
         anonymous = status_curl(None, f"{base}/api/session")
@@ -201,20 +249,91 @@ def main() -> int:
         if cursor is not None and (isinstance(cursor, bool) or not isinstance(cursor, int) or cursor < 0):
             fail("guard_log_cursor_unexpected")
 
+        # Bounded default-serve durability checks (no provider credentials exist
+        # in this environment, so no paid model call can succeed or be billed).
+        # 1) An UNGUARDED queue/resume=false input proves the default-mode input
+        #    watermark is persisted with no provider execution. Guarded
+        #    consumption itself stays an SF source journey, not a fake inactive
+        #    admission here.
+        # 2) A deliberately wrong-sessionID guard in the exact tested guard shape
+        #    produces a deterministic typed guard_session_mismatch refusal whose
+        #    closed receipt survives a genuine server restart.
+        admit_id = "msg_native_smoke_admitted"
+        admit_status, admit_response = post_json(
+            f"{base}/api/session/{session_id}/prompt",
+            {
+                "id": admit_id,
+                "text": "native smoke unguarded queue input",
+                "delivery": "queue",
+                "resume": False,
+            },
+        )
+        if admit_status != "200":
+            fail(f"unguarded_input_prompt_status:{admit_status}:{admit_response[:160]}")
+        input_snapshot: dict = {}
+        for _ in range(30):
+            input_snapshot = json.loads(
+                run_curl(config, [f"{base}/api/session/{session_id}/inbox/guard"])
+            )["data"]
+            if input_snapshot.get("inputSeq") is not None:
+                break
+            time.sleep(0.2)
+        if input_snapshot.get("inputSeq") is None:
+            fail("input_watermark_not_persisted")
+
+        refuse_id = "msg_native_smoke_refused"
+        refuse_guard_id = "guard_native_smoke_refused"
+        refuse_status, refuse_response = post_json(
+            f"{base}/api/session/{session_id}/prompt",
+            {
+                "id": refuse_id,
+                "text": "native smoke typed refusal",
+                "delivery": "queue",
+                "resume": False,
+                "guard": {
+                    "formatVersion": 1,
+                    "guardID": refuse_guard_id,
+                    "sessionID": session_id + "_other",
+                    "inputSeq": None,
+                    "executionStartedSeq": 0,
+                    "contextSeq": None,
+                    "expiresAt": int(time.time() * 1000) + 60_000,
+                    "bindingDigest": "sha256:" + "e" * 64,
+                },
+            },
+        )
+        if refuse_status != "409" or "guard_session_mismatch" not in refuse_response:
+            fail(f"typed_refusal_unexpected:{refuse_status}:{refuse_response[:160]}")
+        receipt = guard_receipt(base, refuse_id, refuse_guard_id)
+        if set(receipt) != GUARD_RECEIPT_KEYS:
+            fail("refusal_receipt_keys_unexpected")
+        if receipt["state"] != "refused" or receipt["refusalCode"] != "guard_session_mismatch":
+            fail("refusal_receipt_state_unexpected")
+        if (receipt["sessionID"], receipt["inboxID"], receipt["guardID"]) != (session_id, refuse_id, refuse_guard_id):
+            fail("refusal_receipt_identity_mismatch")
+
+        # Genuine restart: the durable guard projection and the exact typed
+        # refusal receipt must survive the same isolated home/data tree.
+        stop(process)
+        process, base = launch("ab")
+        receipt_after = guard_receipt(base, refuse_id, refuse_guard_id)
+        if receipt_after != receipt:
+            fail("refusal_receipt_not_durable_across_restart")
+        guard_after = json.loads(
+            run_curl(config, [f"{base}/api/session/{session_id}/inbox/guard"])
+        )["data"]
+        if guard_after.get("inputSeq") is None:
+            fail("input_watermark_not_durable_across_restart")
+        if guard_after["inputSeq"] != input_snapshot["inputSeq"]:
+            fail("input_watermark_changed_across_restart")
+
         if nonce.encode() in log_path.read_bytes():
             fail("credential_logged")
-        print(f"native-smoke: ok version={args.version} guard={args.guard_version}")
+        print(f"native-smoke: ok version={args.version} guard={args.guard_version} durable=1")
         return 0
     finally:
-        if process is not None and process.poll() is None:
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-                process.wait(timeout=10)
-            except (ProcessLookupError, subprocess.TimeoutExpired):
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+        if process is not None:
+            stop(process)
         if config.exists():
             config.unlink()
 

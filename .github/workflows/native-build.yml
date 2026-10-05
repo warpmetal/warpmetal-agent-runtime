@@ -1,13 +1,13 @@
 name: Native package
 
-# Reproducible WarpMetal-patched OpenCode package (custom version 2.0.14-wm.1).
+# Reproducible WarpMetal-patched OpenCode package (custom version 2.0.14-wm.2).
 # Every job fetches the exact official upstream revision into an isolated
 # RUNNER_TEMP checkout and never builds from the Runtime repository checkout.
 # PRs run lock closure, build, generated checks, affected tests and the
 # authenticated binary smoke, then retain the assembled candidate.
 #
 # The exact custom tag publishes normally. A bounded workflow_dispatch with the
-# single closed choice release_tag=opencode-v2.0.14-wm.1 recovers that same
+# single closed choice release_tag=opencode-v2.0.14-wm.2 recovers that same
 # immutable tag from corrected main after a publication failure without moving
 # the tag. Signed assets are retained before publication. Existing releases are
 # refused, never overwritten; --latest is never moved and Runtime v* releases,
@@ -20,7 +20,7 @@ on:
       - ".github/workflows/native-build.yml"
   push:
     tags:
-      - "opencode-v2.0.14-wm.1"
+      - "opencode-v2.0.14-wm.2"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -28,7 +28,7 @@ on:
         required: true
         type: choice
         options:
-          - opencode-v2.0.14-wm.1
+          - opencode-v2.0.14-wm.2
 
 permissions:
   contents: read
@@ -113,7 +113,7 @@ jobs:
       - name: Assert exact immutable tag on main ancestry
         run: |
           set -eu
-          test "$RELEASE_TAG" = "opencode-v2.0.14-wm.1"
+          test "$RELEASE_TAG" = "opencode-v2.0.14-wm.2"
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
           git fetch --no-tags origin main
           git merge-base --is-ancestor HEAD origin/main
@@ -122,7 +122,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          test "$RELEASE_TAG" = "opencode-v2.0.14-wm.1"
+          test "$RELEASE_TAG" = "opencode-v2.0.14-wm.2"
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "native-release: $RELEASE_TAG already exists; refusing to overwrite" >&2
             exit 1
@@ -148,8 +148,8 @@ jobs:
             --bun "$(command -v bun)" \
             --smoke
           cd "$RUNNER_TEMP/native-package/artifacts"
-          test -f opencode-cli-linux-x64-2.0.14-wm.1.tgz
-          test -f opencode-cli-linux-x64-2.0.14-wm.1.tgz.sha256
+          test -f opencode-cli-linux-x64-2.0.14-wm.2.tgz
+          test -f opencode-cli-linux-x64-2.0.14-wm.2.tgz.sha256
           test -f opencode.binary.sha256
           python3 - <<'PY'
           import json
@@ -169,7 +169,7 @@ jobs:
         run: |
           set -eu
           cd "$RUNNER_TEMP/native-package/artifacts"
-          archive=opencode-cli-linux-x64-2.0.14-wm.1.tgz
+          archive=opencode-cli-linux-x64-2.0.14-wm.2.tgz
           cosign sign-blob --yes --bundle "$archive.cosign.bundle" "$archive"
           cosign attest-blob --yes --type slsaprovenance \
             --predicate warpmetal-native-provenance.json \
@@ -181,12 +181,12 @@ jobs:
         with:
           name: native-signed-linux-x64
           path: |
-            ${{ runner.temp }}/native-package/artifacts/opencode-cli-linux-x64-2.0.14-wm.1.tgz
-            ${{ runner.temp }}/native-package/artifacts/opencode-cli-linux-x64-2.0.14-wm.1.tgz.sha256
+            ${{ runner.temp }}/native-package/artifacts/opencode-cli-linux-x64-2.0.14-wm.2.tgz
+            ${{ runner.temp }}/native-package/artifacts/opencode-cli-linux-x64-2.0.14-wm.2.tgz.sha256
             ${{ runner.temp }}/native-package/artifacts/opencode.binary.sha256
             ${{ runner.temp }}/native-package/artifacts/warpmetal-native-provenance.json
-            ${{ runner.temp }}/native-package/artifacts/opencode-cli-linux-x64-2.0.14-wm.1.tgz.cosign.bundle
-            ${{ runner.temp }}/native-package/artifacts/opencode-cli-linux-x64-2.0.14-wm.1.tgz.attestation.bundle
+            ${{ runner.temp }}/native-package/artifacts/opencode-cli-linux-x64-2.0.14-wm.2.tgz.cosign.bundle
+            ${{ runner.temp }}/native-package/artifacts/opencode-cli-linux-x64-2.0.14-wm.2.tgz.attestation.bundle
           if-no-files-found: error
           retention-days: 7
           overwrite: false
@@ -196,11 +196,11 @@ jobs:
         run: |
           set -eu
           cd "$RUNNER_TEMP/native-package/artifacts"
-          archive=opencode-cli-linux-x64-2.0.14-wm.1.tgz
+          archive=opencode-cli-linux-x64-2.0.14-wm.2.tgz
           cat > RELEASE_NOTES.md <<'EOF'
           WarpMetal-patched OpenCode package (custom identity, not an upstream release).
 
-          - custom version: 2.0.14-wm.1
+          - custom version: 2.0.14-wm.2
           - source: official OpenCode 08462140ec0de1e4b17d4a353d8d5827f53cf7b0
           - archive: package/bin/opencode npm layout
           - verification: sha256 checksums, keyless cosign OIDC blob bundle and SLSA v0.2 provenance
