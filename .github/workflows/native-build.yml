@@ -69,14 +69,14 @@ jobs:
           packaging/native/build.sh verify \
             --lock packaging/native/upstream.lock.json \
             --source "$RUNNER_TEMP/upstream" \
-            --patch packaging/native/warpmetal-atomic-input-v1.patch
+            --patch packaging/native/warpmetal-atomic-input-v2.patch
       - name: Build, generation checks, affected tests and smoke
         run: |
           set -eu
           packaging/native/build.sh build \
             --lock packaging/native/upstream.lock.json \
             --source "$RUNNER_TEMP/upstream" \
-            --patch packaging/native/warpmetal-atomic-input-v1.patch \
+            --patch packaging/native/warpmetal-atomic-input-v2.patch \
             --out "$RUNNER_TEMP/native-package" \
             --bun "$(command -v bun)" \
             --tests \
@@ -143,7 +143,7 @@ jobs:
           packaging/native/build.sh build \
             --lock packaging/native/upstream.lock.json \
             --source "$RUNNER_TEMP/upstream" \
-            --patch packaging/native/warpmetal-atomic-input-v1.patch \
+            --patch packaging/native/warpmetal-atomic-input-v2.patch \
             --out "$RUNNER_TEMP/native-package" \
             --bun "$(command -v bun)" \
             --smoke
