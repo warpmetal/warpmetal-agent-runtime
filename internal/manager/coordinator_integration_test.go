@@ -2546,3 +2546,160 @@ func TestCoordinatorRecoversAutomaticReviewingRunObservationOnlyAfterOff(t *test
 		t.Fatalf("automatic reviewing run did not settle observation-only: %#v, %v", persisted, err)
 	}
 }
+
+// TestQ2QualifiedAutoResumeReleasesExactPredecessorWithoutAutomaticRun is the
+// r2433 RED journey for the normal path: the qualified Automatic origin is
+// paused to Off8 and reaches exact ready; the same-predecessor-linked Resume
+// restores the qualified Auto9 policy and must dispatch exactly one release for
+// the accepted resume operation, preserving source/target/hold transitions and
+// starting no additional automatic review or guidance delivery.
+func TestQ2QualifiedAutoResumeReleasesExactPredecessorWithoutAutomaticRun(t *testing.T) {
+	fixture := loadManagerCoordinatorFixture(t)
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	qualified := state.LocalManagerCapability{
+		RegisteredSourceID: fixture.Review.Source.RegisteredSourceID, ServiceRegistrationID: fixture.Review.Source.ServiceRegistrationID,
+		ServiceGeneration: fixture.Review.Source.ServiceGeneration, WorkspaceEpoch: fixture.Review.Source.WorkspaceEpoch,
+		NativeSessionID: fixture.Review.Source.NativeSessionID, SandboxID: fixture.Policy.SandboxID,
+		SandboxGeneration: fixture.Review.Source.SandboxGeneration, ProfileRevision: fixture.Review.Source.ProfileRevision,
+		InstructionRevision: fixture.Review.Source.InstructionRevision, NativeVersion: "2.0.14-wm.1",
+		NativeSourceRevision: "08462140ec0de1e4b17d4a353d8d5827f53cf7b0", Protocol: "opencode-supervisor/1",
+		NativeProtocol: "openai_chat", ProviderID: "deepseek", ModelID: "deepseek-chat",
+		ProviderRouteDigest: fixture.Review.ProviderRouteDigest, RecipeIDs: []string{fixture.Review.RecipeID},
+		ManagerPluginDigest: "sha256:f7d9cec7e6bcfef134b0d27c5bd1526a0199859b5954c0dae523ff843eaf7a94",
+		ManagerProfile:      fixture.Review.ManagerProfile, MaxInputTokens: 8000, MaxOutputTokens: 1000,
+		FinalRequestMaxBytes: 7000, ToolsAllowed: false, MediaAllowed: false, HardOutputTokenLimit: true, Available: true,
+	}
+	qualified = q2MergeQualifiedCapability(t, qualified)
+	seedManagerCoordinatorPrerequisites(t, store, fixture, qualified)
+	q2SeedManagerFinding(t, store, fixture)
+
+	// Pause leg: policy Off8 applied with the pause takeover, exact ready.
+	pausePolicy := fixture.Policy
+	pausePolicy.Mode, pausePolicy.AllowedRules = "off", []string{}
+	pause := fixture.Takeover
+	pause.PolicyRevision, pause.RunGeneration = pausePolicy.PolicyRevision, pausePolicy.RunGeneration
+	pause.Source, pause.Target = fixture.Review.Source, fixture.Review.Target
+	pause.ValidUntil = fixture.Review.ValidUntil
+	resume := managerResumeManifest(t, pause)
+	helper := &fakeManagerHelper{outputs: map[string][]byte{
+		"acquire_intervention_hold": managerHoldReceipt(t, pause, "acquire_intervention_hold", "active", "none_pending"),
+		"release_intervention_hold": managerHoldReceipt(t, resume, "release_intervention_hold", "released", "none_pending"),
+	}}
+	control := &fakeManagerControl{canonical: model.InsightsManagerTargetEnvelopeV1{FormatVersion: 1,
+		FindingID: pause.FindingID, FindingRevision: pause.FindingRevision, Source: pause.Source, Target: pause.Target}}
+	now := func() time.Time { return pause.ValidUntil.Add(-30 * time.Second) }
+	coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: now}
+	manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
+		InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{pausePolicy},
+		InsightsTakeovers:       []model.InsightsTakeoverManifestV1{pause}}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatalf("pause leg did not reach the hold helper: %v", err)
+	}
+	ready, err := store.ManagerTakeover(context.Background(), pause.OperationID)
+	if err != nil || ready == nil || ready.Report == nil || ready.Report.Status != "ready" {
+		t.Fatalf("pause takeover is not exact ready: %#v, %v", ready, err)
+	}
+
+	// Resume leg: qualified Automatic Auto9 restores the policy and releases the
+	// same accepted predecessor operation. This is the r2433 blocker: the local
+	// authority currently admits only Off or Resume+Recommend.
+	autoPolicy := pausePolicy
+	autoPolicy.Mode = "auto_steer"
+	autoPolicy.PolicyRevision, autoPolicy.RunGeneration = resume.PolicyRevision, resume.RunGeneration
+	autoPolicy.ValidUntil = resume.ValidUntil
+	autoPolicy = q2MergeQualifiedPolicy(t, autoPolicy, fixture.Review.ManagerProfile.ProfileDigest)
+	manifest.DesiredRevision++
+	manifest.InsightsManagerPolicies = []model.InsightsManagerPolicyManifestV1{autoPolicy}
+	manifest.InsightsTakeovers = []model.InsightsTakeoverManifestV1{resume}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatalf("qualified Automatic resume must dispatch the release for the same accepted predecessor: %v", err)
+	}
+	actions := []any{}
+	for _, call := range helper.calls {
+		actions = append(actions, call.Payload["action"])
+	}
+	want := []any{"acquire_intervention_hold", "release_intervention_hold"}
+	if !reflect.DeepEqual(actions, want) {
+		t.Fatalf("qualified resume helper sequence = %#v want %#v", actions, want)
+	}
+	if starts := q2ActionCalls(helper.calls, "start_review"); len(starts) != 0 {
+		t.Fatalf("qualified resume started an automatic review: %#v", starts)
+	}
+	if dispatches := q2ActionCalls(helper.calls, "dispatch_guidance"); len(dispatches) != 0 {
+		t.Fatalf("qualified resume delivered guidance: %#v", dispatches)
+	}
+	if len(control.reservations) != 0 || len(control.reports) != 0 {
+		t.Fatalf("qualified resume must not create another reservation or model report: %#v %#v", control.reservations, control.reports)
+	}
+	released, err := store.ManagerTakeover(context.Background(), resume.OperationID)
+	if err != nil || released == nil || released.Phase != "released" || released.Report == nil || released.Report.Status != "ready" {
+		t.Fatalf("qualified resume did not reach released/ready: %#v, %v", released, err)
+	}
+	if released.Manifest.PredecessorOperationID == nil || *released.Manifest.PredecessorOperationID != pause.OperationID {
+		t.Fatalf("resume is not linked to the exact paused operation: %#v", released.Manifest.PredecessorOperationID)
+	}
+	if released.Manifest.HoldID != pause.HoldID || released.Manifest.HoldRevision != pause.HoldRevision+1 ||
+		released.Manifest.Source != pause.Source || released.Manifest.Target != pause.Target {
+		t.Fatalf("qualified resume changed hold/source/target authority: %#v", released.Manifest)
+	}
+}
+
+// TestQ2UnqualifiedAutoResumeStaysZeroReleaseAndZeroLocalResume is the material
+// negative companion to the qualified journey: the same Auto9 resume linked to
+// the exact ready pause must stay refused with zero release dispatch and no
+// locally persisted resume when the source capability is not the qualified
+// tuple (default unqualified seed, noNativeGuard).
+func TestQ2UnqualifiedAutoResumeStaysZeroReleaseAndZeroLocalResume(t *testing.T) {
+	fixture := loadManagerCoordinatorFixture(t)
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	seedManagerCoordinatorPrerequisites(t, store, fixture)
+	q2SeedManagerFinding(t, store, fixture)
+
+	pausePolicy := fixture.Policy
+	pausePolicy.Mode, pausePolicy.AllowedRules = "off", []string{}
+	pause := fixture.Takeover
+	pause.PolicyRevision, pause.RunGeneration = pausePolicy.PolicyRevision, pausePolicy.RunGeneration
+	pause.Source, pause.Target = fixture.Review.Source, fixture.Review.Target
+	pause.ValidUntil = fixture.Review.ValidUntil
+	resume := managerResumeManifest(t, pause)
+	helper := &fakeManagerHelper{outputs: map[string][]byte{
+		"acquire_intervention_hold": managerHoldReceipt(t, pause, "acquire_intervention_hold", "active", "none_pending"),
+		"release_intervention_hold": managerHoldReceipt(t, resume, "release_intervention_hold", "released", "none_pending"),
+	}}
+	control := &fakeManagerControl{canonical: model.InsightsManagerTargetEnvelopeV1{FormatVersion: 1,
+		FindingID: pause.FindingID, FindingRevision: pause.FindingRevision, Source: pause.Source, Target: pause.Target}}
+	now := func() time.Time { return pause.ValidUntil.Add(-30 * time.Second) }
+	coordinator := &Coordinator{Store: store, Control: control, Helper: helper, Now: now}
+	manifest := model.Manifest{ServerID: "srv_p2c_managerreview", DesiredRevision: 1,
+		InsightsManagerPolicies: []model.InsightsManagerPolicyManifestV1{pausePolicy},
+		InsightsTakeovers:       []model.InsightsTakeoverManifestV1{pause}}
+	if err := coordinator.Apply(context.Background(), manifest); err != nil {
+		t.Fatalf("pause leg did not reach the hold helper: %v", err)
+	}
+	autoPolicy := pausePolicy
+	autoPolicy.Mode = "auto_steer"
+	autoPolicy.PolicyRevision, autoPolicy.RunGeneration = resume.PolicyRevision, resume.RunGeneration
+	autoPolicy.ValidUntil = resume.ValidUntil
+	autoPolicy = q2MergeQualifiedPolicy(t, autoPolicy, fixture.Review.ManagerProfile.ProfileDigest)
+	manifest.DesiredRevision++
+	manifest.InsightsManagerPolicies = []model.InsightsManagerPolicyManifestV1{autoPolicy}
+	manifest.InsightsTakeovers = []model.InsightsTakeoverManifestV1{resume}
+	if err := coordinator.Apply(context.Background(), manifest); err == nil {
+		t.Fatal("unqualified auto_steer resume was admitted")
+	}
+	if releases := q2ActionCalls(helper.calls, "release_intervention_hold"); len(releases) != 0 {
+		t.Fatalf("unqualified auto_steer resume dispatched a release: %#v", releases)
+	}
+	local, err := store.ManagerTakeover(context.Background(), resume.OperationID)
+	if err != nil || local != nil {
+		t.Fatalf("unqualified auto_steer resume persisted locally: %#v, %v", local, err)
+	}
+}

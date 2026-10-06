@@ -1665,8 +1665,20 @@ func sameTakeoverAuthority(left, right model.InsightsTakeoverManifestV1) bool {
 // persist an operation, dispatch a helper action, or change the current policy.
 func (c *Coordinator) takeoverAuthority(ctx context.Context, manifest model.InsightsTakeoverManifestV1) error {
 	policy, err := c.Store.ManagerPolicy(ctx, sourceSandbox(ctx, c.Store, manifest.Source))
-	policyModeAllowed := policy != nil && (policy.Manifest.Mode == "off" ||
-		manifest.Action == "resume_manager_and_release_member" && policy.Manifest.Mode == "recommend")
+	resumeAction := manifest.Action == "resume_manager_and_release_member"
+	policyModeAllowed := policy != nil && policy.Manifest.Mode == "off"
+	if !policyModeAllowed && policy != nil && resumeAction {
+		switch policy.Manifest.Mode {
+		case "recommend":
+			policyModeAllowed = true
+		case "auto_steer":
+			qualified, qualifyErr := c.qualifiedAutoResume(ctx, manifest.Source, policy.Manifest)
+			if qualifyErr != nil {
+				return qualifyErr
+			}
+			policyModeAllowed = qualified
+		}
+	}
 	if err != nil || policy == nil || !policyModeAllowed || policy.Manifest.PolicyRevision != manifest.PolicyRevision ||
 		policy.Manifest.RunGeneration != manifest.RunGeneration {
 		return errors.Join(err, errors.New("takeover requires exact current policy authority"))
@@ -1697,6 +1709,26 @@ func (c *Coordinator) takeoverAuthority(ctx context.Context, manifest model.Insi
 		return err
 	}
 	return nil
+}
+
+// qualifiedAutoResume admits the qualified Automatic Resume branch only: the
+// exact source's stored capability must be currently available and match the
+// same qualified tuple predicate used for automatic admission and guidance
+// (autoSteerQualified against the current policy object and current sandbox
+// image). Store errors fail closed; mode alone never bypasses qualification.
+func (c *Coordinator) qualifiedAutoResume(ctx context.Context, source model.InsightsManagerSourceV1, policy model.InsightsManagerPolicyManifestV1) (bool, error) {
+	capability, err := c.Store.ManagerCapability(ctx, source.RegisteredSourceID)
+	if err != nil {
+		return false, err
+	}
+	if capability == nil || !capability.Available || capability.SandboxID != policy.SandboxID {
+		return false, nil
+	}
+	sandbox, err := c.Store.Sandbox(ctx, policy.SandboxID)
+	if err != nil {
+		return false, err
+	}
+	return autoSteerQualified(policy, capability, sandbox), nil
 }
 
 func (c *Coordinator) dispatchTakeover(ctx context.Context, value *state.LocalManagerTakeover, action string) error {
