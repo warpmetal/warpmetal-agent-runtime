@@ -206,15 +206,15 @@ type SessionHandoffWorkV1 struct {
 // already-running technical orchestrator native session and carries no task,
 // Work, mutation, takeover, shell, forwarding or filesystem authority.
 type ForemanChatHandoffV1 struct {
-	FormatVersion int                       `json:"formatVersion"`
-	Action        string                    `json:"action"`
-	HandoffID     string                    `json:"handoffId"`
-	IssuedAt      time.Time                 `json:"issuedAt"`
-	ExpiresAt     time.Time                 `json:"expiresAt"`
-	Identity      ForemanChatIdentityV1     `json:"identity"`
-	Source        SessionHandoffSourceV1    `json:"source"`
-	Task          *SessionHandoffTaskV1     `json:"task"`
-	Work          *SessionHandoffWorkV1     `json:"work"`
+	FormatVersion int                    `json:"formatVersion"`
+	Action        string                 `json:"action"`
+	HandoffID     string                 `json:"handoffId"`
+	IssuedAt      time.Time              `json:"issuedAt"`
+	ExpiresAt     time.Time              `json:"expiresAt"`
+	Identity      ForemanChatIdentityV1  `json:"identity"`
+	Source        SessionHandoffSourceV1 `json:"source"`
+	Task          *SessionHandoffTaskV1  `json:"task"`
+	Work          *SessionHandoffWorkV1  `json:"work"`
 }
 
 type ForemanChatIdentityV1 struct {
