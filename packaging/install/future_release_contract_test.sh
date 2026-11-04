@@ -99,6 +99,8 @@ actual_members=$(
 expected_members=$(cat <<'EOF'
 install.sh
 nested-private-procfs-oracle.sh
+sa9-precreate-hook.json
+sa9-precreate-hook.py
 warpmetal-agent-runtime-bwrap
 warpmetal-agentctl
 warpmetal-apparmor-policy.sh

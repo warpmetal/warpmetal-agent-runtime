@@ -128,6 +128,7 @@ grep -Fqx "printf '%s\\n' \"\$\$\" > \"\$cgroup_path/manager/cgroup.procs\"" "$p
 grep -Fq -- '--runtime crun' "$podman_launcher"
 reject_match -Fq -- '--runtime runc' "$podman_launcher"
 grep -Fq -- '--cgroup-manager cgroupfs' "$podman_launcher"
+grep -Fq -- '--hooks-dir /usr/libexec/warpmetal-agent-runtime/hooks' "$podman_launcher"
 grep -Fq -- '--prerelease' "$release_workflow"
 grep -Fq 'sh -n packaging/install/preserve_execution_test.sh' "$release_workflow"
 grep -Fq 'sh /source/packaging/install/preserve_execution_test.sh' "$release_workflow"
@@ -163,6 +164,30 @@ test -s cmd/warpmetal-policy-metadata/main.go
   "$script" packaging/install/warpmetal-apparmor-policy.sh
 ! grep -Eq 'apparmor=unconfined|seccomp=unconfined|--privileged|CAP_SYS_ADMIN' \
   "$script" packaging/install/warpmetal-apparmor-policy.sh
+
+# SA9 cell lifecycle hook: version-bound bytes + complete-install preflight are
+# enforced by the installer, and the pinned digests match the packaged bytes.
+sa9_hook_py=packaging/sa9/sa9-precreate-hook.py
+sa9_hook_json=packaging/sa9/sa9-precreate-hook.json
+test -s "$sa9_hook_py"
+test -s "$sa9_hook_json"
+sa9_hook_py_digest=$(sha256sum "$sa9_hook_py" | awk '{print $1}')
+sa9_hook_json_digest=$(sha256sum "$sa9_hook_json" | awk '{print $1}')
+grep -Fq "$sa9_hook_py_digest" "$script"
+grep -Fq "$sa9_hook_json_digest" "$script"
+grep -Fq 'sa9_hook_dir=/usr/libexec/warpmetal-agent-runtime/hooks' "$script"
+grep -Fq 'sa9_hook_python=/usr/bin/python3' "$script"
+grep -Fq 'install -d -o root -g root -m 0755 "$sa9_hook_dir"' "$script"
+grep -Fq 'install -o root -g root -m 0555 "$sa9_hook_py_source" "$sa9_hook_dir/sa9-precreate-hook.py"' "$script"
+grep -Fq 'install -o root -g root -m 0444 "$sa9_hook_json_source" "$sa9_hook_dir/sa9-precreate-hook.json"' "$script"
+grep -Fq 'fail_install runtime_sa9_hook_digest_mismatch' "$script"
+grep -Fq 'fail_install runtime_sa9_hook_python_unavailable' "$script"
+grep -Fq 'runtime_sa9_hook_invalid' "$script"
+# The hook must be installed before the delegated Podman service starts, so a
+# cell container created during the same install already has the witness hook.
+sa9_hook_install_line=$(grep -n '^install -d -o root -g root -m 0755 "$sa9_hook_dir"' "$script" | cut -d: -f1)
+test -n "$sa9_hook_install_line"
+test "$sa9_hook_install_line" -lt "$podman_start_line"
 
 sh packaging/apparmor/profile_test.sh
 sh packaging/install/apparmor_policy_test.sh

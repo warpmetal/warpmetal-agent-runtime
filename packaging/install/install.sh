@@ -614,6 +614,43 @@ if [ -f /var/lib/warpmetal-runtime/.local/share/containers/storage/libpod/bolt_s
   fi
 fi
 
+# SA9 cell lifecycle hook — version-bound bytes + complete-install preflight.
+# The precreate config hook injects the childless procfs witness for a cell
+# container at OCI runtime creation, before the UID-1000 / empty-capability
+# transition. Its bytes are version-bound: the installer refuses any hook whose
+# sha256 does not match the pinned digest, so a tampered or foreign hook can
+# never weaken the cell isolation boundary. The interpreter is pinned to
+# /usr/bin/python3, the hook must parse cleanly, and a functional smoke run
+# must emit the witness mount before the bytes are installed. The storage is
+# root/control-owned and immutable; the rootless runtime user only reads it.
+sa9_hook_dir=/usr/libexec/warpmetal-agent-runtime/hooks
+sa9_hook_python=/usr/bin/python3
+sa9_hook_py_source=$bundle_dir/sa9-precreate-hook.py
+sa9_hook_json_source=$bundle_dir/sa9-precreate-hook.json
+[ -f "$sa9_hook_py_source" ] && [ ! -L "$sa9_hook_py_source" ] || \
+  fail_install runtime_sa9_hook_bundle_invalid
+[ -f "$sa9_hook_json_source" ] && [ ! -L "$sa9_hook_json_source" ] || \
+  fail_install runtime_sa9_hook_bundle_invalid
+command -v sha256sum >/dev/null 2>&1 || fail_install runtime_sa9_hook_verify_unavailable
+[ -x "$sa9_hook_python" ] || fail_install runtime_sa9_hook_python_unavailable
+sa9_hook_py_digest=$(sha256sum "$sa9_hook_py_source" | awk '{print $1}')
+sa9_hook_json_digest=$(sha256sum "$sa9_hook_json_source" | awk '{print $1}')
+[ "$sa9_hook_py_digest" = e92fe25ca79d69378622f0b8e8d24bf24f80a557290c28c64edee0e86ef2cd6d ] || \
+  fail_install runtime_sa9_hook_digest_mismatch
+[ "$sa9_hook_json_digest" = cf6f8adaf30845281815260e28a38a7d075f19af83b5535a3e3c831a01670bf6 ] || \
+  fail_install runtime_sa9_hook_digest_mismatch
+"$sa9_hook_python" -c 'import ast,sys; ast.parse(open(sys.argv[1],"rb").read())' \
+  "$sa9_hook_py_source" || fail_install runtime_sa9_hook_invalid
+sa9_hook_smoke=$(
+  printf '%s' '{"annotations":{"io.warpmetal.cell.lifecycle":"sa9-proc-witness-v1"},"mounts":[]}' |
+    "$sa9_hook_python" "$sa9_hook_py_source"
+) || fail_install runtime_sa9_hook_invalid
+printf '%s' "$sa9_hook_smoke" | grep -Fq '/warpmetal-proc-witness' || \
+  fail_install runtime_sa9_hook_invalid
+install -d -o root -g root -m 0755 "$sa9_hook_dir"
+install -o root -g root -m 0555 "$sa9_hook_py_source" "$sa9_hook_dir/sa9-precreate-hook.py"
+install -o root -g root -m 0444 "$sa9_hook_json_source" "$sa9_hook_dir/sa9-precreate-hook.json"
+
 install -d -m 0755 /usr/libexec
 install -m 0755 "$bundle_dir/warpmetald" /usr/local/sbin/warpmetald
 install -m 0755 "$bundle_dir/warpmetal-agentctl" /usr/local/sbin/warpmetal-agentctl

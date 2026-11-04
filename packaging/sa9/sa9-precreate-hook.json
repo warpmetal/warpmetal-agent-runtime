@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "hook": {
+    "path": "/usr/libexec/warpmetal-agent-runtime/hooks/sa9-precreate-hook.py",
+    "args": ["sa9-precreate-hook.py"]
+  },
+  "when": {
+    "annotations": {
+      "io.warpmetal.cell.lifecycle": "^sa9-proc-witness-v1$"
+    }
+  },
+  "stages": ["precreate"]
+}
