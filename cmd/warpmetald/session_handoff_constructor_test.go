@@ -26,7 +26,7 @@ func TestOrdinaryRuntimeConstructorWiresFixedSessionHandoffEngineAndDaemonHostPi
 	blob = append(blob, make([]byte, 32)...)
 	gateway, err := newAccessGateway(store, containers.Podman{}, []model.HostKey{{
 		PublicKey: "ssh-ed25519 " + base64.StdEncoding.EncodeToString(blob),
-	}})
+	}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

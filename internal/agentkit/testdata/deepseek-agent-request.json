@@ -1,0 +1,182 @@
+{
+ "configuration": {
+  "configurationDigest": "sha256:2ab215b4500158de886a4cfea5bd1904c099c70647aeab5e20682c48feaf1412",
+  "configurationId": "cfg_wp211",
+  "configurationRevision": 3
+ },
+ "formatVersion": 1,
+ "kind": "agent_kit_materialization",
+ "kit": {
+  "agentInstructions": "# AGENTS.md — DeepSeek coding agent\n\nYou are the workspace agent for this repository. Work in small, reviewable steps.\n\n## First response\n- Restate the task in one sentence and list the files you will inspect.\n- Ask a question only when the repository cannot answer it.\n\n## Working agreement\n- Read `AGENTS.md`, `README` and the project manifest before editing.\n- Prefer the documented setup/test commands; quote exact command output as evidence.\n- Keep changes inside the task's allowed scope; report anything else instead of editing it.\n- Use `deepseek-chat` for routine edits and `deepseek-reasoner` for planning or hard failures.\n\n## Boundaries\n- Never write credentials, tokens or `.env` values into files, commits or logs.\n- Do not push, deploy, or change billing/provider settings from the workspace.\n- Ask before deleting files, rewriting history or changing CI configuration.\n",
+  "capacityHint": {
+   "cpuMillis": 2000,
+   "maxActiveChildren": 2,
+   "memoryMiB": 4096,
+   "workspaceDiskGiB": 40
+  },
+  "firstTask": {
+   "acceptance": [
+    "The runtime, package manager and exact test command are stated with evidence.",
+    "Three risky files are named with a one-line reason each.",
+    "The proposed first change names its files and a verifiable acceptance check.",
+    "No file was modified during this task."
+   ],
+   "allowedChanges": [
+    "read any workspace file",
+    "run read-only inspection commands"
+   ],
+   "prompt": "Inspect this repository and report: the runtime and package manager, how to run the test suite, the three riskiest files to change, and a concrete first change with its acceptance check. Do not modify files in this first task."
+  },
+  "models": {
+   "providers": [
+    {
+     "auth": {
+      "connectionRef": "deepseek"
+     },
+     "baseUrl": null,
+     "id": "deepseek",
+     "kind": "deepseek"
+    }
+   ],
+   "roleDefaults": [
+    {
+     "allowedModels": [
+      "deepseek-chat",
+      "deepseek-reasoner"
+     ],
+     "defaultModel": "deepseek-chat",
+     "params": {
+      "maxOutputTokens": null,
+      "reasoningEffort": null,
+      "temperature": null,
+      "topP": null
+     },
+     "providerId": "deepseek",
+     "roleId": "manager"
+    },
+    {
+     "allowedModels": [
+      "deepseek-chat",
+      "deepseek-reasoner"
+     ],
+     "defaultModel": "deepseek-reasoner",
+     "params": {
+      "maxOutputTokens": null,
+      "reasoningEffort": "high",
+      "temperature": null,
+      "topP": null
+     },
+     "providerId": "deepseek",
+     "roleId": "advisor"
+    },
+    {
+     "allowedModels": [
+      "deepseek-chat",
+      "deepseek-reasoner"
+     ],
+     "defaultModel": "deepseek-chat",
+     "params": {
+      "maxOutputTokens": null,
+      "reasoningEffort": null,
+      "temperature": null,
+      "topP": null
+     },
+     "providerId": "deepseek",
+     "roleId": "code-specialist"
+    }
+   ]
+  },
+  "repo": {
+   "branch": "main",
+   "path": "/workspace",
+   "setupCommands": [
+    "npm ci"
+   ],
+   "testCommands": [
+    "npm test"
+   ],
+   "url": "https://github.com/example/deepseek-workspace"
+  },
+  "runtime": {
+   "env": [],
+   "imageRef": "warpmetal-workspace-base:2026-10",
+   "packages": [
+    "git",
+    "ripgrep",
+    "nodejs22",
+    "python3"
+   ],
+   "toolProfile": "base-2026-10"
+  },
+  "skills": [
+   {
+    "id": "warpmetal-agent-sandbox",
+    "name": "WarpMetal Agent Sandbox",
+    "notes": "Catalog entry warpmetal-agent-sandbox 0.1.0 pinned to warpmetal/skills commit 23b16ad85d492ac0eec87e93d24b2c3d6f3b2fd9; runtime skill installation is a later phase.",
+    "pinnedRef": "23b16ad85d492ac0eec87e93d24b2c3d6f3b2fd9",
+    "requiredTools": [
+     "shell",
+     "filesystem",
+     "git"
+    ],
+    "sourceRepo": "warpmetal/skills"
+   }
+  ],
+  "toolProviders": [
+   {
+    "approval": "ask",
+    "auth": null,
+    "endpointRef": null,
+    "id": "filesystem",
+    "kind": "cli",
+    "scopes": [
+     "read",
+     "write"
+    ]
+   },
+   {
+    "approval": "ask",
+    "auth": null,
+    "endpointRef": null,
+    "id": "shell",
+    "kind": "cli",
+    "scopes": [
+     "exec"
+    ]
+   },
+   {
+    "approval": "ask",
+    "auth": null,
+    "endpointRef": null,
+    "id": "git",
+    "kind": "cli",
+    "scopes": [
+     "status",
+     "diff",
+     "commit"
+    ]
+   }
+  ]
+ },
+ "kitDigest": "sha256:808e50374237c506400bb25ac083632ec4d472dd44130f1e92efd4dce3962227",
+ "materializationId": "akm_44edc1f2599f4e55047448f7d47f2479",
+ "skillsSnapshot": {
+  "catalogId": "warpmetal-skills",
+  "contentDigest": "sha256:4c37a13d03e98022054fee13f7c2931d26cad5a457c1d0431e6c1179e54a3fc9",
+  "resolvedCommit": "23b16ad85d492ac0eec87e93d24b2c3d6f3b2fd9",
+  "sourceRepo": "warpmetal/skills"
+ },
+ "target": {
+  "projectRoot": "/var/folders/ln/3pk8bkxd7f72yhhjwpwpb56m0000gn/T/tmpqzcwxvp0/home/agent/projects/ws",
+  "sandboxGeneration": 1,
+  "sandboxId": "sbx_wp211fixture000000000001",
+  "sandboxRoot": "/var/folders/ln/3pk8bkxd7f72yhhjwpwpb56m0000gn/T/tmpqzcwxvp0/home/agent",
+  "workspace": {
+   "projectId": "proj_wp211",
+   "rootAttestation": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "selectionId": "sel_wp211",
+   "workspaceEpoch": "wpe_wp211"
+  }
+ },
+ "venue": "TEST-wp211-kit-materialization"
+}

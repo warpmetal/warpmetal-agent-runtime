@@ -185,6 +185,97 @@ type bootstrapNode struct {
 	mode uint32
 }
 
+// ownCellRoot establishes the cell project root's exact runtime/agent identity
+// and non-shared 0700 mode. It is the ownership half of I-WP55-4: Podman runs
+// the cell with keep-id:uid=1000,gid=1000, which maps the in-container agent
+// UID/GID onto the host identity that owns the workspace anchor, so a
+// Runtime-created root owned by host root (or carrying the Runtime process's
+// group) is not writable by the native agent's first `write`. Only a directory
+// that is already host-root- or runtime-owned may be transferred; anything
+// else is refused rather than adopted, so a foreign or agent-owned directory
+// can never be promoted to the trusted project root. The mode is always
+// re-asserted through the open descriptor (never a re-resolved path).
+func ownCellRoot(file *os.File, target workspaceOwner) error {
+	owner, stat, err := ownerOf(file)
+	if err != nil || stat.Mode&unix.S_IFMT != unix.S_IFDIR {
+		return ErrUnsafeProjectRoot
+	}
+	if owner.uid != 0 && owner.uid != target.uid {
+		return ErrUnsafeProjectRoot
+	}
+	if owner != target {
+		if err := unix.Fchown(int(file.Fd()), int(target.uid), int(target.gid)); err != nil {
+			return ErrUnsafeProjectRoot
+		}
+	}
+	if err := unix.Fchmod(int(file.Fd()), 0700); err != nil {
+		return ErrUnsafeProjectRoot
+	}
+	current, stat, err := ownerOf(file)
+	if err != nil || current != target || stat.Mode&0777 != 0700 {
+		return ErrUnsafeProjectRoot
+	}
+	return file.Sync()
+}
+
+// repairCellOwner re-asserts the workspace anchor's runtime/agent identity on
+// an already attested cell project root and its shared projects parent. It is
+// only reachable for the exact durable record whose root inode/mount still
+// match, and the shared parent may only be transferred when every existing
+// direct child is a recorded allocation exactly like the default-project
+// preflight; an unattributed directory is never traversed or adopted.
+func (c Catalog) repairCellOwner(ctx context.Context, record state.LocalManagedProject) error {
+	if record.Report.Designation != "team_project" || record.TeamID != "" || record.RootInode == 0 ||
+		attest(record) != record.Report.RootAttestation {
+		return ErrProjectChanged
+	}
+	anchor, anchorIdentity, err := openDirectoryNoFollow(record.Anchor)
+	if err != nil || !sameDurableObject(record.AnchorDevice, record.AnchorInode, anchorIdentity) {
+		if anchor != nil {
+			anchor.Close()
+		}
+		return ErrProjectChanged
+	}
+	defer anchor.Close()
+	target, _, err := ownerOf(anchor)
+	if err != nil {
+		return ErrProjectChanged
+	}
+	projects, err := openDirectoryAt(anchor, "projects")
+	if err != nil {
+		return ErrProjectChanged
+	}
+	defer projects.Close()
+	projectsIdentity, err := identityForFile(projects)
+	if err != nil || !sameMount(anchorIdentity, projectsIdentity) {
+		return ErrProjectChanged
+	}
+	root, rootIdentity, err := openVerifiedRoot(record)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	if !sameDurableObject(record.RootDevice, record.RootInode, rootIdentity) {
+		return ErrProjectChanged
+	}
+	changeProjects, err := c.projectsOwnerPreflight(ctx, projects, anchorIdentity, record.Anchor, target)
+	if err != nil {
+		return ErrProjectChanged
+	}
+	if err := ownCellRoot(root, target); err != nil {
+		return err
+	}
+	if changeProjects {
+		if err := chownOpened(projects, target); err != nil {
+			return ErrProjectChanged
+		}
+	}
+	if !sameOwner(projects, target) {
+		return ErrProjectChanged
+	}
+	return nil
+}
+
 func (c Catalog) ownDefaultBootstrap(ctx context.Context, record state.LocalManagedProject) error {
 	if record.Report.Designation != "team_project" || record.AllocationDigest == "" || record.RootInode == 0 ||
 		(record.Phase != "created" && record.Phase != "ready") || attest(record) != record.Report.RootAttestation {

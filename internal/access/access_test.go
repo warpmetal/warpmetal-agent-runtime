@@ -135,11 +135,19 @@ func (e *gatewayTestEngine) Replace(context.Context, model.Sandbox, string, stri
 	return nil
 }
 
+func (e *gatewayTestEngine) Recreate(context.Context, model.Sandbox, string, string, bool) error {
+	return nil
+}
+
 func (e *gatewayTestEngine) Start(context.Context, string) error     { return nil }
 func (e *gatewayTestEngine) Stop(context.Context, string) error      { return nil }
 func (e *gatewayTestEngine) Restart(context.Context, string) error   { return nil }
 func (e *gatewayTestEngine) Remove(context.Context, string) error    { return nil }
 func (e *gatewayTestEngine) Preflight(context.Context, string) error { return nil }
+func (e *gatewayTestEngine) ObserveCellWitness(context.Context, string) (bool, error) {
+	return false, nil
+}
+func (e *gatewayTestEngine) VerifyCellLifecycle(context.Context) error { return nil }
 func (e *gatewayTestEngine) ExecSetup(context.Context, string, []byte) ([]byte, []byte, error) {
 	return nil, nil, nil
 }

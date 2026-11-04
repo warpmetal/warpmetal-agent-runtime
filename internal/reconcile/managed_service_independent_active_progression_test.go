@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/api"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/continuity"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
@@ -47,6 +48,18 @@ func (control *isolatedServiceControl) ManagedServiceInstructions(ctx context.Co
 		return model.ManagedServiceInstructionV1{}, errors.New("unexpected managed service instruction fetch")
 	}
 	return inner.ManagedServiceInstructions(ctx, serviceID, request)
+}
+
+func (control *isolatedServiceControl) CellCredential(ctx context.Context, serviceID string) (api.CellCredentialResult, error) {
+	inner, ok := control.byService[serviceID]
+	if !ok {
+		return api.CellCredentialResult{}, errors.New("unexpected cell credential fetch")
+	}
+	return inner.CellCredential(ctx, serviceID)
+}
+
+func (control *isolatedServiceControl) ReportCellPreparation(context.Context, model.CellPreparationReport) (model.CellPreparationView, error) {
+	return model.CellPreparationView{}, errors.New("unexpected cell preparation report")
 }
 
 // isolatedServiceRuntime dispatches the existing per-sandbox fake by the exact

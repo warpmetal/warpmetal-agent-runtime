@@ -72,6 +72,11 @@ type Sandbox struct {
 	ExpiresAt        *time.Time `json:"expiresAt"`
 	DesiredState     string     `json:"desiredState"`
 	Generation       int64      `json:"generation"`
+	// Cell is the explicit authenticated cell-mode capability on the sandbox
+	// desired authority (owner-enabled, independent of any cell launch). It
+	// gates the reviewed SA9 childless-procfs OCI precreate-hook witness so
+	// legacy Team/member sandboxes never receive the hook or the witness mount.
+	Cell bool `json:"cell,omitempty"`
 }
 
 // ContinuityIdentityV1 is the shared immutable fence carried by every local
@@ -196,6 +201,67 @@ type SessionHandoffWorkV1 struct {
 	BindingRevision  int64  `json:"bindingRevision"`
 }
 
+// ForemanChatHandoffV1 is the closed owner-issued selector for the advisory
+// Foreman chat channel. It is a sibling of SessionHandoffV1: it names one
+// already-running technical orchestrator native session and carries no task,
+// Work, mutation, takeover, shell, forwarding or filesystem authority.
+type ForemanChatHandoffV1 struct {
+	FormatVersion int                       `json:"formatVersion"`
+	Action        string                    `json:"action"`
+	HandoffID     string                    `json:"handoffId"`
+	IssuedAt      time.Time                 `json:"issuedAt"`
+	ExpiresAt     time.Time                 `json:"expiresAt"`
+	Identity      ForemanChatIdentityV1     `json:"identity"`
+	Source        SessionHandoffSourceV1    `json:"source"`
+	Task          *SessionHandoffTaskV1     `json:"task"`
+	Work          *SessionHandoffWorkV1     `json:"work"`
+}
+
+type ForemanChatIdentityV1 struct {
+	ServerID              string `json:"serverId"`
+	SandboxID             string `json:"sandboxId"`
+	SandboxGeneration     int64  `json:"sandboxGeneration"`
+	Role                  string `json:"role"`
+	RoleLabel             string `json:"roleLabel"`
+	ProjectID             string `json:"projectId"`
+	WorkspaceEpoch        string `json:"workspaceEpoch"`
+	ServiceRegistrationID string `json:"serviceRegistrationId"`
+	ServiceGeneration     int64  `json:"serviceGeneration"`
+	ProfileRevision       int64  `json:"profileRevision"`
+	InstructionRevision   int64  `json:"instructionRevision"`
+	RoleBindingID         string `json:"roleBindingId"`
+	RoleBindingRevision   int64  `json:"roleBindingRevision"`
+}
+
+// ValidateForemanChatHandoffV1 enforces the packet-A closed chat shape. It
+// deliberately accepts only the public Foreman identity (technical
+// orchestrator) and rejects worker/manager/reviewer roles and any widened
+// authority before the bridge is launched.
+func ValidateForemanChatHandoffV1(value ForemanChatHandoffV1, now time.Time) error {
+	identity := value.Identity
+	source := value.Source
+	nativeProject := source.NativeProjectID == "global" || regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(source.NativeProjectID)
+	if value.FormatVersion != 1 || value.Action != "chat_session" ||
+		!continuityIDPattern.MatchString(value.HandoffID) || value.IssuedAt.IsZero() || value.ExpiresAt.IsZero() ||
+		!value.ExpiresAt.After(value.IssuedAt) || value.ExpiresAt.Sub(value.IssuedAt) > 120*time.Second ||
+		now.Before(value.IssuedAt) || !now.Before(value.ExpiresAt) ||
+		!continuityIDPattern.MatchString(identity.ServerID) || !continuityIDPattern.MatchString(identity.SandboxID) ||
+		identity.SandboxGeneration < 1 || identity.Role != "orchestrator" || identity.RoleLabel != "foreman" ||
+		!continuityIDPattern.MatchString(identity.ProjectID) || !continuityIDPattern.MatchString(identity.WorkspaceEpoch) ||
+		!continuityIDPattern.MatchString(identity.ServiceRegistrationID) || identity.ServiceGeneration < 1 ||
+		identity.ProfileRevision < 1 || identity.InstructionRevision < 1 ||
+		!continuityIDPattern.MatchString(identity.RoleBindingID) || identity.RoleBindingRevision < 1 ||
+		!continuityIDPattern.MatchString(source.RegisteredSourceID) ||
+		!continuityIDPattern.MatchString(source.NativeSessionID) || !nativeProject ||
+		!setupDigestPattern.MatchString(source.NativeLocationDigest) {
+		return errors.New("invalid Foreman chat handoff")
+	}
+	if value.Task != nil || value.Work != nil {
+		return errors.New("Foreman chat handoff carries no task or Work authority")
+	}
+	return nil
+}
+
 func ValidateSessionHandoffV1(value SessionHandoffV1, now time.Time) error {
 	identity := value.Identity
 	source := value.Source
@@ -313,12 +379,23 @@ type ManagedWorkspaceRequestV1 struct {
 	DesiredRevision       int64  `json:"desiredRevision"`
 	AllocationDigest      string `json:"allocationDigest"`
 	Request               string `json:"request"`
+	TargetKind            string `json:"targetKind,omitempty"` // "" (member) | "cell_session"
 	ServerID              string `json:"serverId"`
-	TeamID                string `json:"teamId"`
-	MemberID              string `json:"memberId"`
+	TeamID                string `json:"teamId,omitempty"`
+	MemberID              string `json:"memberId,omitempty"`
+	OwnerCellID           string `json:"ownerCellId,omitempty"`
+	OwnerRole             string `json:"ownerRole,omitempty"`
+	OwnerGeneration       int64  `json:"ownerGeneration,omitempty"`
 	SandboxID             string `json:"sandboxId"`
 	SandboxGeneration     int64  `json:"sandboxGeneration"`
 	ServiceRegistrationID string `json:"serviceRegistrationId"`
+	// Cell workspace intent: the backend-authorized DESIRED identity. The root
+	// attestation is deliberately absent — the Runtime attests the actual
+	// filesystem root after materialization (attest()), never a caller hash.
+	SelectionID    string `json:"selectionId,omitempty"`
+	ProjectID      string `json:"projectId,omitempty"`
+	WorkspaceEpoch string `json:"workspaceEpoch,omitempty"`
+	ScopeRevision  int64  `json:"scopeRevision,omitempty"`
 }
 
 type ManagedServiceIdentityV1 struct {
@@ -1311,17 +1388,27 @@ type SetupOperation struct {
 }
 
 type Manifest struct {
-	ServerID                       string                                 `json:"serverId"`
-	DesiredRevision                int64                                  `json:"desiredRevision"`
-	ImageDigest                    string                                 `json:"imageDigest"`
-	Capacity                       Resources                              `json:"capacity"`
-	Sandboxes                      []Sandbox                              `json:"sandboxes"`
-	AccessGrants                   []AccessGrant                          `json:"accessGrants"`
-	SetupOperations                []SetupOperation                       `json:"setupOperations,omitempty"`
-	ContinuityRegistrations        []ContinuityRegistrationV1             `json:"continuityRegistrations,omitempty"`
-	ContinuityOperations           []ContinuityOperationV1                `json:"continuityOperations,omitempty"`
-	ManagedWorkspaceRequests       []ManagedWorkspaceRequestV1            `json:"managedWorkspaceRequests,omitempty"`
-	ManagedServices                []ManagedServiceV1                     `json:"managedServices,omitempty"`
+	ServerID                 string                      `json:"serverId"`
+	DesiredRevision          int64                       `json:"desiredRevision"`
+	ImageDigest              string                      `json:"imageDigest"`
+	Capacity                 Resources                   `json:"capacity"`
+	Sandboxes                []Sandbox                   `json:"sandboxes"`
+	AccessGrants             []AccessGrant               `json:"accessGrants"`
+	SetupOperations          []SetupOperation            `json:"setupOperations,omitempty"`
+	ContinuityRegistrations  []ContinuityRegistrationV1  `json:"continuityRegistrations,omitempty"`
+	ContinuityOperations     []ContinuityOperationV1     `json:"continuityOperations,omitempty"`
+	ManagedWorkspaceRequests []ManagedWorkspaceRequestV1 `json:"managedWorkspaceRequests,omitempty"`
+	ManagedServices          []ManagedServiceV1          `json:"-"`
+	ParentServices           []ControllerParentIntent    `json:"-"`
+	// CellEntries and CellEntriesV3 are the version-discriminated typed
+	// collections decoded from the single retained {cellServices:[...]} wire
+	// array by Manifest.UnmarshalJSON. A cell entry is never a Team member and
+	// carries no member/team identity; formatVersion 2 stays byte-compatible
+	// and formatVersion 3 is preserved without a second wire array or a v3
+	// fallback route. The json tag is "-" because the manifest codec owns the
+	// field on both decode and encode.
+	CellEntries                    []ManagedServiceV2                     `json:"-"`
+	CellEntriesV3                  []CellServiceV3                        `json:"-"`
 	ContinuityContinuations        []ContinuationManifestV1               `json:"continuityContinuations,omitempty"`
 	ContinuityContinuationReleases []ContinuationReleaseManifestV1        `json:"continuityContinuationReleases,omitempty"`
 	ContinuityRestores             []RestoreManifestV1                    `json:"continuityRestores,omitempty"`
@@ -1330,6 +1417,66 @@ type Manifest struct {
 	InsightsManagerPolicies        []InsightsManagerPolicyManifestV1      `json:"insightsManagerPolicies,omitempty"`
 	InsightsManagerReviews         []InsightsManagerReviewManifestV1      `json:"insightsManagerReviews,omitempty"`
 	InsightsTakeovers              []InsightsTakeoverManifestV1           `json:"insightsTakeovers,omitempty"`
+}
+
+// UnmarshalJSON decodes the closed manifest contract and version-discriminates
+// the retained cellServices array into the typed v2/v3 collections. Unknown
+// top-level fields, unknown entry fields (including nested security objects)
+// and duplicate JSON keys are rejected; there is no second wire array and no
+// v3-to-v2 fallback.
+func (manifest *Manifest) UnmarshalJSON(payload []byte) error {
+	type wireManifest Manifest
+	var decoded struct {
+		wireManifest
+		CellServices    json.RawMessage `json:"cellServices"`
+		ManagedServices json.RawMessage `json:"managedServices"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	entriesV2, entriesV3, err := decodeCellServiceEntries(decoded.CellServices)
+	if err != nil {
+		return err
+	}
+	legacy, parents, err := decodeManagedServiceEntries(decoded.ManagedServices)
+	if err != nil {
+		return err
+	}
+	*manifest = Manifest(decoded.wireManifest)
+	manifest.ManagedServices = legacy
+	manifest.ParentServices = parents
+	manifest.CellEntries = entriesV2
+	manifest.CellEntriesV3 = entriesV3
+	return nil
+}
+
+// MarshalJSON re-emits the single cellServices wire array from the typed v2/v3
+// collections so the in-memory authority snapshot and stored manifest
+// round-trip a mixed manifest without a second wire array.
+func (manifest Manifest) MarshalJSON() ([]byte, error) {
+	type wireManifest Manifest
+	cellServices, err := encodeCellServiceEntries(manifest.CellEntries, manifest.CellEntriesV3)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(struct {
+		wireManifest
+		CellServices    json.RawMessage `json:"cellServices,omitempty"`
+		ManagedServices []any           `json:"managedServices,omitempty"`
+	}{wireManifest: wireManifest(manifest), CellServices: cellServices, ManagedServices: manifest.managedServiceWire()})
+}
+
+func (manifest Manifest) managedServiceWire() []any {
+	var entries []any
+	for _, entry := range manifest.ManagedServices {
+		entries = append(entries, entry)
+	}
+	for _, entry := range manifest.ParentServices {
+		entries = append(entries, entry)
+	}
+	return entries
 }
 
 type ItemError struct {
@@ -1345,6 +1492,9 @@ type SandboxReport struct {
 	StartedAt          *time.Time `json:"startedAt,omitempty"`
 	ExpiresAt          *time.Time `json:"expiresAt,omitempty"`
 	LastError          *ItemError `json:"lastError,omitempty"`
+	// CellReady reports the verified current-generation cell witness readiness
+	// (actual container mount setup), never the desired cell flag alone.
+	CellReady bool `json:"cellReady,omitempty"`
 }
 
 type GrantReport struct {
@@ -1368,6 +1518,9 @@ type SetupOperationReport struct {
 type Report struct {
 	ServerID                       string                               `json:"serverId"`
 	AppliedRevision                int64                                `json:"appliedRevision"`
+	ReportSequence                 int64                                `json:"reportSequence,omitempty"`
+	ReportDigest                   string                               `json:"reportDigest,omitempty"`
+	ObservedDesiredRevision        int64                                `json:"observedDesiredRevision,omitempty"`
 	SupervisorVersion              string                               `json:"supervisorVersion"`
 	ImageDigest                    string                               `json:"imageDigest,omitempty"`
 	HostKeys                       []HostKey                            `json:"hostKeys,omitempty"`
@@ -1379,7 +1532,9 @@ type Report struct {
 	ContinuityRegistrations        []ContinuityRegistrationReportV1     `json:"continuityRegistrations"`
 	ContinuityOperations           []ContinuityOperationReportV1        `json:"continuityOperations"`
 	ManagedWorkspaceSelections     []ProjectCatalogReportV1             `json:"managedWorkspaceSelections"`
-	ManagedServices                []ManagedServiceReportV1             `json:"managedServices"`
+	ManagedServices                []ManagedServiceReportV1             `json:"-"`
+	ParentServices                 []ControllerParentReport             `json:"-"`
+	CellServices                   []CellServiceReportV1                `json:"cellServices,omitempty"`
 	ContinuityContinuations        []ContinuationReportV1               `json:"continuityContinuations"`
 	ContinuityContinuationReleases []ContinuationReleaseReportV1        `json:"continuityContinuationReleases"`
 	ContinuityRestores             []RestoreReportV1                    `json:"continuityRestores"`
@@ -1395,6 +1550,62 @@ type HostKey struct {
 	Algorithm   string `json:"algorithm,omitempty"`
 	PublicKey   string `json:"publicKey"`
 	Fingerprint string `json:"fingerprint,omitempty"`
+}
+
+func (report Report) MarshalJSON() ([]byte, error) {
+	type wire Report
+	entries := make([]any, 0, len(report.ManagedServices)+len(report.ParentServices))
+	for _, entry := range report.ManagedServices {
+		entries = append(entries, entry)
+	}
+	for _, entry := range report.ParentServices {
+		entries = append(entries, entry)
+	}
+	return json.Marshal(struct {
+		wire
+		ManagedServices []any `json:"managedServices"`
+	}{wire(report), entries})
+}
+
+func (report *Report) UnmarshalJSON(raw []byte) error {
+	type wire Report
+	var decoded struct {
+		wire
+		ManagedServices []json.RawMessage `json:"managedServices"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return err
+	}
+	result := Report(decoded.wire)
+	for _, raw := range decoded.ManagedServices {
+		var tag struct {
+			FormatVersion int `json:"formatVersion"`
+		}
+		if err := json.Unmarshal(raw, &tag); err != nil {
+			return err
+		}
+		switch tag.FormatVersion {
+		case 1:
+			var entry ManagedServiceReportV1
+			if err := json.Unmarshal(raw, &entry); err != nil {
+				return err
+			}
+			result.ManagedServices = append(result.ManagedServices, entry)
+		case 2:
+			var entry ControllerParentReport
+			if err := rejectDuplicateJSONFields(raw); err != nil {
+				return err
+			}
+			if err := decodeStrictCellJSON(raw, &entry); err != nil {
+				return err
+			}
+			result.ParentServices = append(result.ParentServices, entry)
+		default:
+			return errors.New("unsupported managedServices report discriminator")
+		}
+	}
+	*report = result
+	return nil
 }
 
 func validInsightsManagerSource(value InsightsManagerSourceV1) bool {
@@ -1671,20 +1882,35 @@ func ValidateManifest(manifest Manifest, expectedServer string, lastRevision int
 			return fmt.Errorf("setup operation %s has an invalid materializer: %w", operation.ID, materializerErr)
 		}
 	}
-	if len(manifest.ManagedWorkspaceRequests) > 32 || len(manifest.ManagedServices) > 32 {
+	if len(manifest.ManagedWorkspaceRequests) > 32 || len(manifest.ManagedServices)+len(manifest.ParentServices) > 32 {
 		return errors.New("manifest exceeds managed service limits")
 	}
 	seenManagedWorkspaceServices := map[string]bool{}
 	seenManagedServices := map[string]bool{}
 	for _, request := range manifest.ManagedWorkspaceRequests {
 		generation, exists := sandboxGenerations[request.SandboxID]
-		if request.FormatVersion != 1 || request.Request != "create_default" ||
-			!continuityIDPattern.MatchString(request.OperationID) || request.ActionRevision < 1 ||
-			request.DesiredRevision < 1 || request.ServerID != expectedServer ||
-			!continuityIDPattern.MatchString(request.TeamID) || !continuityIDPattern.MatchString(request.MemberID) ||
-			!continuityIDPattern.MatchString(request.ServiceRegistrationID) ||
-			!setupDigestPattern.MatchString(request.AllocationDigest) || !exists ||
-			generation != request.SandboxGeneration || seenManagedWorkspaceServices[request.ServiceRegistrationID] {
+		base := request.FormatVersion == 1 && request.Request == "create_default" &&
+			continuityIDPattern.MatchString(request.OperationID) && request.ActionRevision >= 1 &&
+			request.DesiredRevision >= 1 && request.ServerID == expectedServer &&
+			continuityIDPattern.MatchString(request.ServiceRegistrationID) &&
+			setupDigestPattern.MatchString(request.AllocationDigest) && exists &&
+			generation == request.SandboxGeneration && !seenManagedWorkspaceServices[request.ServiceRegistrationID]
+		valid := false
+		if request.TargetKind == "cell_session" {
+			// Cell intent: no Team/Member; carries the backend-authorized
+			// selection/project/epoch/scope. No root attestation (Runtime attests).
+			valid = base && request.TeamID == "" && request.MemberID == "" &&
+				continuityIDPattern.MatchString(request.OwnerCellID) &&
+				continuityIDPattern.MatchString(request.OwnerRole) && request.OwnerGeneration >= 1 &&
+				continuityIDPattern.MatchString(request.SelectionID) &&
+				continuityIDPattern.MatchString(request.ProjectID) &&
+				continuityIDPattern.MatchString(request.WorkspaceEpoch) &&
+				request.ScopeRevision >= 1
+		} else {
+			valid = base && continuityIDPattern.MatchString(request.TeamID) &&
+				continuityIDPattern.MatchString(request.MemberID)
+		}
+		if !valid {
 			return errors.New("invalid managed workspace request")
 		}
 		seenManagedWorkspaceServices[request.ServiceRegistrationID] = true
@@ -1738,6 +1964,59 @@ func ValidateManifest(manifest Manifest, expectedServer string, lastRevision int
 			return errors.New("invalid managed service")
 		}
 		seenManagedServices[identity.ServiceRegistrationID] = true
+	}
+	parentRoles := map[string]bool{}
+	for _, entry := range manifest.ParentServices {
+		if err := entry.Validate(); err != nil {
+			return err
+		}
+		generation, exists := sandboxGenerations[entry.Owner.SandboxID]
+		profile, hasProfile := setupByID[entry.Profile.SetupOperationID]
+		key := entry.Owner.SandboxID + ":" + entry.Role
+		if entry.Owner.ServerID != expectedServer || !exists || generation != entry.Owner.SandboxGeneration ||
+			!hasProfile || profile.SandboxID != entry.Owner.SandboxID || profile.SandboxGeneration != entry.Owner.SandboxGeneration ||
+			profile.ProfileID != entry.Profile.ProfileID || profile.ProfileRevision != entry.Profile.ProfileRevision || profile.ProfileDigest != entry.Profile.ProfileDigest ||
+			seenManagedServices[entry.ServiceRegistrationID] || parentRoles[key] {
+			return errors.New("controller parent target/profile/port-pair conflict")
+		}
+		seenManagedServices[entry.ServiceRegistrationID] = true
+		parentRoles[key] = true
+	}
+	if len(manifest.CellEntries)+len(manifest.CellEntriesV3) > 32 {
+		return errors.New("manifest exceeds cell service limits")
+	}
+	seenCellServices := map[string]bool{}
+	for _, entry := range manifest.CellEntries {
+		var profile *SetupOperation
+		if operation, exists := setupByID[entry.Profile.SetupOperationID]; exists {
+			candidate := operation
+			profile = &candidate
+		}
+		generation, sandboxExists := sandboxGenerations[entry.SandboxID]
+		if seenCellServices[entry.ServiceRegistrationID] {
+			return errors.New("invalid cell service")
+		}
+		if err := ValidateManagedServiceV2(entry, generation, sandboxExists, profile); err != nil {
+			return errors.Join(errors.New("invalid cell service"), err)
+		}
+		seenCellServices[entry.ServiceRegistrationID] = true
+	}
+	seenCellV3Operations := map[string]bool{}
+	for _, entry := range manifest.CellEntriesV3 {
+		var profile *SetupOperation
+		if operation, exists := setupByID[entry.Profile.SetupOperationID]; exists {
+			candidate := operation
+			profile = &candidate
+		}
+		generation, sandboxExists := sandboxGenerations[entry.SandboxID]
+		if seenCellServices[entry.ServiceRegistrationID] || seenCellV3Operations[entry.OperationID] {
+			return errors.New("invalid cell service")
+		}
+		if err := ValidateManagedServiceV3(entry, generation, sandboxExists, profile); err != nil {
+			return errors.Join(errors.New("invalid cell service"), err)
+		}
+		seenCellServices[entry.ServiceRegistrationID] = true
+		seenCellV3Operations[entry.OperationID] = true
 	}
 	if len(manifest.ContinuityContinuations) > 32 || len(manifest.ContinuityContinuationReleases) > 32 || len(manifest.ContinuityRestores) > 32 {
 		return errors.New("manifest exceeds continuation limits")

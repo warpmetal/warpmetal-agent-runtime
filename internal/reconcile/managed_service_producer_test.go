@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/access"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/api"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
@@ -98,6 +99,14 @@ func (control *fakeManagedControl) ManagedServiceInstructions(_ context.Context,
 	}
 	control.instructions = append(control.instructions, request)
 	return control.fixture.InstructionResponse, nil
+}
+
+func (control *fakeManagedControl) CellCredential(context.Context, string) (api.CellCredentialResult, error) {
+	return api.CellCredentialResult{}, nil
+}
+
+func (control *fakeManagedControl) ReportCellPreparation(context.Context, model.CellPreparationReport) (model.CellPreparationView, error) {
+	return model.CellPreparationView{}, nil
 }
 
 type managedInvocation struct {

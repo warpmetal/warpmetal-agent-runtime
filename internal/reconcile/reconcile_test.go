@@ -84,22 +84,28 @@ func TestCapacityOnlySandboxDoesNotRequireNestedSandboxHelper(t *testing.T) {
 }
 
 type fakeEngine struct {
-	created         int
-	replaced        int
-	restarted       int
-	removed         int
-	images          []string
-	replaceRunning  bool
-	replaceErr      error
-	restartErr      error
-	setupResult     []byte
-	setupResultFor  func(string, []byte) []byte
-	setupDiagnostic []byte
-	setupErr        error
-	setupInvoked    chan setupInvocation
-	preflighted     int
-	preflightErr    error
-	stopped         int
+	created           int
+	replaced          int
+	recreated         int
+	restarted         int
+	removed           int
+	images            []string
+	replaceRunning    bool
+	replaceErr        error
+	restartErr        error
+	setupResult       []byte
+	setupResultFor    func(string, []byte) []byte
+	setupDiagnostic   []byte
+	setupErr          error
+	setupInvoked      chan setupInvocation
+	preflighted       int
+	preflightErr      error
+	stopped           int
+	cellReady         bool
+	cellContainer     bool
+	cellObserved      int
+	lifecycleVerified int
+	lifecycleErr      error
 }
 
 type setupInvocation struct {
@@ -110,7 +116,7 @@ type setupInvocation struct {
 
 func (f *fakeEngine) Replace(
 	_ context.Context,
-	_ model.Sandbox,
+	sandbox model.Sandbox,
 	_ string,
 	image string,
 	running bool,
@@ -118,17 +124,37 @@ func (f *fakeEngine) Replace(
 	f.replaced++
 	f.images = append(f.images, image)
 	f.replaceRunning = running
+	if f.replaceErr == nil {
+		f.cellContainer = sandbox.Cell
+	}
+	return f.replaceErr
+}
+
+func (f *fakeEngine) Recreate(
+	_ context.Context,
+	sandbox model.Sandbox,
+	_ string,
+	image string,
+	running bool,
+) error {
+	f.recreated++
+	f.images = append(f.images, image)
+	f.replaceRunning = running
+	if f.replaceErr == nil {
+		f.cellContainer = sandbox.Cell
+	}
 	return f.replaceErr
 }
 
 func (f *fakeEngine) Ensure(
 	_ context.Context,
-	_ model.Sandbox,
+	sandbox model.Sandbox,
 	_ string,
 	image string,
 ) error {
 	f.created++
 	f.images = append(f.images, image)
+	f.cellContainer = sandbox.Cell
 	return nil
 }
 func (f *fakeEngine) Start(context.Context, string) error   { return nil }
@@ -138,6 +164,19 @@ func (f *fakeEngine) Remove(context.Context, string) error  { f.removed++; retur
 func (f *fakeEngine) Preflight(context.Context, string) error {
 	f.preflighted++
 	return f.preflightErr
+}
+
+// ObserveCellWitness models the real container witness: readiness is only ever
+// true for a container that was created/recreated with the cell lifecycle (the
+// fake's cellContainer), so a legacy container cannot accidentally report a
+// witness before a controlled cell recreation or an explicit external adoption.
+func (f *fakeEngine) ObserveCellWitness(context.Context, string) (bool, error) {
+	f.cellObserved++
+	return f.cellReady && f.cellContainer, nil
+}
+func (f *fakeEngine) VerifyCellLifecycle(context.Context) error {
+	f.lifecycleVerified++
+	return f.lifecycleErr
 }
 func (f *fakeEngine) Exec(
 	_ context.Context,

@@ -16,9 +16,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/access"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/api"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/continuity"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/qualification"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/workspacecatalog"
 )
@@ -78,7 +80,12 @@ type ContinuationHandoffControl interface {
 
 type ManagedWorkspaceCatalog interface {
 	EnsureDefault(context.Context, workspacecatalog.DefaultProjectRequest) (workspacecatalog.RegisteredProject, error)
+	EnsureCellDefault(context.Context, workspacecatalog.CellDefaultProjectRequest) (workspacecatalog.RegisteredProject, error)
 	Resolve(context.Context, workspacecatalog.ResolveProjectRequest) (workspacecatalog.RegisteredProject, error)
+	// ResolveCell is the cell-aware resolve. It accepts only the exact cell
+	// workspace layout owned by ownerCellID and never applies the member Git
+	// publication checks to the cell's ordinary-directory root.
+	ResolveCell(context.Context, workspacecatalog.ResolveProjectRequest, string) (workspacecatalog.RegisteredProject, error)
 	Reports(context.Context) ([]model.ProjectCatalogReportV1, error)
 	// ReobserveRemountedRoots re-attests host-private records whose live root
 	// identity differs solely by the loop device of the documented workspace
@@ -94,6 +101,17 @@ type ManagedServiceControl interface {
 	// the actual managed spawn boundary so startup intent never depends on a
 	// cache that is only refreshed after a successful reconcile pass.
 	InsightPolicies(context.Context) (model.InsightPolicyEnvelopeV1, error)
+	// CellCredential fetches one cell-owner provider credential (plaintext plus
+	// its immutable lease identity) over the authenticated node transport.
+	CellCredential(context.Context, string) (api.CellCredentialResult, error)
+	// ReportCellPreparation applies one node-authenticated formatVersion 3
+	// prepared receipt and returns the exact backend prepared view. It never
+	// creates an execution grant.
+	ReportCellPreparation(context.Context, model.CellPreparationReport) (model.CellPreparationView, error)
+}
+
+type legacyCellCredentialControl interface {
+	LegacyCellCredential(context.Context, string) (api.CellCredentialResult, error)
 }
 
 type ManagedSandboxRuntime interface {
@@ -151,11 +169,15 @@ type Reconciler struct {
 	// cancelled by daemon shutdown and explicit pause/stop policy.
 	ManagedExecutionContext context.Context
 
-	mu                sync.Mutex
-	authorityMu       sync.Mutex
-	currentAuthority  *model.Manifest
-	managedWorkerMu   sync.Mutex
-	managedExecutions map[string]*managedWorkerExecution
+	mu                        sync.Mutex
+	authorityMu               sync.Mutex
+	currentAuthority          *model.Manifest
+	managedWorkerMu           sync.Mutex
+	managedExecutions         map[string]*managedWorkerExecution
+	sourceHarnessMu           sync.Mutex
+	sourceHarness             *ownedSourceHarness
+	firstTaskAuthority        *controllerFirstTaskAuthority
+	firstTaskManagerAuthority *controllerFirstTaskAuthority
 }
 
 // FeedbackManager is the narrow post-Report-ACK automatic manager boundary.
@@ -244,6 +266,26 @@ func currentManagedServiceTuple(authority model.Manifest, stored state.LocalMana
 	return false
 }
 
+// currentCellServiceTuple is the strict outgoing cell tuple: only a stored cell
+// operation whose operation id, action revision, desired revision, config
+// digest, service registration and owner authority match a current authority
+// cell entry is emitted. Superseded tuples are omitted; nothing is synthesized.
+func currentCellServiceTuple(authority model.Manifest, stored state.LocalCellOperation) bool {
+	for _, desired := range authority.CellEntries {
+		if stored.Entry.OperationID == desired.OperationID &&
+			stored.Entry.ActionRevision == desired.ActionRevision &&
+			stored.Entry.DesiredRevision == desired.DesiredRevision &&
+			stored.Entry.Profile.ProfileDigest == desired.Profile.ProfileDigest &&
+			stored.Entry.ServiceRegistrationID == desired.ServiceRegistrationID &&
+			stored.Entry.OwnerCellID == desired.OwnerCellID &&
+			stored.Entry.OwnerRole == desired.OwnerRole &&
+			stored.Entry.OwnerGeneration == desired.OwnerGeneration {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) (err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -316,6 +358,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) (er
 	// proceed. The dedicated remount reason is returned only when nothing else in
 	// the pass could proceed, so it stays visible alongside any unrelated abort.
 	var deferredManagedProjectRemount error
+	var closedParentFailure error
 	defer func() {
 		if err == nil {
 			return
@@ -327,6 +370,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) (er
 			err = errors.Join(deferredManagedProjectRemount, err)
 		}
 	}()
+	// Observe preselection before managed/task effects. The independently owned
+	// physical cut is published even before CORE/demand/snapshot delivery, without
+	// requiring a mature first task or final paid admission. Safety recovery above
+	// remains first; no new global execution barrier or signing lane is introduced.
+	if err := r.observeCurrentWindow(ctx, authority); err != nil {
+		return fmt.Errorf("observe current validation window: %w", err)
+	}
 	// The authenticated manifest has passed the existing complete identity,
 	// schema, revision and capacity gates before its fresh lease may prepare an
 	// exact pending protective Pause. This phase stores only that operation's
@@ -408,6 +458,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) (er
 	// deferred handoff) can no longer skip the genuine re-observation of every
 	// source that currently backs an active registration, so the next report
 	// carries current source availability instead of a stale one.
+	if err := r.initializeProviderAccounting(ctx); err != nil {
+		return fmt.Errorf("initialize provider accounting: %w", err)
+	}
 	if err := r.observeContinuitySources(ctx, manifest); err != nil {
 		return fmt.Errorf("observe continuity sources: %w", err)
 	}
@@ -417,10 +470,89 @@ func (r *Reconciler) Reconcile(ctx context.Context, manifest model.Manifest) (er
 		}
 		deferred, fatal := r.reconcileManagedServices(ctx, manifest)
 		if deferred != nil {
+			// R-WP125-2: a controller-parent failure is fail-closed but is
+			// returned AFTER the independent V3 execute stage below, so a parent
+			// flap can never remove the grant gate by skipping the cell work.
+			if failure := controllerParentFailureOf(deferred); failure != nil {
+				closedParentFailure = failure
+			}
 			deferredManagedProjectRemount = fmt.Errorf("apply managed services: %w", deferred)
 		}
 		if fatal != nil {
 			return fmt.Errorf("apply managed services: %w", fatal)
+		}
+	}
+	// formatVersion 2 cell-owned services reconcile on their own trusted-adapter
+	// path. They are wired in only when the manifest actually carries them, and
+	// the member formatVersion 1 path above stays byte-compatible.
+	if len(manifest.CellEntries) > 0 {
+		if r.ManagedRuntime == nil {
+			return errors.New("cell service producer is incompletely configured")
+		}
+		deferred, fatal := r.reconcileCellServices(ctx, manifest)
+		if deferred != nil {
+			deferredManagedProjectRemount = fmt.Errorf("apply cell services: %w", deferred)
+		}
+		if fatal != nil {
+			return fmt.Errorf("apply cell services: %w", fatal)
+		}
+	}
+	// formatVersion 3 preparations reconcile on their own durable prepare-only
+	// path. They never fall back to the formatVersion 2 same-pass launch; an
+	// execute entry is handled by a separate grant-gated path.
+	if len(manifest.CellEntriesV3) > 0 {
+		// Consume independent child preparation controls BEFORE native V3. The
+		// backend lists a preparation tuple before its control is published. Only
+		// exact accepted-handle preparation IDs may be deferred for a missing
+		// expected public original; all other errors/UNKNOWN stop this pass.
+		cellManifest := manifest
+		if err := r.reconcileOwnerFirstTasksLocked(ctx, manifest); err != nil {
+			if !errors.Is(err, ErrControllerFirstTaskPending) {
+				return fmt.Errorf("reconcile first-task pre-activation delivery: %w", err)
+			}
+			var waiting *controllerChildPrepareDeliveryPending
+			if errors.As(err, &waiting) {
+				deferred := map[string]bool{}
+				for _, id := range waiting.preparationIDs {
+					deferred[id] = true
+				}
+				cellManifest.CellEntriesV3 = nil
+				for _, entry := range manifest.CellEntriesV3 {
+					if !deferred[entry.PreparationID] {
+						cellManifest.CellEntriesV3 = append(cellManifest.CellEntriesV3, entry)
+						continue
+					}
+					// A removed entry never reaches its own branch: persist WHY the
+					// managed child was skipped, so a pending/attempt=0 row is never
+					// left without a named predicate.
+					r.recordCellV3PrepareBlockCode(ctx, entry, cellV3StageDeferredFirstTaskDelivery)
+				}
+			}
+		}
+		if r.ManagedRuntime == nil || r.ManagedControl == nil {
+			return errors.New("cell v3 preparation producer is incompletely configured")
+		}
+		deferred, fatal := r.reconcileCellServicesV3(ctx, cellManifest)
+		if deferred != nil {
+			deferredManagedProjectRemount = fmt.Errorf("apply cell v3 preparations: %w", deferred)
+		}
+		if fatal != nil {
+			return fmt.Errorf("apply cell v3 preparations: %w", fatal)
+		}
+	}
+	if closedParentFailure != nil {
+		return fmt.Errorf("apply managed services: %w", closedParentFailure)
+	}
+	if err := r.reconcileOwnerFirstTasksLocked(ctx, manifest); err != nil {
+		if !errors.Is(err, ErrControllerFirstTaskPending) {
+			return fmt.Errorf("reconcile explicit owner first task: %w", err)
+		}
+		// Expected asynchronous authority/publication/output wait, not success of
+		// the task and not a failed daemon pass. Continue ordinary reporting/work.
+	}
+	if err := r.reconcileControllerStagesLocked(ctx, manifest); err != nil {
+		if !errors.Is(err, ErrControllerFirstTaskPending) && !errors.Is(err, qualification.ErrControllerDeclarationPending) {
+			return fmt.Errorf("reconcile declared controller stages: %w", err)
 		}
 	}
 	if r.ContinuationHandoff != nil {
@@ -678,6 +810,7 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 			ImageDigest:        value.ImageDigest,
 			StartedAt:          value.StartedAt,
 			ExpiresAt:          value.ExpiresAt,
+			CellReady:          value.CellReady,
 		}
 		if value.ErrorCode != "" {
 			item.LastError = &model.ItemError{Code: value.ErrorCode, Message: value.ErrorMessage}
@@ -695,7 +828,24 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 	if err != nil {
 		return model.Report{}, err
 	}
+	// Only the setup operations of the current authority manifest are reportable.
+	// An owner redrive supersedes a failed operation and creates a new immutable
+	// generation; a local row for the superseded generation must not be sent in a
+	// report any more (the backend rejects a superseded tuple and the report can
+	// never be accepted). Filtering is driven by the just-reconciled manifest, so
+	// the Runtime adopts the new generation on the same pass and reports only its
+	// current tuple. A manifest without setup operations keeps the legacy report
+	// shape unchanged.
+	currentSetup := map[string]struct{}{}
+	for _, operation := range authority.SetupOperations {
+		currentSetup[operation.ID] = struct{}{}
+	}
 	for _, value := range setupOperations {
+		if len(authority.SetupOperations) > 0 {
+			if _, current := currentSetup[value.ID]; !current {
+				continue
+			}
+		}
 		item := model.SetupOperationReport{
 			ID:                value.ID,
 			SandboxID:         value.SandboxID,
@@ -779,6 +929,58 @@ func (r *Reconciler) Report(ctx context.Context, serverID, version string) (mode
 			continue
 		}
 		report.ManagedServices = append(report.ManagedServices, service.Report)
+	}
+	for _, intent := range authority.ParentServices {
+		pending, err := intent.PendingReport()
+		if err != nil {
+			return model.Report{}, err
+		}
+		local, err := r.Store.ControllerParent(ctx, intent.ServiceRegistrationID)
+		if err != nil {
+			return model.Report{}, err
+		}
+		if local != nil && local.Intent == intent && local.Report.ReceiptDigest != "" &&
+			local.Report.OperationID == intent.OperationID && local.Report.ActionRevision == intent.ActionRevision &&
+			local.Report.ObservedDesiredRevision == intent.DesiredRevision && local.Report.ConfigDigest == intent.ConfigDigest {
+			pending = local.Report
+		}
+		report.ParentServices = append(report.ParentServices, pending)
+	}
+	cells, err := r.Store.CellOperations(ctx)
+	if err != nil {
+		return model.Report{}, err
+	}
+	for _, cell := range cells {
+		if cell.Report.FormatVersion != 2 {
+			continue
+		}
+		if !currentCellServiceTuple(authority, cell) {
+			continue
+		}
+		report.CellServices = append(report.CellServices, cell.Report)
+	}
+	v3, err := r.Store.CellV3Operations(ctx)
+	if err != nil {
+		return model.Report{}, err
+	}
+	for _, local := range v3 {
+		for _, current := range authority.CellEntriesV3 {
+			if !reflect.DeepEqual(local.Entry, current) {
+				continue
+			}
+			if err := r.verifyCellProductOrQualification(ctx, current, &authority); err != nil {
+				return model.Report{}, err
+			}
+			execution, err := r.Store.CellV3Execution(ctx, current.PreparationID)
+			if err != nil {
+				return model.Report{}, err
+			}
+			if execution != nil && execution.Report.FormatVersion == 3 && reflect.DeepEqual(current.ExecutionGrant, &execution.Grant) && execution.Report.ObservedDesiredRevision == current.DesiredRevision && execution.Report.DesiredState == current.DesiredState && current.ValidateExecutionAuthority(local.Receipt) == nil {
+				report.CellServices = append(report.CellServices, execution.Report)
+			} else if execution == nil && current.LifecyclePhase == "prepare" && local.ControlReport.FormatVersion == 3 && local.ControlReport.ObservedDesiredRevision == current.DesiredRevision && local.ControlReport.DesiredState == current.DesiredState {
+				report.CellServices = append(report.CellServices, local.ControlReport)
+			}
+		}
 	}
 	if r.Manager != nil {
 		policies, reviews, takeovers, err := r.Manager.ReportsCurrent(ctx, authority, report.ContinuitySources, staleSources)
@@ -1163,6 +1365,19 @@ func (r *Reconciler) reconcileSandbox(
 	local.Lifetime = desired.Lifetime
 	local.ExpiresInSeconds = desired.ExpiresInSeconds
 	local.Resources = desired.Resources
+	// Detect the legacy->cell transition before committing the cell flag. An
+	// existing box enabled as a cell must be re-created with the SA9 witness
+	// hook (not silently left not-ready), but the transition must NOT be
+	// consumed until the recreation actually succeeds — otherwise a failed
+	// recreation would permanently strand the legacy container as not-ready.
+	cellTransition := desired.Cell && !local.Cell
+	if !cellTransition {
+		local.Cell = desired.Cell
+	}
+	// Observed readiness is cleared up front and re-established only by a
+	// successful running-container observation, so stop/delete/fail/replace
+	// transitions can never retain or report a stale ready value.
+	local.CellReady = false
 	targetImageDigest := desired.ImageDigest
 	if targetImageDigest == "" {
 		if local.ImageDigest != "" {
@@ -1257,6 +1472,10 @@ func (r *Reconciler) reconcileSandbox(
 		if err != nil {
 			return r.failSandbox(ctx, local, "workspace_create_failed", err)
 		}
+		// A witness result already observed on this pass (the adopt path below)
+		// is reused by the common observation step instead of exec'ing twice.
+		cellWitnessObserved := false
+		cellWitnessReady := false
 		if refreshImage {
 			local.ObservedState = "restarting"
 			if err := r.Store.PutSandbox(ctx, *local); err != nil {
@@ -1275,6 +1494,70 @@ func (r *Reconciler) reconcileSandbox(
 				return r.failSandbox(ctx, local, imageReplaceErrorCode(err), err)
 			}
 			local.ImageDigest = targetImageDigest
+		} else if cellTransition && !isNew {
+			// Observation-first adoption of an already-running container. Cell
+			// authority can arrive after the container exists: a daemon restart
+			// with a late manifest cell flag, or a running container the Runtime
+			// adopted from the venue. The container's CURRENT witness is the only
+			// readiness fact, so re-run the reviewed cell-lifecycle negotiation
+			// and observe the container BEFORE the drain fence and any
+			// stop/rename/recreate. A valid SA9 witness is adopted IN PLACE: the
+			// witnessed mount namespace is preserved and readiness is committed
+			// on this pass, even while the sandbox still has in-flight work (an
+			// adoption mutates nothing, so there is nothing to drain). A
+			// missing/invalid witness or a failed lifecycle check never adopts;
+			// it falls through to the existing fail-closed transition below.
+			if local.ObservedState == "running" {
+				if verifyErr := r.Engine.VerifyCellLifecycle(ctx); verifyErr == nil {
+					ready, observeErr := r.Engine.ObserveCellWitness(ctx, local.ID)
+					if observeErr == nil && ready {
+						cellWitnessObserved = true
+						cellWitnessReady = true
+					}
+				}
+			}
+			if !cellWitnessObserved {
+				// Legacy->cell transition on an existing container (same image,
+				// same generation, in any non-new state). Before any
+				// stop/rename/delete/recreate, hold the transition while the
+				// sandbox has running, pending, or unknown work: a cell enable
+				// must never disrupt an in-flight execution. The hold surfaces an
+				// explicit observable reason and leaves the sandbox running; the
+				// transition is retried on a later reconcile once the work drains
+				// (no implicit cancel).
+				reason, err := r.sandboxActiveWorkReason(ctx, local.ID)
+				if err != nil {
+					// Local execution/service state is unverifiable: fail closed
+					// and hold rather than assuming the sandbox is drained.
+					// Missing or lost local state never proves absence of active
+					// work.
+					reason = "cell execution state is unverifiable"
+				}
+				if reason != "" {
+					local.CellReady = false
+					local.ErrorCode = "cell_transition_work_pending"
+					local.ErrorMessage = reason
+					if err := r.Store.PutSandbox(ctx, *local); err != nil {
+						return err
+					}
+					return nil
+				}
+				// Quiescent: a controlled replacement re-creates the container
+				// with the SA9 witness hook applied. The workspace is preserved
+				// and the old container is retained as a deterministic backup for
+				// rollback; this is never an unsafe reset. The cell flag is
+				// committed only AFTER this succeeds (see the observation step).
+				local.ObservedState = "restarting"
+				if err := r.Store.PutSandbox(ctx, *local); err != nil {
+					return err
+				}
+				if r.Sessions != nil {
+					_ = r.Sessions.TerminateSandbox(ctx, local.ID)
+				}
+				if err := r.Engine.Recreate(ctx, desired, workspace, local.ImageDigest, true); err != nil {
+					return r.failSandbox(ctx, local, imageReplaceErrorCode(err), err)
+				}
+			}
 		} else if local.ObservedState == "running" && local.ObservedGeneration < local.Generation {
 			local.ObservedState = "restarting"
 			if err := r.Store.PutSandbox(ctx, *local); err != nil {
@@ -1327,6 +1610,29 @@ func (r *Reconciler) reconcileSandbox(
 		local.ObservedGeneration = local.Generation
 		local.ErrorCode = ""
 		local.ErrorMessage = ""
+		// Cell readiness is an OBSERVED fact about the running container, never
+		// the desired cell flag or hook-file presence. A cell sandbox reports
+		// ready only when the current container's mount namespace actually
+		// carries the reviewed childless procfs witness; any unobservable,
+		// absent, or replaced witness is fail-closed (ready=false) and the cell
+		// stays unadmitted. A non-cell sandbox always reports not-ready.
+		if desired.Cell {
+			if !cellWitnessObserved {
+				ready, observeErr := r.Engine.ObserveCellWitness(ctx, local.ID)
+				if observeErr != nil {
+					ready = false
+				}
+				cellWitnessReady = ready
+			}
+			local.CellReady = cellWitnessReady
+		} else {
+			local.CellReady = false
+		}
+		// Commit the desired cell flag only now that the container has reached a
+		// verified running state (and, for a transition, been re-created with the
+		// witness hook). A failed recreation above never commits, so a later
+		// reconcile re-detects the transition and retries.
+		local.Cell = desired.Cell
 		if err := r.Store.PutSandbox(ctx, *local); err != nil {
 			return err
 		}
@@ -1344,6 +1650,76 @@ func imageReplaceErrorCode(err error) string {
 		return "container_image_rollback_failed"
 	}
 	return "container_image_replace_failed"
+}
+
+// cellOperationActive reports whether a cell execution phase still carries a
+// running, pending, or unknown effect that a container recreation would
+// disrupt. Only terminal and failed phases are inert.
+func cellOperationActive(phase string) bool {
+	switch phase {
+	case "pending", "admitted", "unknown", "exhausted":
+		return true
+	default:
+		return false
+	}
+}
+
+// sandboxActiveWorkReason returns a non-empty human-readable reason when the
+// sandbox has running/pending/unknown work that a lifecycle transition must not
+// disrupt. It is the drain fence for the legacy->cell container recreation: the
+// transition holds (no stop/rename/delete/recreate) while any authoritative
+// cell execution is non-terminal or any managed (legacy Team) worker is busy or
+// actively executing, and returns the exact reason so the owner can drain it.
+func (r *Reconciler) sandboxActiveWorkReason(ctx context.Context, sandboxID string) (string, error) {
+	preparations, err := r.Store.CellV3Operations(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, preparation := range preparations {
+		if preparation.Entry.SandboxID != sandboxID {
+			continue
+		}
+		execution, err := r.Store.CellV3Execution(ctx, preparation.Entry.PreparationID)
+		if err != nil {
+			return "", err
+		}
+		if execution != nil && cellOperationActive(execution.Phase) {
+			return fmt.Sprintf("cell v3 execution %s is %s", preparation.Entry.PreparationID, execution.Phase), nil
+		}
+		if execution == nil && preparation.ControlReport.ObservedState != "cancelled" {
+			return fmt.Sprintf("cell v3 preparation %s retains ownership (%s)", preparation.Entry.PreparationID, preparation.Phase), nil
+		}
+	}
+	operations, err := r.Store.CellOperations(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, op := range operations {
+		if op.Entry.SandboxID == sandboxID && cellOperationActive(op.Phase) {
+			return fmt.Sprintf("cell execution %s is %s", op.Entry.OperationID, op.Phase), nil
+		}
+	}
+	services, err := r.Store.ManagedServices(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, svc := range services {
+		if svc.Manifest.Identity.SandboxID != sandboxID {
+			continue
+		}
+		serviceID := svc.Manifest.Identity.ServiceRegistrationID
+		if r.managedWorkerExecutionActive(serviceID) {
+			return fmt.Sprintf("managed worker %s is executing", serviceID), nil
+		}
+		authority, err := r.Store.ManagedTaskAuthority(ctx, serviceID)
+		if err != nil {
+			return "", err
+		}
+		if authority != nil && authority.Busy {
+			return fmt.Sprintf("managed worker %s is busy", serviceID), nil
+		}
+	}
+	return "", nil
 }
 
 func (r *Reconciler) removeSandbox(ctx context.Context, local *state.LocalSandbox) error {

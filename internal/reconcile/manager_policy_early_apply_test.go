@@ -177,15 +177,28 @@ type managerPolicyJourney struct {
 }
 
 func newManagerPolicyJourney(t *testing.T) *managerPolicyJourney {
+	return newManagerPolicyJourneyForSandbox(t, "")
+}
+
+func newManagerPolicyJourneyForSandbox(t *testing.T, chosenSandbox string) *managerPolicyJourney {
+	// Preserve the original manager-policy fixture's enrollment windows.
+	return newManagerPolicyJourneyForSandboxAt(t, chosenSandbox, func() time.Time { return time.Date(2026, 9, 27, 17, 0, 30, 0, time.UTC) })
+}
+
+func newManagerPolicyJourneyForSandboxAt(t *testing.T, chosenSandbox string, now func() time.Time) *managerPolicyJourney {
 	t.Helper()
 	fixture := loadProducerFixture(t)
+	if chosenSandbox != "" {
+		fixture.ServiceManifest.Identity.SandboxID = chosenSandbox
+		fixture.SetupManifest.SandboxID = chosenSandbox
+		fixture.InstructionRequest.SandboxID = chosenSandbox
+		fixture.EnrollmentRequest.SandboxID = chosenSandbox
+	}
 	fixture.ServiceManifest.Identity.SandboxGeneration = 2
 	fixture.SetupManifest.SandboxGeneration = 2
 	fixture.InstructionRequest.SandboxGeneration = 2
 	fixture.EnrollmentRequest.SandboxGeneration = 2
 	sandboxID := fixture.SetupManifest.SandboxID
-	// The fixture's enrollment/instruction windows are anchored to its own date.
-	now := func() time.Time { return time.Date(2026, 9, 27, 17, 0, 30, 0, time.UTC) }
 	databasePath := filepath.Join(t.TempDir(), "runtime.sqlite3")
 	store, err := state.Open(databasePath)
 	if err != nil {
