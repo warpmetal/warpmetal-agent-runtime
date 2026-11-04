@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json",
+  "title": "Revision13 additive child product policy, activation and protected control delivery",
+  "$comment": "Endpoint-selected closed definitions. No qualification Policy3/RealRun, V3 mutation, private signer, model dispatcher or installed witness is introduced. Canonical digests, signed demand/current applicability, actual receipt/STATE/assignment, independent operator signatures and protected installed ROOT/control/tool/read joins are mandatory beyond schema. Prepare control cannot permit a prompt; execute requires the separate exact canonical V3 grant and committed signed activation. Signed intent and SOURCE configuration never prove installation.",
+  "$defs": {
+    "id": {"$ref": "workspace-workflow-v1.schema.json#/$defs/id"},
+    "digest": {"$ref": "workspace-workflow-v1.schema.json#/$defs/digest"},
+    "time": {"$ref": "workspace-workflow-v1.schema.json#/$defs/time"},
+    "positive": {"$ref": "workspace-workflow-v1.schema.json#/$defs/positive"},
+    "signature": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/envelope/properties/signature"},
+    "purpose": {"enum": ["coding_worker", "business_worker", "integrator", "reviewer"]},
+    "qualificationPin": {
+      "type": "object", "additionalProperties": false,
+      "required": ["qualificationId", "tupleDigest", "evidenceDigest", "validUntil"],
+      "properties": {"qualificationId": {"$ref": "#/$defs/id"}, "tupleDigest": {"$ref": "#/$defs/digest"}, "evidenceDigest": {"$ref": "#/$defs/digest"}, "validUntil": {"$ref": "#/$defs/time"}}
+    },
+    "rootScope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["workspace", "registeredSourceId", "targetAuthority", "producer", "candidateDescriptorDigest", "runtimeRevision"],
+      "properties": {
+        "workspace": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/workspace"},
+        "registeredSourceId": {"$ref": "#/$defs/id"},
+        "targetAuthority": {"$ref": "workspace-plan-genesis-v1.schema.json#/$defs/targetAuthority"},
+        "producer": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/registeredProducer"},
+        "candidateDescriptorDigest": {"$ref": "#/$defs/digest"}, "runtimeRevision": {"$ref": "#/$defs/positive"}
+      }
+    },
+    "preparationSelection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["preparationId", "preparedTuple", "preparedTupleDigest", "sessionId", "inputId"],
+      "properties": {"preparationId": {"$ref": "#/$defs/id"}, "preparedTuple": {"$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/preparedTuple"}, "preparedTupleDigest": {"$ref": "#/$defs/digest"}, "sessionId": {"$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/nativeSessionId"}, "inputId": {"$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/nativeInputId"}}
+    },
+    "instructionPin": {
+      "$comment": "Exact existing authenticated immutable firstText bytes, not a native V3 field or an attachment. Reviewer spans address these final bytes.",
+      "type": "object", "additionalProperties": false,
+      "required": ["instructionRevision", "instructionDigest", "inputId", "inputDigest", "inputByteCount"],
+      "properties": {"instructionRevision": {"$ref": "#/$defs/positive"}, "instructionDigest": {"$ref": "#/$defs/digest"}, "inputId": {"$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/nativeInputId"}, "inputDigest": {"$ref": "#/$defs/digest"}, "inputByteCount": {"type": "integer", "minimum": 1, "maximum": 16384}}
+    },
+    "reservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reservationId", "ledgerId", "allocationId", "demandManifestDigest", "preparationOrdinal", "firstPhysicalIndex", "lastPhysicalIndex", "modelRequests", "accessRequests", "usdMicros"],
+      "properties": {
+        "reservationId": {"$ref": "#/$defs/id"}, "ledgerId": {"const": "model-qualification-and-product"}, "allocationId": {"$ref": "#/$defs/id"}, "demandManifestDigest": {"$ref": "#/$defs/digest"},
+        "preparationOrdinal": {"type": "integer", "minimum": 1, "maximum": 16}, "firstPhysicalIndex": {"type": "integer", "minimum": 1, "maximum": 23}, "lastPhysicalIndex": {"type": "integer", "minimum": 1, "maximum": 23},
+        "modelRequests": {"type": "integer", "minimum": 1, "maximum": 3}, "accessRequests": {"type": "integer", "const": 0}, "usdMicros": {"type": "integer", "enum": [421000, 842000, 1263000]}
+      }
+    },
+    "budget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["modelRequests", "turns", "inputTokens", "outputTokens", "requestReserveMicros", "usdMicros", "requestBodyBytes", "responseBodyBytes", "deadlineSeconds", "sdkRetries", "applicationRetries", "auxiliaryRequests", "pricingDigest"],
+      "properties": {
+        "modelRequests": {"type": "integer", "minimum": 1, "maximum": 3}, "turns": {"type": "integer", "minimum": 1, "maximum": 3}, "inputTokens": {"enum": [1047576, 2095152, 3142728]}, "outputTokens": {"enum": [1000, 2000, 3000]},
+        "requestReserveMicros": {"const": 421000}, "usdMicros": {"enum": [421000, 842000, 1263000]}, "requestBodyBytes": {"const": 32768}, "responseBodyBytes": {"const": 262144}, "deadlineSeconds": {"const": 120},
+        "sdkRetries": {"type": "integer", "const": 0}, "applicationRetries": {"type": "integer", "const": 0}, "auxiliaryRequests": {"type": "integer", "const": 0}, "pricingDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "requestControl": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requestIndex", "physicalIndex", "toolChoice", "toolKind", "nativeToolName", "maxInputTokens", "maxOutputTokens", "maxUsdMicros", "parallelToolCalls"],
+      "properties": {
+        "requestIndex": {"type": "integer", "minimum": 1, "maximum": 3}, "physicalIndex": {"type": "integer", "minimum": 1, "maximum": 23}, "toolChoice": {"enum": ["approved_native_tools", "exact", "none"]},
+        "toolKind": {"enum": ["native", "mcp_read", "script_run", null]}, "nativeToolName": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/id"}]},
+        "maxInputTokens": {"const": 1047576}, "maxOutputTokens": {"const": 1000}, "maxUsdMicros": {"const": 421000}, "parallelToolCalls": {"const": false}
+      },
+      "allOf": [
+        {"if": {"properties": {"toolChoice": {"const": "none"}}}, "then": {"properties": {"toolKind": {"const": null}, "nativeToolName": {"const": null}}}},
+        {"if": {"properties": {"toolChoice": {"const": "exact"}}}, "then": {"properties": {"toolKind": {"enum": ["mcp_read", "script_run"]}, "nativeToolName": {"$ref": "#/$defs/id"}}}},
+        {"if": {"properties": {"toolChoice": {"const": "approved_native_tools"}}}, "then": {"properties": {"toolKind": {"const": "native"}, "nativeToolName": {"const": null}}}}
+      ]
+    },
+    "workload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "nativeToolNames", "requests", "terminalOutput", "codemodeDisabled", "delegationDisabled", "hostNetworkDisabled"],
+      "properties": {
+        "kind": {"enum": ["coding2", "business3", "integration2", "review1"]}, "nativeToolNames": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "requests": {"type": "array", "minItems": 1, "maxItems": 3, "items": {"$ref": "#/$defs/requestControl"}}, "terminalOutput": {"enum": ["result", "integration_candidate", "review_evidence"]},
+        "codemodeDisabled": {"const": true}, "delegationDisabled": {"const": true}, "hostNetworkDisabled": {"const": true}
+      },
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "coding2"}}}, "then": {"properties": {"requests": {"minItems": 2, "maxItems": 2}, "terminalOutput": {"const": "result"}}}},
+        {"if": {"properties": {"kind": {"const": "business3"}}}, "then": {"properties": {"nativeToolNames": {"minItems": 2, "maxItems": 2}, "requests": {"minItems": 3, "maxItems": 3}, "terminalOutput": {"const": "result"}}}},
+        {"if": {"properties": {"kind": {"const": "integration2"}}}, "then": {"properties": {"requests": {"minItems": 2, "maxItems": 2}, "terminalOutput": {"const": "integration_candidate"}}}},
+        {"if": {"properties": {"kind": {"const": "review1"}}}, "then": {"properties": {"nativeToolNames": {"maxItems": 0}, "requests": {"minItems": 1, "maxItems": 1, "items": {"allOf": [{"$ref": "#/$defs/requestControl"}, {"properties": {"toolChoice": {"const": "none"}}}]}}, "terminalOutput": {"const": "review_evidence"}}}}
+      ]
+    },
+    "preparationPolicy": {
+      "$comment": "Signed AFTER backend preparation/STATE and weighted reservation commit, BEFORE native child adoption. Contains no successful native receipt, assignment, grant or prompt authority.",
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "targetKind", "mode", "stage", "purpose", "case", "handle", "intent", "scope", "root", "applicability", "qualification", "preparation", "instructions", "reservation", "budget", "workload", "toolRequirements", "issuedAt", "expiresAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "targetKind": {"const": "cell_session"}, "mode": {"const": "real_provider"}, "stage": {"const": "prepare"}, "purpose": {"$ref": "#/$defs/purpose"},
+        "case": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/typedCase"}, "handle": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/intentHandle"}, "intent": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/approvedWorkIntent"}, "scope": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/workScope"},
+        "root": {"$ref": "#/$defs/rootScope"}, "applicability": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/artifactApplicability"}, "qualification": {"$ref": "#/$defs/qualificationPin"}, "preparation": {"$ref": "#/$defs/preparationSelection"}, "instructions": {"$ref": "#/$defs/instructionPin"}, "reservation": {"$ref": "#/$defs/reservation"}, "budget": {"$ref": "#/$defs/budget"}, "workload": {"$ref": "#/$defs/workload"},
+        "toolRequirements": {"type": "array", "maxItems": 2, "uniqueItems": true, "items": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/toolRequirement"}}, "issuedAt": {"$ref": "#/$defs/time"}, "expiresAt": {"$ref": "#/$defs/time"}
+      },
+      "allOf": [
+        {"if": {"properties": {"purpose": {"const": "business_worker"}}}, "then": {"properties": {"intent": {"properties": {"purpose": {"const": "implement"}}}, "workload": {"properties": {"kind": {"const": "business3"}}}, "toolRequirements": {"minItems": 2, "maxItems": 2}, "budget": {"properties": {"modelRequests": {"const": 3}, "turns": {"const": 3}, "inputTokens": {"const": 3142728}, "outputTokens": {"const": 3000}, "usdMicros": {"const": 1263000}}}, "reservation": {"properties": {"modelRequests": {"const": 3}, "usdMicros": {"const": 1263000}}}}}},
+        {"if": {"properties": {"purpose": {"const": "coding_worker"}}}, "then": {"properties": {"intent": {"properties": {"purpose": {"const": "implement"}}}, "workload": {"properties": {"kind": {"const": "coding2"}}}, "toolRequirements": {"maxItems": 0}}}},
+        {"if": {"properties": {"purpose": {"const": "integrator"}}}, "then": {"properties": {"intent": {"properties": {"purpose": {"const": "integrate"}}}, "workload": {"properties": {"kind": {"const": "integration2"}}}, "toolRequirements": {"maxItems": 0}}}},
+        {"if": {"properties": {"purpose": {"enum": ["coding_worker", "integrator"]}}}, "then": {"properties": {"budget": {"properties": {"modelRequests": {"const": 2}, "turns": {"const": 2}, "inputTokens": {"const": 2095152}, "outputTokens": {"const": 2000}, "usdMicros": {"const": 842000}}}, "reservation": {"properties": {"modelRequests": {"const": 2}, "usdMicros": {"const": 842000}}}}}},
+        {"if": {"properties": {"purpose": {"const": "reviewer"}}}, "then": {"properties": {"intent": {"properties": {"purpose": {"const": "review"}}}, "workload": {"properties": {"kind": {"const": "review1"}}}, "toolRequirements": {"maxItems": 0}, "budget": {"properties": {"modelRequests": {"const": 1}, "turns": {"const": 1}, "inputTokens": {"const": 1047576}, "outputTokens": {"const": 1000}, "usdMicros": {"const": 421000}}}, "reservation": {"properties": {"modelRequests": {"const": 1}, "usdMicros": {"const": 421000}}}}}}
+      ]
+    },
+    "preparationPolicyEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {"payload": {"$ref": "#/$defs/preparationPolicy"}, "keyId": {"$ref": "#/$defs/id"}, "signature": {"$ref": "#/$defs/signature"}}
+    },
+    "readRootAuthorization": {
+      "$comment": "Canonical rootGrantDigest preimage, resolved only through current protected registered workspace or installed-script registry. No host path/device/inode/installed:true claim is accepted as root-selection authority.",
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "binding", "assignmentId", "use", "rootKind", "workspace", "registeredSourceId", "rootAttestation", "producer", "candidateDescriptorDigest", "installedManifestDigest", "expiresAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "binding": {"$ref": "workspace-workflow-v1.schema.json#/$defs/binding"}, "assignmentId": {"$ref": "#/$defs/id"}, "use": {"enum": ["tool_input", "installed_script", "review_packet_source", "review_target_artifact", "review_candidate_source"]},
+        "rootKind": {"enum": ["workspace", "installed_script"]}, "workspace": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/workspace"}, "registeredSourceId": {"$ref": "#/$defs/id"}, "rootAttestation": {"$ref": "#/$defs/digest"}, "producer": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/registeredProducer"}, "candidateDescriptorDigest": {"$ref": "#/$defs/digest"},
+        "installedManifestDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}, "expiresAt": {"$ref": "#/$defs/time"}
+      },
+      "allOf": [{"if": {"properties": {"use": {"const": "installed_script"}}}, "then": {"properties": {"rootKind": {"const": "installed_script"}, "installedManifestDigest": {"$ref": "#/$defs/digest"}}}, "else": {"properties": {"rootKind": {"const": "workspace"}, "installedManifestDigest": {"const": null}}}}]
+    },
+    "sourceReadScope": {
+      "type": "object", "additionalProperties": false, "required": ["grant", "root"],
+      "properties": {"grant": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/useSpecificSourceGrant"}, "root": {"$ref": "#/$defs/readRootAuthorization"}}
+    },
+    "scriptApproval": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "toolId", "revision", "definitionDigest", "configurationDigest", "scopeRevision", "scriptReference", "scriptByteCount", "inputDataScopeDigest", "timeoutSeconds"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "toolId": {"$ref": "#/$defs/id"}, "revision": {"$ref": "#/$defs/positive"}, "definitionDigest": {"$ref": "#/$defs/digest"}, "configurationDigest": {"$ref": "#/$defs/digest"}, "scopeRevision": {"$ref": "#/$defs/positive"}, "scriptReference": {"$ref": "workspace-workflow-v1.schema.json#/$defs/reference"}, "scriptByteCount": {"type": "integer", "const": 1734}, "inputDataScopeDigest": {"$ref": "#/$defs/digest"}, "timeoutSeconds": {"type": "integer", "const": 30}}
+    },
+    "installedToolWitness": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidateDescriptorDigest", "registryManifestDigest", "imageConfigDigest", "materializerDigest", "implementationDigest", "interpreter", "pluginDigest"],
+      "properties": {"candidateDescriptorDigest": {"$ref": "#/$defs/digest"}, "registryManifestDigest": {"$ref": "#/$defs/digest"}, "imageConfigDigest": {"$ref": "#/$defs/digest"}, "materializerDigest": {"$ref": "#/$defs/digest"}, "implementationDigest": {"$ref": "#/$defs/digest"}, "interpreter": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/interpreterPin"}, "pluginDigest": {"$ref": "#/$defs/digest"}}
+    },
+    "toolScope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "nativeToolName", "definition", "approval", "installedWitness", "effectOrdinal", "outputPath", "inputRule", "inputReads", "scriptRead", "dataScope", "dataScopeDigest"],
+      "properties": {
+        "kind": {"enum": ["mcp_read", "script_run"]}, "nativeToolName": {"$ref": "#/$defs/id"}, "definition": {"oneOf": [{"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/connectorDefinition"}, {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/scriptDefinition"}]},
+        "approval": {"oneOf": [{"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/connectorApproval"}, {"$ref": "#/$defs/scriptApproval"}]}, "installedWitness": {"$ref": "#/$defs/installedToolWitness"}, "effectOrdinal": {"enum": [0, 1]}, "outputPath": {"$ref": "workspace-workflow-v1.schema.json#/$defs/path"},
+        "inputRule": {"enum": ["approved_manifest", "same_child_settled_mcp"]}, "inputReads": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/digest"}}, "scriptRead": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}, "dataScope": {"$ref": "workspace-workflow-v1.schema.json#/$defs/path"}, "dataScopeDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}
+      },
+      "allOf": [{"if": {"properties": {"kind": {"const": "mcp_read"}}}, "then": {"properties": {"definition": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/connectorDefinition"}, "approval": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/connectorApproval"}, "effectOrdinal": {"const": 0}, "inputRule": {"const": "approved_manifest"}, "inputReads": {"minItems": 1}, "scriptRead": {"const": null}, "dataScopeDigest": {"$ref": "#/$defs/digest"}}}, "else": {"properties": {"definition": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/scriptDefinition"}, "approval": {"$ref": "#/$defs/scriptApproval"}, "effectOrdinal": {"const": 1}, "inputRule": {"const": "same_child_settled_mcp"}, "inputReads": {"maxItems": 0}, "scriptRead": {"$ref": "#/$defs/digest"}, "dataScopeDigest": {"const": null}}}}]
+    },
+    "productPolicy": {
+      "$comment": "Full independent operator-signed authority AFTER actual receipt and assignment, BEFORE canonical grant. Dynamic script input is deliberately absent: it binds only after this child's settled ordinal0 output and never invents an ArtifactRef. This policy is not qualification Policy3.",
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "targetKind", "mode", "stage", "purpose", "preparationPolicyDigest", "case", "intent", "scope", "root", "applicability", "qualification", "reservation", "budget", "workload", "instructions", "preparedReceipt", "binding", "assignment", "sourceReads", "tools", "reviewDelivery", "issuedAt", "expiresAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "targetKind": {"const": "cell_session"}, "mode": {"const": "real_provider"}, "stage": {"const": "product"}, "purpose": {"$ref": "#/$defs/purpose"}, "preparationPolicyDigest": {"$ref": "#/$defs/digest"},
+        "case": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/typedCase"}, "intent": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/intentRef"}, "scope": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/workScope"}, "root": {"$ref": "#/$defs/rootScope"}, "applicability": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/artifactApplicability"}, "qualification": {"$ref": "#/$defs/qualificationPin"}, "reservation": {"$ref": "#/$defs/reservation"}, "budget": {"$ref": "#/$defs/budget"}, "workload": {"$ref": "#/$defs/workload"}, "instructions": {"$ref": "#/$defs/instructionPin"},
+        "preparedReceipt": {"$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/preparedReceipt"}, "binding": {"$ref": "workspace-workflow-v1.schema.json#/$defs/binding"}, "assignment": {"$ref": "workspace-workflow-v1.schema.json#/$defs/assignmentReceipt"},
+        "sourceReads": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/sourceReadScope"}}, "tools": {"type": "array", "maxItems": 2, "uniqueItems": true, "items": {"$ref": "#/$defs/toolScope"}},
+        "reviewDelivery": {"oneOf": [{"type": "null"}, {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/reviewDeliveryPlan"}]}, "issuedAt": {"$ref": "#/$defs/time"}, "expiresAt": {"$ref": "#/$defs/time"}
+      },
+      "allOf": [
+        {"if": {"properties": {"purpose": {"const": "reviewer"}}}, "then": {"properties": {"tools": {"maxItems": 0}, "sourceReads": {"minItems": 1}, "reviewDelivery": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/reviewDeliveryPlan"}}}, "else": {"properties": {"reviewDelivery": {"const": null}}}},
+        {"if": {"properties": {"purpose": {"const": "business_worker"}}}, "then": {"properties": {"tools": {"minItems": 2, "maxItems": 2}, "sourceReads": {"minItems": 2}}}, "else": {"properties": {"tools": {"maxItems": 0}}}}
+      ]
+    },
+    "productPolicyEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {"payload": {"$ref": "#/$defs/productPolicy"}, "keyId": {"$ref": "#/$defs/id"}, "signature": {"$ref": "#/$defs/signature"}}
+    },
+    "authorizationObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "taskId", "nodeTokenHash", "preparationId", "preparedReceiptDigest", "authorizationSha256", "root", "observedAt"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "purpose": {"const": "child_product_authorization"}, "taskId": {"$ref": "#/$defs/id"}, "nodeTokenHash": {"$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/rawDigest"}, "preparationId": {"$ref": "#/$defs/id"}, "preparedReceiptDigest": {"$ref": "#/$defs/digest"}, "authorizationSha256": {"$ref": "#/$defs/digest"}, "root": {"$ref": "#/$defs/rootScope"}, "observedAt": {"$ref": "#/$defs/time"}}
+    },
+    "authorizationEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {"payload": {"$ref": "#/$defs/authorizationObservation"}, "keyId": {"$ref": "#/$defs/id"}, "signature": {"$ref": "#/$defs/signature"}}
+    },
+    "activation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "targetKind", "mode", "purpose", "caseId", "caseManifestDigest", "demandManifestDigest", "allocationId", "intent", "preparationId", "preparationPolicyDigest", "preparedTupleDigest", "preparedReceiptDigest", "assignmentDigest", "policyDigest", "policyBindingDigest", "reservation", "grant", "grantDigest", "authorizationObservationDigest", "authorizationSha256", "issuedAt", "expiresAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "targetKind": {"const": "cell_session"}, "mode": {"const": "real_provider"}, "purpose": {"$ref": "#/$defs/purpose"}, "caseId": {"$ref": "#/$defs/id"}, "caseManifestDigest": {"$ref": "#/$defs/digest"}, "demandManifestDigest": {"$ref": "#/$defs/digest"}, "allocationId": {"$ref": "#/$defs/id"}, "intent": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/intentRef"},
+        "preparationId": {"$ref": "#/$defs/id"}, "preparationPolicyDigest": {"$ref": "#/$defs/digest"}, "preparedTupleDigest": {"$ref": "#/$defs/digest"}, "preparedReceiptDigest": {"$ref": "#/$defs/digest"}, "assignmentDigest": {"$ref": "#/$defs/digest"}, "policyDigest": {"$ref": "#/$defs/digest"}, "policyBindingDigest": {"$ref": "#/$defs/digest"}, "reservation": {"$ref": "#/$defs/reservation"},
+        "grant": {"$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/executionGrant"}, "grantDigest": {"$ref": "#/$defs/digest"}, "authorizationObservationDigest": {"$ref": "#/$defs/digest"}, "authorizationSha256": {"$ref": "#/$defs/digest"}, "issuedAt": {"$ref": "#/$defs/time"}, "expiresAt": {"$ref": "#/$defs/time"}
+      }
+    },
+    "activationEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {"payload": {"$ref": "#/$defs/activation"}, "keyId": {"$ref": "#/$defs/id"}, "signature": {"$ref": "#/$defs/signature"}}
+    },
+    "controlGeneration": {
+      "$comment": "Digest is over this entire canonical object; no self-digest. No embedded source bytes, secrets, commands, URLs or host paths. Exact demand envelope and independently signed components are delivered under the existing protected control mount.",
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "targetKind", "phase", "preparationId", "demand", "preparationPolicy", "policy", "policyBinding", "activation", "authorizationObservation"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "targetKind": {"const": "cell_session"}, "phase": {"enum": ["prepare", "execute"]}, "preparationId": {"$ref": "#/$defs/id"}, "demand": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/demandManifestEnvelope"}, "preparationPolicy": {"$ref": "#/$defs/preparationPolicyEnvelope"},
+        "policy": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/productPolicyEnvelope"}]}, "policyBinding": {"oneOf": [{"type": "null"}, {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/productPolicyEnvelope"}]},
+        "activation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/activationEnvelope"}]}, "authorizationObservation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/authorizationEnvelope"}]}
+      },
+      "allOf": [{"if": {"properties": {"phase": {"const": "prepare"}}}, "then": {"properties": {"policy": {"const": null}, "policyBinding": {"const": null}, "activation": {"const": null}, "authorizationObservation": {"const": null}}}, "else": {"properties": {"policy": {"$ref": "#/$defs/productPolicyEnvelope"}, "policyBinding": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/productPolicyEnvelope"}, "activation": {"$ref": "#/$defs/activationEnvelope"}, "authorizationObservation": {"$ref": "#/$defs/authorizationEnvelope"}}}}]
+    },
+    "controlDescriptor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "targetKind", "purpose", "phase", "preparationId", "preparedTupleDigest", "preparationPolicyDigest", "policyDigest", "generationDigest"],
+      "properties": {"formatVersion": {"type": "integer", "const": 2}, "targetKind": {"const": "cell_session"}, "purpose": {"const": "child_product_execution"}, "phase": {"enum": ["prepare", "execute"]}, "preparationId": {"$ref": "#/$defs/id"}, "preparedTupleDigest": {"$ref": "#/$defs/digest"}, "preparationPolicyDigest": {"$ref": "#/$defs/digest"}, "policyDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}, "generationDigest": {"$ref": "#/$defs/digest"}},
+      "allOf": [{"if": {"properties": {"phase": {"const": "prepare"}}}, "then": {"properties": {"policyDigest": {"const": null}}}, "else": {"properties": {"policyDigest": {"$ref": "#/$defs/digest"}}}}]
+    },
+    "controlDelivery": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "descriptor", "generation"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "descriptor": {"$ref": "#/$defs/controlDescriptor"}, "generation": {"$ref": "#/$defs/controlGeneration"}}
+    },
+    "policySigningIntent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "handleId", "stage", "payload", "policyBinding", "notBefore"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "handleId": {"$ref": "#/$defs/id"}, "stage": {"enum": ["prepare", "product"]}, "payload": {"oneOf": [{"$ref": "#/$defs/preparationPolicy"}, {"$ref": "#/$defs/productPolicy"}]}, "policyBinding": {"oneOf": [{"type": "null"}, {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/productPolicyBinding"}]}, "notBefore": {"$ref": "#/$defs/time"}},
+      "allOf": [{"if": {"properties": {"stage": {"const": "prepare"}}}, "then": {"properties": {"payload": {"$ref": "#/$defs/preparationPolicy"}, "policyBinding": {"const": null}}}, "else": {"properties": {"payload": {"$ref": "#/$defs/productPolicy"}, "policyBinding": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/productPolicyBinding"}}}}]
+    },
+    "policyAcceptRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "requestId", "stage", "preparationPolicy", "policy", "policyBinding"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "requestId": {"$ref": "#/$defs/id"}, "stage": {"enum": ["prepare", "product"]}, "preparationPolicy": {"$ref": "#/$defs/preparationPolicyEnvelope"}, "policy": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/productPolicyEnvelope"}]}, "policyBinding": {"oneOf": [{"type": "null"}, {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/productPolicyEnvelope"}]}},
+      "allOf": [{"if": {"properties": {"stage": {"const": "prepare"}}}, "then": {"properties": {"policy": {"const": null}, "policyBinding": {"const": null}}}, "else": {"properties": {"policy": {"$ref": "#/$defs/productPolicyEnvelope"}, "policyBinding": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/productPolicyEnvelope"}}}}]
+    },
+    "policyAcceptReceipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "handleId", "preparationId", "stage", "preparationPolicyDigest", "policyDigest", "policyBindingDigest", "state"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "handleId": {"$ref": "#/$defs/id"}, "preparationId": {"$ref": "#/$defs/id"}, "stage": {"enum": ["prepare", "product"]}, "preparationPolicyDigest": {"$ref": "#/$defs/digest"}, "policyDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}, "policyBindingDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}, "state": {"const": "committed_publication_pending"}},
+      "allOf": [{"if": {"properties": {"stage": {"const": "prepare"}}}, "then": {"properties": {"policyDigest": {"const": null}, "policyBindingDigest": {"const": null}}}, "else": {"properties": {"policyDigest": {"$ref": "#/$defs/digest"}, "policyBindingDigest": {"$ref": "#/$defs/digest"}}}}]
+    },
+    "grantIntent": {
+      "$comment": "Actual canonical grant, not a native receipt or final ChildAdmissionAssociation. Manifest execute remains withheld until signed activation and exact control publication. This does not reserve a second slot.",
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "handleId", "preparationAssociationDigest", "policyDigest", "policyBindingDigest", "assignment", "reservation", "grant", "grantDigest", "notBefore", "expiresAt", "state"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "handleId": {"$ref": "#/$defs/id"}, "preparationAssociationDigest": {"$ref": "#/$defs/digest"}, "policyDigest": {"$ref": "#/$defs/digest"}, "policyBindingDigest": {"$ref": "#/$defs/digest"}, "assignment": {"$ref": "workspace-workflow-v1.schema.json#/$defs/assignmentReceipt"}, "reservation": {"$ref": "#/$defs/reservation"}, "grant": {"$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/executionGrant"}, "grantDigest": {"$ref": "#/$defs/digest"}, "notBefore": {"$ref": "#/$defs/time"}, "expiresAt": {"$ref": "#/$defs/time"}, "state": {"const": "committed_activation_pending"}}
+    },
+    "activationIntentRequest": {
+      "type": "object", "additionalProperties": false, "required": ["formatVersion", "requestId", "authorizationObservation"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "requestId": {"$ref": "#/$defs/id"}, "authorizationObservation": {"$ref": "#/$defs/authorizationEnvelope"}}
+    },
+    "activationSigningIntent": {
+      "type": "object", "additionalProperties": false, "required": ["formatVersion", "handleId", "payload", "authorizationObservation", "notBefore"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "handleId": {"$ref": "#/$defs/id"}, "payload": {"$ref": "#/$defs/activation"}, "authorizationObservation": {"$ref": "#/$defs/authorizationEnvelope"}, "notBefore": {"$ref": "#/$defs/time"}}
+    },
+    "activationAcceptRequest": {
+      "type": "object", "additionalProperties": false, "required": ["formatVersion", "requestId", "activation", "authorizationObservation"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "requestId": {"$ref": "#/$defs/id"}, "activation": {"$ref": "#/$defs/activationEnvelope"}, "authorizationObservation": {"$ref": "#/$defs/authorizationEnvelope"}}
+    },
+    "activationAcceptReceipt": {
+      "type": "object", "additionalProperties": false, "required": ["formatVersion", "handleId", "preparationId", "activationDigest", "state"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "handleId": {"$ref": "#/$defs/id"}, "preparationId": {"$ref": "#/$defs/id"}, "activationDigest": {"$ref": "#/$defs/digest"}, "state": {"const": "committed_publication_pending"}}
+    },
+    "publicationReceipt": {
+      "type": "object", "additionalProperties": false, "required": ["formatVersion", "preparationId", "phase", "generationDigest", "state"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "preparationId": {"$ref": "#/$defs/id"}, "phase": {"enum": ["prepare", "execute"]}, "generationDigest": {"$ref": "#/$defs/digest"}, "state": {"enum": ["published", "publication_unknown"]}}
+    },
+    "effectControl": {
+      "$comment": "Ordinal0 may be compiled only for admitted child; ordinal1 only after this child's actual settled successful ordinal0 receipt/artifact. No future ArtifactRef in the full policy or activation.",
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "preparationId", "policyDigest", "activationDigest", "permit", "approval", "sourceReads"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "preparationId": {"$ref": "#/$defs/id"}, "policyDigest": {"$ref": "#/$defs/digest"}, "activationDigest": {"$ref": "#/$defs/digest"}, "permit": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/childToolPermit"}, "approval": {"$ref": "workspace-workflow-manager-v1.proposal.schema.json#/$defs/childInvocationApproval"}, "sourceReads": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/sourceReadScope"}}}
+    }
+  }
+}

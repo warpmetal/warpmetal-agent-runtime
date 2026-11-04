@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-controller-stage-v1.schema.json",
+  "title": "Current-node discovery of one unchanged signed parent declaration item; no execution authority",
+  "$defs": {
+    "allocationName": {
+      "enum": [
+        "foreman",
+        "manager_initial",
+        "manager_integrate",
+        "manager_review",
+        "manager_accept",
+        "followup",
+        "peer_advice",
+        "continuation"
+      ]
+    },
+    "controllerStageReadout1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "applicationOperationId",
+        "applicationOperationDigest",
+        "serviceRegistrationId",
+        "serviceGeneration",
+        "caseId",
+        "caseManifestDigest",
+        "demandManifestDigest",
+        "allocationName",
+        "item",
+        "declarationItemDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "applicationOperationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "applicationOperationDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "serviceRegistrationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "serviceGeneration": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "caseId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "caseManifestDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "allocationName": {
+          "$ref": "#/$defs/allocationName"
+        },
+        "item": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-single-v1.schema.json#/$defs/approvedInputItem3"
+        },
+        "declarationItemDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        }
+      }
+    }
+  }
+}

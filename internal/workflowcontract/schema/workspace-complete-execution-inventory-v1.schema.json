@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-complete-execution-inventory-v1.schema.json",
+  "title": "Complete execution inventory and financial-only LOCAL retention v1",
+  "$defs": {
+    "id": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/id"},
+    "digest": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/digest"},
+    "time": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/time"},
+    "scope": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/controllerOwner"},
+    "validationWindow": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-live-window-v1.schema.json#/$defs/validationWindow"},
+    "signature": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/signature"},
+    "localAllocation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["oracle", "localOrdinal", "allocationId", "reservationId", "reservedUsdMicros"],
+      "properties": {
+        "oracle": {"enum": ["http_cancel", "tool_cancel", "controller_deadline"]},
+        "localOrdinal": {"type": "integer", "minimum": 1, "maximum": 3},
+        "allocationId": {"$ref": "#/$defs/id"}, "reservationId": {"$ref": "#/$defs/id"},
+        "reservedUsdMicros": {"type": "integer", "const": 421000}
+      }
+    },
+    "localAllocations": {
+      "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/localAllocation"},
+      "prefixItems": [
+        {"properties": {"oracle": {"const": "http_cancel"}, "localOrdinal": {"const": 1}}},
+        {"properties": {"oracle": {"const": "tool_cancel"}, "localOrdinal": {"const": 2}}},
+        {"properties": {"oracle": {"const": "controller_deadline"}, "localOrdinal": {"const": 3}}}
+      ]
+    },
+    "freshSourceQualificationSelection": {
+      "$comment": "Exact prospective 1-access + 2-Responses subset, independently operator signed. Not accepted qualification evidence; no implicit authorization for remaining SOURCE10/13 slots.",
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "attemptId", "validationWindow", "candidateInventoryDigest", "scope", "caseId", "authorityDigest", "originalDemandEnvelopeDigest", "tupleDigest", "applicability", "accessAllocationId", "modelAllocationId", "providerRequests", "modelRequests", "accessRequests", "preparations", "reservedUsdMicros", "issuedAt", "expiresAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "purpose": {"const": "fresh_source_qualification_selection"},
+        "attemptId": {"$ref": "#/$defs/id"}, "validationWindow": {"$ref": "#/$defs/validationWindow"},
+        "candidateInventoryDigest": {"$ref": "#/$defs/digest"}, "scope": {"$ref": "#/$defs/scope"},
+        "caseId": {"$ref": "#/$defs/id"}, "authorityDigest": {"$ref": "#/$defs/digest"},
+        "originalDemandEnvelopeDigest": {"$ref": "#/$defs/digest"}, "tupleDigest": {"$ref": "#/$defs/digest"},
+        "applicability": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/artifactApplicability"},
+        "accessAllocationId": {"$ref": "#/$defs/id"}, "modelAllocationId": {"$ref": "#/$defs/id"},
+        "providerRequests": {"type": "integer", "const": 3}, "modelRequests": {"type": "integer", "const": 2},
+        "accessRequests": {"type": "integer", "const": 1}, "preparations": {"type": "integer", "const": 1},
+        "reservedUsdMicros": {"type": "integer", "const": 1263000},
+        "issuedAt": {"$ref": "#/$defs/time"}, "expiresAt": {"$ref": "#/$defs/time"}
+      }
+    },
+    "freshSourceQualificationSelectionEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {"payload": {"$ref": "#/$defs/freshSourceQualificationSelection"}, "keyId": {"$ref": "#/$defs/id"}, "signature": {"$ref": "#/$defs/signature"}}
+    },
+    "sourceQualificationRef": {
+      "type": "object", "additionalProperties": false, "required": ["selectionEnvelopeDigest", "tupleDigest"],
+      "properties": {"selectionEnvelopeDigest": {"$ref": "#/$defs/digest"}, "tupleDigest": {"$ref": "#/$defs/digest"}}
+    },
+    "totals": {
+      "type": "object", "additionalProperties": false,
+      "required": ["positions", "providerRequests", "modelRequests", "accessRequests", "localDeliveries", "preparations", "reservedUsdMicros"],
+      "properties": {
+        "positions": {"type": "integer", "enum": [29, 32]}, "providerRequests": {"type": "integer", "enum": [26, 29]},
+        "modelRequests": {"type": "integer", "enum": [24, 26]}, "accessRequests": {"type": "integer", "enum": [2, 3]},
+        "localDeliveries": {"type": "integer", "const": 3}, "preparations": {"type": "integer", "enum": [20, 21]},
+        "reservedUsdMicros": {"type": "integer", "enum": [12209000, 13472000]}
+      }
+    },
+    "completeExecutionInventory": {
+      "$comment": "Purpose-bound composition of original signed selections, not a paid authority or physical admission. IDs derive from the acyclic inventory identity projection and case3 envelope; no future preparation/receipt/grant/physical IDs.",
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "attemptId", "validationWindow", "candidateInventoryDigest", "scope", "paidSelectionEnvelopeDigest", "localCaseEnvelopeDigest", "sourceQualification", "openingReceiptDigest", "producerReconciliationEnvelopeDigest", "localAllocations", "totals", "issuedAt", "expiresAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "purpose": {"const": "complete_execution_inventory"},
+        "attemptId": {"$ref": "#/$defs/id"}, "validationWindow": {"$ref": "#/$defs/validationWindow"},
+        "candidateInventoryDigest": {"$ref": "#/$defs/digest"}, "scope": {"$ref": "#/$defs/scope"},
+        "paidSelectionEnvelopeDigest": {"$ref": "#/$defs/digest"}, "localCaseEnvelopeDigest": {"$ref": "#/$defs/digest"},
+        "sourceQualification": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/sourceQualificationRef"}]},
+        "openingReceiptDigest": {"$ref": "#/$defs/digest"}, "producerReconciliationEnvelopeDigest": {"$ref": "#/$defs/digest"},
+        "localAllocations": {"$ref": "#/$defs/localAllocations"}, "totals": {"$ref": "#/$defs/totals"},
+        "issuedAt": {"$ref": "#/$defs/time"}, "expiresAt": {"$ref": "#/$defs/time"}
+      },
+      "allOf": [{
+        "if": {"properties": {"sourceQualification": {"type": "null"}}},
+        "then": {"properties": {"totals": {"properties": {"positions": {"const": 29}, "providerRequests": {"const": 26}, "modelRequests": {"const": 24}, "accessRequests": {"const": 2}, "preparations": {"const": 20}, "reservedUsdMicros": {"const": 12209000}}}}},
+        "else": {"properties": {"totals": {"properties": {"positions": {"const": 32}, "providerRequests": {"const": 29}, "modelRequests": {"const": 26}, "accessRequests": {"const": 3}, "preparations": {"const": 21}, "reservedUsdMicros": {"const": 13472000}}}}}
+      }]
+    },
+    "completeExecutionInventoryEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {"payload": {"$ref": "#/$defs/completeExecutionInventory"}, "keyId": {"$ref": "#/$defs/id"}, "signature": {"$ref": "#/$defs/signature"}}
+    },
+    "localRetentionReference": {
+      "$comment": "Locator into the first committed encrypted workflow journal record under the SAME locked financial budget row. Not self-authenticating evidence or a second reserve.",
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "ledgerId", "identityDigest", "inventoryIdentityDigest", "completeInventoryEnvelopeDigest", "localCaseEnvelopeDigest", "journalId", "recordDigest", "localAllocations", "reservedUsdMicros", "retainedAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "purpose": {"const": "source_local_financial_retention_reference"},
+        "ledgerId": {"const": "model-qualification-and-product"}, "identityDigest": {"$ref": "#/$defs/digest"},
+        "inventoryIdentityDigest": {"$ref": "#/$defs/digest"}, "completeInventoryEnvelopeDigest": {"$ref": "#/$defs/digest"},
+        "localCaseEnvelopeDigest": {"$ref": "#/$defs/digest"}, "journalId": {"$ref": "#/$defs/id"}, "recordDigest": {"$ref": "#/$defs/digest"},
+        "localAllocations": {"$ref": "#/$defs/localAllocations"}, "reservedUsdMicros": {"type": "integer", "const": 1263000},
+        "retainedAt": {"$ref": "#/$defs/time"}
+      }
+    }
+  }
+}

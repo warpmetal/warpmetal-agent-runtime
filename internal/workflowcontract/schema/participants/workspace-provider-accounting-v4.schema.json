@@ -1,0 +1,908 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json",
+  "title": "Fresh initial provider accounting v2; same durable ledger, immutable physical identities",
+  "$defs": {
+    "id": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+    },
+    "digest": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+    },
+    "time": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+    },
+    "signature": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/signature"
+    },
+    "policyDigest": {
+      "const": "sha256:e3020419b9841fb1e39c9dca0ff262c8761c19438263187c90b86b89976e9657"
+    },
+    "ledgerSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "physicalRequests",
+        "modelRequests",
+        "turns",
+        "preparations",
+        "reservedUsdMicros",
+        "actualUsdMicros"
+      ],
+      "properties": {
+        "physicalRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "modelRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "turns": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "preparations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reservedUsdMicros": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "actualUsdMicros": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "emptyLedgerSnapshot": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ledgerSnapshot"
+        },
+        {
+          "const": {
+            "physicalRequests": 0,
+            "modelRequests": 0,
+            "turns": 0,
+            "preparations": 0,
+            "reservedUsdMicros": 0,
+            "actualUsdMicros": 0
+          }
+        }
+      ]
+    },
+    "transportOriginal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "url",
+        "bodyDigest"
+      ],
+      "properties": {
+        "method": {
+          "enum": [
+            "GET",
+            "POST"
+          ]
+        },
+        "url": {
+          "enum": [
+            "https://api.deepseek.com/models",
+            "https://api.deepseek.com/responses"
+          ]
+        },
+        "bodyDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "backendOpening3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "accountingVersion",
+        "ledgerId",
+        "providerPolicyDigest",
+        "authorityDigest",
+        "demandManifestDigest",
+        "surface",
+        "caseId",
+        "candidateInventoryDigest",
+        "accountScopeDigest",
+        "snapshot",
+        "historyDigest",
+        "observedAt",
+        "notAfter",
+        "participantInventoryDigest",
+        "ownerConsents"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 3
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/policyDigest"
+        },
+        "authorityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "surface": {
+          "const": "backend"
+        },
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "candidateInventoryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "accountScopeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/emptyLedgerSnapshot"
+        },
+        "historyDigest": {
+          "const": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "notAfter": {
+          "$ref": "#/$defs/time"
+        },
+        "participantInventoryDigest": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+        },
+        "ownerConsents": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "participantId",
+              "tupleDigest",
+              "ownerConsentDigest"
+            ],
+            "properties": {
+              "participantId": {
+                "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+              },
+              "tupleDigest": {
+                "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+              },
+              "ownerConsentDigest": {
+                "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+              }
+            }
+          }
+        }
+      },
+      "$comment": "One actual empty global cut; every tuple's current owner consent belongs to its own enrolled participant task/connection. No all-tuples-one-task shortcut."
+    },
+    "runtimeOpening3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "accountingVersion",
+        "ledgerId",
+        "providerPolicyDigest",
+        "authorityDigest",
+        "demandManifestDigest",
+        "participantInventoryDigest",
+        "surface",
+        "caseId",
+        "participantId",
+        "backendOpeningDigest",
+        "snapshot",
+        "historyDigest",
+        "observedAt",
+        "notAfter"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 3
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/policyDigest"
+        },
+        "authorityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "participantInventoryDigest": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+        },
+        "surface": {
+          "const": "runtime"
+        },
+        "caseId": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/id"
+        },
+        "participantId": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+        },
+        "backendOpeningDigest": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+        },
+        "snapshot": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/emptyLedgerSnapshot"
+        },
+        "historyDigest": {
+          "const": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "observedAt": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/time"
+        },
+        "notAfter": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/time"
+        }
+      },
+      "$comment": "Independent empty LOCAL SQLite cut, first original only; not an assertion about another Runtime. Exact signed backend opening pins all global identity/consent fields."
+    },
+    "backendOpeningEnvelope3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/backendOpening3"
+        },
+        "keyId": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/id"
+        },
+        "signature": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/signature"
+        }
+      }
+    },
+    "runtimeOpeningEnvelope3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/runtimeOpening3"
+        },
+        "keyId": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/id"
+        },
+        "signature": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/signature"
+        }
+      }
+    },
+    "openingContribution3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "backend",
+        "runtime"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 3
+        },
+        "backend": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/backendOpeningEnvelope3"
+        },
+        "runtime": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/runtimeOpeningEnvelope3"
+        }
+      }
+    },
+    "openingHandshake3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "backend",
+        "runtimes"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 3
+        },
+        "backend": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/backendOpeningEnvelope3"
+        },
+        "runtimes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/runtimeOpeningEnvelope3"
+          }
+        }
+      }
+    },
+    "openingPending3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "status",
+        "backend",
+        "runtimes",
+        "missingParticipantIds",
+        "blockedReason"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 3
+        },
+        "status": {
+          "const": "pending"
+        },
+        "backend": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/backendOpeningEnvelope3"
+        },
+        "runtimes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/runtimeOpeningEnvelope3"
+          }
+        },
+        "missingParticipantIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+          }
+        },
+        "blockedReason": {
+          "enum": [
+            null,
+            "opening_expired"
+          ]
+        }
+      },
+      "$comment": "Pending is not an accepted opening. Expired first originals cannot be retimed, replaced or reset."
+    },
+    "openingAccepted3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "status",
+        "opening",
+        "openingDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 3
+        },
+        "status": {
+          "const": "opened"
+        },
+        "opening": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/openingHandshake3"
+        },
+        "openingDigest": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+        }
+      },
+      "$comment": "Derive the initial zero solely from verified opening originals; read the current prefix separately before admission. No ambiguous mutable snapshot in this opening response."
+    },
+    "openingResponse3": {
+      "oneOf": [
+        {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/openingPending3"
+        },
+        {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/openingAccepted3"
+        }
+      ]
+    },
+    "reservation3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "accountingVersion",
+        "ledgerId",
+        "providerPolicyDigest",
+        "authorityDigest",
+        "demandManifestDigest",
+        "openingDigest",
+        "physicalId",
+        "allocationId",
+        "reservationId",
+        "subjectId",
+        "scopeDigest",
+        "physicalIndex",
+        "modelRequestIndex",
+        "preparationOrdinal",
+        "kind",
+        "reservedUsdMicros",
+        "nativeSessionId",
+        "nativeInputId",
+        "participantInventoryDigest",
+        "participantId"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 3
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/policyDigest"
+        },
+        "authorityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "openingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "physicalId": {
+          "$ref": "#/$defs/digest"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "reservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "subjectId": {
+          "$ref": "#/$defs/id"
+        },
+        "scopeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "physicalIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 21
+        },
+        "modelRequestIndex": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 19
+            }
+          ]
+        },
+        "preparationOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15
+        },
+        "kind": {
+          "enum": [
+            "access",
+            "qualification",
+            "parent",
+            "coding_worker",
+            "business_worker",
+            "reviewer",
+            "integrator"
+          ]
+        },
+        "reservedUsdMicros": {
+          "type": "integer",
+          "const": 421000
+        },
+        "nativeSessionId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "nativeInputId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "participantInventoryDigest": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+        },
+        "participantId": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+        }
+      },
+      "description": "Each committed physical slot is immutable and never refunded. The physicalId is the canonical digest of ledgerId and absolute physicalIndex. A fresh account, policy, case or process cannot create another opening.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "access"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "nativeSessionId": {
+                "const": null
+              },
+              "nativeInputId": {
+                "const": null
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "nativeSessionId": {
+                "$ref": "#/$defs/id"
+              },
+              "nativeInputId": {
+                "$ref": "#/$defs/id"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "settlement3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "accountingVersion",
+        "ledgerId",
+        "providerPolicyDigest",
+        "authorityDigest",
+        "demandManifestDigest",
+        "openingDigest",
+        "physicalId",
+        "reservationDigest",
+        "transportOriginalDigest",
+        "requestDigest",
+        "wireResponseDigest",
+        "providerRequestId",
+        "nativeSessionId",
+        "httpStatus",
+        "actualUsdMicros",
+        "startedAt",
+        "completedAt",
+        "nativeInputId",
+        "participantInventoryDigest",
+        "participantId",
+        "usage"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 3
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/policyDigest"
+        },
+        "authorityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "openingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "physicalId": {
+          "$ref": "#/$defs/digest"
+        },
+        "reservationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "transportOriginalDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "requestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "wireResponseDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerRequestId": {
+          "$ref": "#/$defs/id"
+        },
+        "nativeSessionId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "httpStatus": {
+          "type": "integer",
+          "const": 200
+        },
+        "actualUsdMicros": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 421000
+        },
+        "startedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "nativeInputId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "participantInventoryDigest": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+        },
+        "participantId": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+        },
+        "usage": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/modelUsage3"
+            }
+          ]
+        }
+      },
+      "description": "Only a terminal original response and its exact original request release a hold. The backend verifies transport, body, strict SSE and usage, then derives conservative cost. The producer-reported actualUsdMicros is checked, never trusted as a refund. Reservation kind access requires usage:null/cost0; every model reservation requires exact modelUsage3. Participant is selected by immutable reservation scope."
+    },
+    "modelUsage3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputTokens",
+        "outputTokens",
+        "cachedInputTokens"
+      ],
+      "properties": {
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1047576
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "cachedInputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1047576
+        }
+      },
+      "$comment": "cached<=input; match actual terminal ingress counters and peak conservative tariff. Foreign mirror verifies signed counters/cost, never claims independent foreign byte observation."
+    },
+    "settlementEnvelope3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/settlement3"
+        },
+        "keyId": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/id"
+        },
+        "signature": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/signature"
+        }
+      }
+    },
+    "globalPrefix3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reservations",
+        "settlements",
+        "snapshot"
+      ],
+      "properties": {
+        "reservations": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 21,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/reservation3"
+          }
+        },
+        "settlements": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 21,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/settlementEnvelope3"
+          }
+        },
+        "snapshot": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/ledgerSnapshot"
+        }
+      }
+    },
+    "localCut3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "physicalIds",
+        "snapshot"
+      ],
+      "properties": {
+        "physicalIds": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 21,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+          }
+        },
+        "snapshot": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/ledgerSnapshot"
+        }
+      },
+      "$comment": "Actual local admitted operations only, in global index order; foreign and reserved-but-not-admitted slots absent. Local UNKNOWN remains held until own ACK even if global is settled."
+    },
+    "runtimeReadback3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "accountingVersion",
+        "ledgerId",
+        "providerPolicyDigest",
+        "authorityDigest",
+        "demandManifestDigest",
+        "participantInventoryDigest",
+        "openingDigest",
+        "participantId",
+        "global",
+        "local",
+        "observedAt"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 3
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/policyDigest"
+        },
+        "authorityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "participantInventoryDigest": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+        },
+        "openingDigest": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+        },
+        "participantId": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/digest"
+        },
+        "global": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/globalPrefix3"
+        },
+        "local": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/localCut3"
+        },
+        "observedAt": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/time"
+        }
+      },
+      "$comment": "Signed composite observation. Global and local snapshots are neither summed nor required equal. Exact first local signatures and own current journals remain independently required."
+    },
+    "runtimeReadbackEnvelope3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/runtimeReadback3"
+        },
+        "keyId": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/id"
+        },
+        "signature": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/signature"
+        }
+      }
+    }
+  }
+}

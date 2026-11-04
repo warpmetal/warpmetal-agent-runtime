@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-plan-genesis-v1.schema.json",
+  "title": "Explicit unbound owner plan document and operation-specific ROOT full-byte read",
+  "$comment": "Additive genesis wire only. Endpoints select closed definitions. Not a managed Work, child observation, controller activity, executable grant or installed capability. Revision12/revision13/domain/V3 schemas remain unchanged. Integer validation excludes booleans; semantic byte/path/current-authority checks are normative in F1_PLAN_SOURCE_GENESIS_V1_HANDOFF.md.",
+  "$defs": {
+    "id": {"$ref": "workspace-workflow-v1.schema.json#/$defs/id"},
+    "positive": {"$ref": "workspace-workflow-v1.schema.json#/$defs/positive"},
+    "nonnegative": {"$ref": "workspace-workflow-v1.schema.json#/$defs/nonnegative"},
+    "digest": {"$ref": "workspace-workflow-v1.schema.json#/$defs/digest"},
+    "time": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/time"},
+    "planPin": {"$ref": "workspace-workflow-v1.schema.json#/$defs/planPin"},
+    "owner": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/controllerOwner"},
+    "workspace": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/workspace"},
+    "sourceApproval": {
+      "type": "object", "additionalProperties": false, "required": ["reference", "byteCount"],
+      "properties": {
+        "reference": {"allOf": [{"$ref": "workspace-workflow-v1.schema.json#/$defs/reference"}, {"properties": {"status": {"const": "accepted"}}}]},
+        "byteCount": {"type": "integer", "minimum": 1, "maximum": 262144}
+      }
+    },
+    "expectedScope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sandboxGeneration", "cellId", "controllerId", "controllerRevision", "authorityRevision", "workspace"],
+      "properties": {
+        "sandboxGeneration": {"$ref": "#/$defs/positive"}, "cellId": {"$ref": "#/$defs/id"},
+        "controllerId": {"$ref": "#/$defs/id"}, "controllerRevision": {"$ref": "#/$defs/positive"},
+        "authorityRevision": {"$ref": "#/$defs/positive"}, "workspace": {"$ref": "#/$defs/workspace"}
+      }
+    },
+    "content": {
+      "type": "object", "additionalProperties": false, "required": ["objective", "constraints", "context"],
+      "properties": {"objective": {"type": "string"}, "constraints": {"type": "string"}, "context": {"type": "string"}}
+    },
+    "documentCreate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "kind", "requestId", "workId", "title", "expectedScope", "content", "source"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "kind": {"const": "owner_plan_document"},
+        "requestId": {"$ref": "#/$defs/id"}, "workId": {"type": "string", "pattern": "^work_[A-Za-z0-9_-]{4,75}$"},
+        "title": {"type": "string"}, "expectedScope": {"$ref": "#/$defs/expectedScope"},
+        "content": {"$ref": "#/$defs/content"}, "source": {"$ref": "#/$defs/sourceApproval"}
+      }
+    },
+    "targetAuthority": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["kind", "authorizationDigest"],
+         "properties": {"kind": {"const": "account_server"}, "authorizationDigest": {"$ref": "#/$defs/digest"}}},
+        {"type": "object", "additionalProperties": false,
+         "required": ["kind", "caseId", "enrollmentDeclarationDigest", "associationDigest", "parentAssociationDigest", "venueDigest"],
+         "properties": {
+           "kind": {"const": "application_fixture"}, "caseId": {"$ref": "#/$defs/id"},
+           "enrollmentDeclarationDigest": {"$ref": "#/$defs/digest"}, "associationDigest": {"$ref": "#/$defs/digest"},
+           "parentAssociationDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+           "venueDigest": {"$ref": "#/$defs/digest"}
+         }}
+      ]
+    },
+    "document": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "kind", "plan", "owner", "workspace", "source", "targetAuthority", "documentDigest"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "kind": {"const": "owner_plan_document"},
+        "plan": {"$ref": "#/$defs/planPin"}, "owner": {"$ref": "#/$defs/owner"},
+        "workspace": {"$ref": "#/$defs/workspace"}, "source": {"$ref": "#/$defs/sourceApproval"},
+        "targetAuthority": {"$ref": "#/$defs/targetAuthority"}, "documentDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "readOperationRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "requestId", "expectedDocumentDigest"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "requestId": {"$ref": "#/$defs/id"}, "expectedDocumentDigest": {"$ref": "#/$defs/digest"}}
+    },
+    "reader": {
+      "type": "object", "additionalProperties": false,
+      "required": ["caseId", "caseManifestDigest", "candidateDescriptorDigest", "implementationDigest", "producer"],
+      "properties": {
+        "caseId": {"$ref": "#/$defs/id"}, "caseManifestDigest": {"$ref": "#/$defs/digest"},
+        "candidateDescriptorDigest": {"$ref": "#/$defs/digest"}, "implementationDigest": {"$ref": "#/$defs/digest"},
+        "producer": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/registeredProducer"}
+      }
+    },
+    "readerConfig": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "taskId", "nodeTokenHash", "reader"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "taskId": {"$ref": "#/$defs/id"},
+        "nodeTokenHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "reader": {"$ref": "#/$defs/reader"}
+      }
+    },
+    "readOperation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "kind", "operationId", "operationDigest", "document", "reader", "runtimeRevision", "expiresAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "kind": {"const": "owner_document_plan_read"},
+        "operationId": {"$ref": "#/$defs/id"}, "operationDigest": {"$ref": "#/$defs/digest"},
+        "document": {"$ref": "#/$defs/document"}, "reader": {"$ref": "#/$defs/reader"},
+        "runtimeRevision": {"$ref": "#/$defs/positive"}, "expiresAt": {"$ref": "#/$defs/time"}
+      }
+    },
+    "readback": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operation", "observedAt", "rootDevice", "rootInode", "sourceDevice", "sourceInode", "sourceBytesBase64"],
+      "properties": {
+        "operation": {"$ref": "#/$defs/readOperation"}, "observedAt": {"$ref": "#/$defs/time"},
+        "rootDevice": {"$ref": "#/$defs/nonnegative"}, "rootInode": {"$ref": "#/$defs/positive"},
+        "sourceDevice": {"$ref": "#/$defs/nonnegative"}, "sourceInode": {"$ref": "#/$defs/positive"},
+        "sourceBytesBase64": {"type": "string", "minLength": 4, "maxLength": 349528, "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"}
+      }
+    },
+    "readPayload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "requestId", "operationId", "operationDigest", "taskId", "nodeTokenHash", "bridgeVersion", "issuedAt", "notAfter", "readback"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "purpose": {"const": "workspace_workflow_plan_source_read"},
+        "requestId": {"$ref": "#/$defs/id"}, "operationId": {"$ref": "#/$defs/id"}, "operationDigest": {"$ref": "#/$defs/digest"},
+        "taskId": {"$ref": "#/$defs/id"}, "nodeTokenHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "bridgeVersion": {"const": "workspace-workflow-bridge-v1"}, "issuedAt": {"$ref": "#/$defs/time"},
+        "notAfter": {"$ref": "#/$defs/time"}, "readback": {"$ref": "#/$defs/readback"}
+      }
+    },
+    "readEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {
+        "payload": {"$ref": "#/$defs/readPayload"}, "keyId": {"$ref": "#/$defs/id"},
+        "signature": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/envelope/properties/signature"}
+      }
+    },
+    "readReceipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "kind", "readId", "operationId", "operationDigest", "documentDigest", "plan", "observedAt", "sourceByteCount", "evidenceDigest", "readDigest"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "kind": {"const": "owner_document_plan_read"},
+        "readId": {"$ref": "#/$defs/id"}, "operationId": {"$ref": "#/$defs/id"}, "operationDigest": {"$ref": "#/$defs/digest"},
+        "documentDigest": {"$ref": "#/$defs/digest"}, "plan": {"$ref": "#/$defs/planPin"}, "observedAt": {"$ref": "#/$defs/time"},
+        "sourceByteCount": {"type": "integer", "minimum": 1, "maximum": 262144},
+        "evidenceDigest": {"$ref": "#/$defs/digest"}, "readDigest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

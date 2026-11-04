@@ -1,0 +1,611 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json",
+  "title": "WarpMetal cell lifecycle formatVersion 3",
+  "description": "Manager-frozen lifecycle formatVersion 3 contract, canonical plan planning/agent-management/agent-workspaces-v1.md SS17.14-17.15. Preparation carries no prompt grant; only an authenticated receipt plus separately issued registered-manager grant authorizes execution. Required preparedTuple.authority {providerId,authMode,modelId} comes from the immutable backend-authorized preparation, never a configDigest preimage or node-selected model. Both canonical bindingDigest and preparedReceiptDigest include this complete tuple; executionGrant binds its existing preparedReceiptDigest with no extra authority field. Main manifest authority and retained V2 remain unchanged. SS17.14 protected key/OAuth material is delivered only through authenticated node transport. Account/controller, connection/model/catalog, workspace/profile and current STATE/parent/packet/attempt/fence authority are rechecked; reports never create grants. Unknown fields fail strict decode. Native guardformat2 initial-idle admission is a separate native protocol, not backend grant format. This intentional pre-release V3 revision does not accept mixed historical fixture/schema bytes.",
+  "$defs": {
+    "safeId": {
+      "description": "Opaque backend-safe identifier matching the existing managed-service SAFE_ID contract.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "digest": {
+      "description": "Prefixed sha256 content digest.",
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "rawDigest": {
+      "description": "Unprefixed 32-byte sha256 hex, matching the existing launch_request_digest column.",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "fence": {
+      "description": "Authoritative 32-byte execution fence, lowercase hex.",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "providerId": {
+      "description": "Provider id matching agent_cell_credentials.provider_id and the managed-service provider contract.",
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$"
+    },
+    "authMode": {
+      "description": "Supported owner provider authentication modes.",
+      "enum": ["api_key", "chatgpt_subscription"]
+    },
+    "credentialMaterialKey": {
+      "description": "Frozen SS17.14 API-key material. Secret; only protected node delivery/stdin, never a manifest, journal, argv, environment, workspace or log.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "key"],
+      "properties": {
+        "type": {"const": "key"},
+        "key": {"type": "string", "minLength": 1}
+      }
+    },
+    "credentialMaterialOAuth": {
+      "description": "Frozen SS17.14 actual OpenAI subscription material, not an opaque reference. Refresh belongs to the exact native context, never another active connection. Protected node delivery/stdin only.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "methodID", "access", "refresh", "expires", "metadata"],
+      "properties": {
+        "type": {"const": "oauth"},
+        "methodID": {"enum": ["chatgpt-browser", "chatgpt-headless"]},
+        "access": {"type": "string", "minLength": 1},
+        "refresh": {"type": "string", "minLength": 1},
+        "expires": {"type": "integer", "minimum": 0, "description": "Unix milliseconds."},
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["accountID"],
+          "properties": {"accountID": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "cellCredentialLeaseV3": {
+      "description": "POST /internal/runtime/cell-credential response for a V3 service, authenticated by the current task/node. Immutable lease and connection revision; no fallback or silent remint. V2 retains its existing {credentialId, apiKey} response. This is NOT a native adoption request/response; F2 owns that schema.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formatVersion", "credentialId", "connectionId", "connectionRevision", "providerId", "authMode", "material"],
+      "properties": {
+        "formatVersion": {"const": 3},
+        "credentialId": {"$ref": "#/$defs/safeId"},
+        "connectionId": {"$ref": "#/$defs/safeId"},
+        "connectionRevision": {"type": "integer", "minimum": 1},
+        "providerId": {"$ref": "#/$defs/providerId"},
+        "authMode": {"$ref": "#/$defs/authMode"},
+        "material": {"oneOf": [{"$ref": "#/$defs/credentialMaterialKey"}, {"$ref": "#/$defs/credentialMaterialOAuth"}]}
+      },
+      "allOf": [{
+        "if": {"properties": {"authMode": {"const": "api_key"}}},
+        "then": {"properties": {"material": {"$ref": "#/$defs/credentialMaterialKey"}}},
+        "else": {"properties": {"providerId": {"const": "openai"}, "material": {"$ref": "#/$defs/credentialMaterialOAuth"}}}
+      }]
+    },
+    "nativeSessionId": {
+      "description": "Deterministic native child session id derived from the launch operation.",
+      "type": "string",
+      "pattern": "^ses_[A-Za-z0-9_-]{4,64}$"
+    },
+    "nativeInputId": {
+      "description": "Deterministic native input/message id derived from the launch operation.",
+      "type": "string",
+      "pattern": "^msg_[A-Za-z0-9_-]{4,64}$"
+    },
+    "nativeProjectId": {
+      "description": "Native project identity: global for a top-level cell, otherwise a 40-hex id. Never a Git commit and never an arbitrary directory name.",
+      "type": "string",
+      "pattern": "^(?:global|[a-f0-9]{40})$"
+    },
+    "lifecyclePhase": {
+      "description": "prepare has no execution grant; execute requires a previously accepted prepared receipt and an execution grant.",
+      "enum": ["prepare", "execute"]
+    },
+    "credentialBinding": {
+      "description": "Account-authorized owner credential reference carried in the formatVersion 3 owner wire. It names an account-owned connection revision only; it carries NO secret material and NO native credential id. The protected lease/native credential identity is returned only through the node-authenticated preparedReceipt. The connection row is account-owned (task -> account via ensure_account), never an infrastructure ProviderConfigVersion entry.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["connectionId", "connectionRevision", "providerId", "authMode"],
+      "properties": {
+        "connectionId": {
+          "description": "Account-owned provider connection id (AgentProviderConnection).",
+          "$ref": "#/$defs/safeId"
+        },
+        "connectionRevision": {
+          "description": "Immutable connection revision; rotating the connection mints a new revision and blocks grants bound to the old one.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "providerId": {"$ref": "#/$defs/providerId"},
+        "authMode": {"$ref": "#/$defs/authMode"}
+      }
+    },
+    "parentIdentity": {
+      "description": "Parent execution/packet authority bound by preparation and by the execution grant so a replay/recovery can never adopt a substitute parent. A retained top-level cell may carry a null parent execution/packet, but the packet id/revision are always present.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parentExecutionId", "parentPacketId", "packetId", "packetRevision"],
+      "properties": {
+        "parentExecutionId": {
+          "oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]
+        },
+        "parentPacketId": {
+          "oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]
+        },
+        "packetId": {"$ref": "#/$defs/safeId"},
+        "packetRevision": {"type": "integer", "minimum": 1}
+      }
+    },
+    "workspaceSelectionRef": {
+      "description": "Owner workspace selection reference. Only selectionId is caller-known; projectId/workspaceEpoch are derived from the authorized stored selection and may be supplied only as optional consistency hints. Root/scope are Runtime-attested and never owner input.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selectionId"],
+      "properties": {
+        "selectionId": {"$ref": "#/$defs/safeId"},
+        "projectId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]},
+        "workspaceEpoch": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]}
+      }
+    },
+    "cellProfileV2": {
+      "description": "FormatVersion 2 cell entry profile sub-object, preserved verbatim by formatVersion 3.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setupOperationId", "profileId", "profileRevision", "profileDigest"],
+      "properties": {
+        "setupOperationId": {"$ref": "#/$defs/safeId"},
+        "profileId": {"$ref": "#/$defs/safeId"},
+        "profileRevision": {"type": "integer", "minimum": 1},
+        "profileDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "cellInstructionsV2": {
+      "description": "FormatVersion 2 pinned effective instruction tuple, preserved verbatim by formatVersion 3. The Runtime fetches content through the authenticated instruction endpoint and verifies this tuple; it never invents a prompt locally.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instructionRevision", "instructionDigest"],
+      "properties": {
+        "instructionRevision": {"type": "integer", "minimum": 1},
+        "instructionDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "cellAuthorityV2": {
+      "description": "FormatVersion 2 cell authority: the non-secret {providerId, modelId, authMode} tuple only. No Team semantics and never a teamRevision.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId"],
+      "properties": {
+        "providerId": {"$ref": "#/$defs/providerId"},
+        "modelId": {"type": ["string", "null"]},
+        "authMode": {
+          "oneOf": [{"$ref": "#/$defs/authMode"}, {"type": "null"}]
+        }
+      }
+    },
+    "cellWorkspaceV2": {
+      "description": "FormatVersion 2 attested workspace contract (ordinary directory, not a Git worktree). Preserved verbatim by formatVersion 3.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selectionId", "projectId", "workspaceEpoch", "scopeRevision", "rootAttestation"],
+      "properties": {
+        "selectionId": {"$ref": "#/$defs/safeId"},
+        "projectId": {"$ref": "#/$defs/safeId"},
+        "workspaceEpoch": {"$ref": "#/$defs/safeId"},
+        "scopeRevision": {"type": "integer", "minimum": 1},
+        "rootAttestation": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "cellIdentityV2": {
+      "description": "The complete formatVersion 2 cell identity tuple that formatVersion 3 extends. Every field the retained v2 producer emits is declared here; the v3 entry adds lifecyclePhase, credentialBinding, parentIdentity, preparedReceiptDigest and executionGrant on top. Retained v2 rows are preserved with no conversion and no v3 fallback.",
+      "type": "object",
+      "required": [
+        "formatVersion",
+        "targetKind",
+        "operationId",
+        "launchOperationId",
+        "actionRevision",
+        "desiredRevision",
+        "desiredState",
+        "sessionMode",
+        "serviceRegistrationId",
+        "ownerCellId",
+        "ownerRole",
+        "ownerGeneration",
+        "sandboxId",
+        "sandboxGeneration",
+        "serviceGeneration",
+        "instance",
+        "role",
+        "configDigest",
+        "attempt",
+        "fence",
+        "nativeSessionId",
+        "nativeProjectId",
+        "workspaceEpoch",
+        "workspace",
+        "instructions",
+        "profile"
+      ],
+      "properties": {
+        "formatVersion": {"type": "integer", "minimum": 2},
+        "targetKind": {"const": "cell_session"},
+        "operationId": {"$ref": "#/$defs/safeId"},
+        "launchOperationId": {"$ref": "#/$defs/safeId"},
+        "actionRevision": {"type": "integer", "minimum": 1},
+        "desiredRevision": {"type": "integer", "minimum": 1},
+        "desiredState": {"enum": ["active", "paused", "stopped", "retired"]},
+        "sessionMode": {"enum": ["create_initial", "lookup_only"]},
+        "serviceRegistrationId": {"$ref": "#/$defs/safeId"},
+        "ownerCellId": {"$ref": "#/$defs/safeId"},
+        "ownerRole": {"enum": ["manager", "orchestrator"]},
+        "ownerGeneration": {"type": "integer", "minimum": 1},
+        "sandboxId": {"$ref": "#/$defs/safeId"},
+        "sandboxGeneration": {"type": "integer", "minimum": 1},
+        "serviceGeneration": {"type": "integer", "minimum": 1},
+        "instance": {"$ref": "#/$defs/safeId"},
+        "role": {"enum": ["worker", "reviewer"]},
+        "configDigest": {"$ref": "#/$defs/digest"},
+        "attempt": {"type": "integer", "minimum": 1},
+        "fence": {"$ref": "#/$defs/fence"},
+        "nativeSessionId": {"$ref": "#/$defs/nativeSessionId"},
+        "nativeProjectId": {"$ref": "#/$defs/nativeProjectId"},
+        "workspaceEpoch": {"$ref": "#/$defs/safeId"},
+        "workspace": {"$ref": "#/$defs/cellWorkspaceV2"},
+        "instructions": {"$ref": "#/$defs/cellInstructionsV2"},
+        "profile": {"$ref": "#/$defs/cellProfileV2"},
+        "authority": {"$ref": "#/$defs/cellAuthorityV2"}
+      }
+    },
+    "preparedAuthority": {
+      "description": "Required SS17.15 non-secret model authority copied from the durable backend-authorized preparation. Native session binding/admission/delivery/runner must match it; a node cannot choose a model from a configDigest preimage or active/default context.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId", "authMode", "modelId"],
+      "properties": {
+        "providerId": {"$ref": "#/$defs/providerId"},
+        "authMode": {"$ref": "#/$defs/authMode"},
+        "modelId": {"type": "string", "minLength": 1}
+      },
+      "allOf": [{
+        "if": {"properties": {"authMode": {"const": "chatgpt_subscription"}}},
+        "then": {"properties": {"providerId": {"const": "openai"}}}
+      }]
+    },
+    "preparedTuple": {
+      "description": "Canonical complete prepared identity tuple, including required SS17.15 authority {providerId,authMode,modelId} from the immutable authorized preparation. It enters both bindingDigest and preparedReceiptDigest. Any bound operation, parent/packet, controller/authority revision, service/sandbox generation, config/profile/workspace, credential binding, model authority, request, attempt or fence change invalidates readiness. attempt/fence are current STATE values, never caller-selected. Backend compares the full tuple and current connection/catalog authority before accepting a node receipt.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "controllerId",
+        "controllerRevision",
+        "authorityRevision",
+        "serviceRegistrationId",
+        "serviceGeneration",
+        "sandboxId",
+        "sandboxGeneration",
+        "parentExecutionId",
+        "parentPacketId",
+        "packetId",
+        "packetRevision",
+        "requestDigest",
+        "configDigest",
+        "profileDigest",
+        "workspaceDigest",
+        "credentialBinding",
+        "authority",
+        "attempt",
+        "fence"
+      ],
+      "properties": {
+        "operationId": {"$ref": "#/$defs/safeId"},
+        "controllerId": {
+          "description": "Backend-registered controller principal (AgentCellControllerRegistration).",
+          "$ref": "#/$defs/safeId"
+        },
+        "controllerRevision": {"type": "integer", "minimum": 1},
+        "authorityRevision": {"type": "integer", "minimum": 1},
+        "serviceRegistrationId": {"$ref": "#/$defs/safeId"},
+        "serviceGeneration": {"type": "integer", "minimum": 1},
+        "sandboxId": {"$ref": "#/$defs/safeId"},
+        "sandboxGeneration": {"type": "integer", "minimum": 1},
+        "parentExecutionId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]},
+        "parentPacketId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]},
+        "packetId": {"$ref": "#/$defs/safeId"},
+        "packetRevision": {"type": "integer", "minimum": 1},
+        "requestDigest": {"$ref": "#/$defs/rawDigest"},
+        "configDigest": {"$ref": "#/$defs/digest"},
+        "profileDigest": {"$ref": "#/$defs/digest"},
+        "workspaceDigest": {
+          "description": "Digest over the canonical COMPLETE workspace identity (selectionId, projectId, workspaceEpoch, scopeRevision and root attestation), not merely rootAttestation.",
+          "$ref": "#/$defs/digest"
+        },
+        "credentialBinding": {"$ref": "#/$defs/credentialBinding"},
+        "authority": {"$ref": "#/$defs/preparedAuthority"},
+        "attempt": {"type": "integer", "minimum": 1},
+        "fence": {"$ref": "#/$defs/fence"}
+      }
+    },
+    "executionGrant": {
+      "description": "Backend-issued, single-use execution authority (AgentCellExecutionGrant). Runtime and native code cannot mint it. Native protected ingress atomically validates and durably consumes it with input admission; a retry looks up the same grant/input rather than creating a substitute. Revocation blocks future grants and cancels consumed ones. The grant binds operation/input/session, parent execution/packet authority, controller/authority revision, authoritative attempt/fence and the config/profile/workspace/credential revisions, so a matching preparedReceiptDigest cannot be replayed against a drifted authority.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "grantId",
+        "operationId",
+        "sessionId",
+        "inputId",
+        "controllerId",
+        "controllerRevision",
+        "authorityRevision",
+        "attempt",
+        "fence",
+        "parentExecutionId",
+        "parentPacketId",
+        "packetId",
+        "packetRevision",
+        "configDigest",
+        "profileDigest",
+        "workspaceDigest",
+        "credentialBindingDigest",
+        "preparedReceiptDigest",
+        "expiresAt"
+      ],
+      "properties": {
+        "grantId": {"$ref": "#/$defs/safeId"},
+        "operationId": {
+          "description": "Exact launch operation identity; MUST equal entry launchOperationId and the accepted preparation operation. Entry operationId identifies the distinct managed-service operation.",
+          "$ref": "#/$defs/safeId"
+        },
+        "sessionId": {"$ref": "#/$defs/nativeSessionId"},
+        "inputId": {"$ref": "#/$defs/nativeInputId"},
+        "controllerId": {"$ref": "#/$defs/safeId"},
+        "controllerRevision": {
+          "description": "Registered controller/authority revision at grant time.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "authorityRevision": {
+          "description": "Authorized provider/model/auth authority revision at grant time.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "attempt": {"type": "integer", "minimum": 1},
+        "fence": {"$ref": "#/$defs/fence"},
+        "parentExecutionId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]},
+        "parentPacketId": {"oneOf": [{"$ref": "#/$defs/safeId"}, {"type": "null"}]},
+        "packetId": {"$ref": "#/$defs/safeId"},
+        "packetRevision": {"type": "integer", "minimum": 1},
+        "configDigest": {"$ref": "#/$defs/digest"},
+        "profileDigest": {"$ref": "#/$defs/digest"},
+        "workspaceDigest": {
+          "description": "Digest over the canonical COMPLETE workspace identity bound by the accepted prepared receipt.",
+          "$ref": "#/$defs/digest"
+        },
+        "credentialBindingDigest": {
+          "description": "Digest over the canonical account-owned connection binding {connectionId, connectionRevision, providerId, authMode}.",
+          "$ref": "#/$defs/digest"
+        },
+        "preparedReceiptDigest": {
+          "description": "Exact accepted prepared receipt digest; MUST equal the entry preparedReceiptDigest.",
+          "$ref": "#/$defs/digest"
+        },
+        "expiresAt": {
+          "description": "Grant expiry; an expired grant fails closed.",
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "preparedReceipt": {
+      "description": "Node-authenticated preparation receipt. Preparation materializes/binds workspace, profile and credential but has NO prompt grant, and it must NOT mark the native binding verified before this actual receipt. It returns the protected lease credentialId, the exact nativeCredentialId and the binding digest; the backend stores preparedReceiptDigest over preparedTuple and readiness is invalidated by any bound-input change. Same-lease replay validates the exact native id/binding and the full tuple, not merely a matching label.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "preparedTuple",
+        "credentialId",
+        "nativeCredentialId",
+        "bindingDigest",
+        "preparedReceiptDigest"
+      ],
+      "properties": {
+        "formatVersion": {"const": 3},
+        "preparedTuple": {"$ref": "#/$defs/preparedTuple"},
+        "credentialId": {
+          "description": "Protected backend credential lease id (agent_cell_credentials.id).",
+          "$ref": "#/$defs/safeId"
+        },
+        "nativeCredentialId": {
+          "description": "Exact native credential id materialized by the protected store.",
+          "type": "string",
+          "minLength": 1
+        },
+        "bindingDigest": {
+          "description": "Pins the actual lease/native credential identity together with the prepared tuple.",
+          "$ref": "#/$defs/digest"
+        },
+        "preparedReceiptDigest": {
+          "description": "Canonical hash ordering: preparation obtains the native credential id first; the protected native binding then persists the complete prepared identity; only then is this digest computed over {preparedTuple, credentialId, nativeCredentialId, bindingDigest}. There is no circular pre-known receipt requirement, and the backend recomputes/compares it rather than trusting a caller string.",
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "cellPrepareRequest": {
+      "description": "Owner-authenticated formatVersion 3 prepare request (POST .../cell/preparations). Owner authority is derived from the authenticated account controller registration (customer_authority.request_authority() + ensure_account), never from caller ownerRole/ownerGeneration strings. attempt, fence, authority/config/profile/workspace revisions and owner generation are derived from STATE and are deliberately absent from this owner wire. credentialBinding names an account-owned connection revision only; no secret and no native credential id are accepted.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "targetKind",
+        "lifecyclePhase",
+        "requestId",
+        "operationId",
+        "role",
+        "instance",
+        "controllerId",
+        "sandboxGeneration",
+        "parentIdentity",
+        "workspaceSelection",
+        "profile",
+        "credentialBinding",
+        "authority",
+        "title"
+      ],
+      "properties": {
+        "version": {"const": 3},
+        "targetKind": {"const": "cell_session"},
+        "lifecyclePhase": {"const": "prepare"},
+        "requestId": {"$ref": "#/$defs/safeId"},
+        "operationId": {"$ref": "#/$defs/safeId"},
+        "role": {"enum": ["worker", "reviewer"]},
+        "instance": {"$ref": "#/$defs/safeId"},
+        "controllerId": {"$ref": "#/$defs/safeId"},
+        "sandboxGeneration": {"type": "integer", "minimum": 1},
+        "parentIdentity": {"$ref": "#/$defs/parentIdentity"},
+        "workspaceSelection": {"$ref": "#/$defs/workspaceSelectionRef"},
+        "profile": {"$ref": "#/$defs/cellProfileV2"},
+        "credentialBinding": {"$ref": "#/$defs/credentialBinding"},
+        "authority": {"$ref": "#/$defs/cellAuthorityV2"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 512},
+        "content": {
+          "description": "Reserved objective/context for the later execute grant. It is bound at prepare time but never prompts during prepare.",
+          "type": "object"
+        }
+      }
+    },
+    "cellServiceV3": {
+      "description": "One formatVersion 3 cell lifecycle entry, produced by the backend and consumed by the Runtime (source-compatible with the retained formatVersion 2 {cellServices: [...]} envelope). It is prepare/execute discriminated: prepare has no execution grant; execute requires preparedReceiptDigest and an executionGrant object. attempt/fence here are authoritative STATE values, not caller fields. Unknown fields are rejected (unevaluatedProperties false); there is no fallback route from v3 to v2.",
+      "allOf": [
+        {"$ref": "#/$defs/cellIdentityV2"},
+        {
+          "type": "object",
+          "required": [
+            "formatVersion",
+            "preparationId",
+            "lifecyclePhase",
+            "credentialBinding",
+            "controllerId",
+            "controllerRevision",
+            "authorityRevision",
+            "parentIdentity",
+            "requestDigest"
+          ],
+          "properties": {
+            "formatVersion": {"const": 3},
+            "preparationId": {
+              "description": "Durable backend preparation id. Required so the Runtime can correlate the node prepared-receipt report without guessing it from test-only DB helpers.",
+              "$ref": "#/$defs/safeId"
+            },
+            "lifecyclePhase": {"$ref": "#/$defs/lifecyclePhase"},
+            "credentialBinding": {"$ref": "#/$defs/credentialBinding"},
+            "controllerId": {
+              "description": "Registered controller principal. Required on the preparation manifest so the Runtime can construct and validate the complete prepared tuple before any grant exists.",
+              "$ref": "#/$defs/safeId"
+            },
+            "controllerRevision": {
+              "description": "Immutable controller revision captured at preparation.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "authorityRevision": {
+              "description": "Authorized provider/model/auth authority revision captured at preparation.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "parentIdentity": {"$ref": "#/$defs/parentIdentity"},
+            "requestDigest": {"$ref": "#/$defs/rawDigest"}
+          }
+        },
+        {
+          "if": {
+            "properties": {"lifecyclePhase": {"const": "prepare"}},
+            "required": ["lifecyclePhase"]
+          },
+          "then": {
+            "properties": {
+              "preparedReceiptDigest": {"type": "null"},
+              "executionGrant": {"type": "null"}
+            }
+          },
+          "else": {
+            "required": ["preparedReceiptDigest", "executionGrant"],
+            "properties": {
+              "preparedReceiptDigest": {"$ref": "#/$defs/digest"},
+              "executionGrant": {"$ref": "#/$defs/executionGrant"}
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "cellExecutionReportV3": {
+      "description": "Existing POST /internal/runtime/report cellServices envelope with formatVersion 3, no invented grant wire. The backend resolves only its separately issued grant by service/preparation and verifies the native child operation/session/message/attempt against grant operation/session/input/attempt. Preparation-only, missing-material and unknown observations do not consume; pending/running/terminal native evidence consumes and reconciles STATE atomically. Cancellation must acknowledge current retired authority; a hold ack does not settle the writer.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formatVersion", "operationId", "actionRevision", "observedDesiredRevision", "serviceRegistrationId", "observedState", "desiredState", "ownerCellId", "ownerRole", "ownerGeneration", "sandboxId", "sandboxGeneration", "serviceGeneration", "fence", "instance", "role", "nativeSessionId", "nativeProjectId", "workspaceEpoch", "attempt", "exhausted", "receiptDigest"],
+      "properties": {
+        "formatVersion": {"const": 3, "type": "integer"},
+        "operationId": {"$ref": "#/$defs/safeId"},
+        "actionRevision": {"type": "integer", "minimum": 1},
+        "observedDesiredRevision": {"type": "integer", "minimum": 1},
+        "serviceRegistrationId": {"$ref": "#/$defs/safeId"},
+        "observedState": {"enum": ["ready", "exhausted", "unknown", "failed", "cancelled"]},
+        "desiredState": {"enum": ["active", "paused", "stopped", "retired"]},
+        "ownerCellId": {"$ref": "#/$defs/safeId"},
+        "ownerRole": {"enum": ["manager", "orchestrator"]},
+        "ownerGeneration": {"type": "integer", "minimum": 1},
+        "sandboxId": {"$ref": "#/$defs/safeId"},
+        "sandboxGeneration": {"type": "integer", "minimum": 1},
+        "serviceGeneration": {"type": "integer", "minimum": 1},
+        "fence": {"$ref": "#/$defs/fence"},
+        "instance": {"$ref": "#/$defs/safeId"},
+        "role": {"enum": ["worker", "reviewer"]},
+        "nativeSessionId": {"$ref": "#/$defs/nativeSessionId"},
+        "nativeProjectId": {"$ref": "#/$defs/nativeProjectId"},
+        "workspaceEpoch": {"$ref": "#/$defs/safeId"},
+        "attempt": {"type": "integer", "minimum": 1},
+        "exhausted": {"type": "boolean"},
+        "receiptDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"const": ""}]},
+        "child": {
+          "oneOf": [{"type": "null"}, {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["operationId", "sessionId", "messageId", "state", "attempt", "exhausted"],
+            "properties": {
+              "operationId": {"$ref": "#/$defs/safeId"},
+              "sessionId": {"$ref": "#/$defs/nativeSessionId"},
+              "messageId": {"$ref": "#/$defs/nativeInputId"},
+              "state": {"enum": ["absent", "bound", "pending", "running", "uncertain", "terminal", "exhausted"]},
+              "attempt": {"type": "integer", "minimum": 1},
+              "outcome": {"enum": [null, "succeeded", "failed", "interrupted"]},
+              "exhausted": {"type": "boolean"}
+            }
+          }]
+        },
+        "lastError": {
+          "oneOf": [{"type": "null"}, {
+            "type": "object", "additionalProperties": false, "required": ["code"],
+            "properties": {"code": {"$ref": "#/$defs/safeId", "maxLength": 80}}
+          }]
+        }
+      },
+      "allOf": [{
+        "if": {"properties": {"observedState": {"enum": ["ready", "failed", "cancelled"]}}},
+        "then": {"properties": {"receiptDigest": {"$ref": "#/$defs/digest"}}}
+      }]
+    },
+    "cellManifestV3": {
+      "description": "FormatVersion 3 cell transport envelope, source-compatible with the retained formatVersion 2 {cellServices: [...]} envelope. Cell-owned services are never mixed into the legacy member manifest.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cellServices"],
+      "properties": {
+        "cellServices": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/cellServiceV3"}
+        }
+      }
+    }
+  }
+}

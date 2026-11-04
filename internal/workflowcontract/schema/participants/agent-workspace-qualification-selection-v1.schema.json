@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.warpmetal.com/contracts/agent-workspace-qualification-selection-v1.schema.json",
+  "$comment": "GET /internal/account/agent-provider-connections/{connectionId}/qualification-policy with exactly taskId and connectionRevision query fields. Route canonicalizes positive integer revision and applies current owner/task scope before selecting the configured authority family.",
+  "$defs": {
+    "qualificationPolicySelectionOpenAI1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "taskId",
+        "connectionId",
+        "connectionRevision",
+        "providerId",
+        "modelId",
+        "authMode",
+        "consentFormatVersion",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "taskId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "providerId": {
+          "const": "openai"
+        },
+        "modelId": {
+          "const": "gpt-4.1-mini-2025-04-14"
+        },
+        "authMode": {
+          "const": "api_key"
+        },
+        "consentFormatVersion": {
+          "const": 1
+        },
+        "providerPolicyDigest": {
+          "const": null
+        }
+      },
+      "$comment": "Owner-authorized current task+connection revision readout only. No consent, signing, reservation or provider call; pending/mixed scope refuses without default."
+    },
+    "qualificationPolicySelectionFlash19": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "taskId",
+        "connectionId",
+        "connectionRevision",
+        "providerId",
+        "modelId",
+        "authMode",
+        "consentFormatVersion",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "taskId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "providerId": {
+          "const": "deepseek"
+        },
+        "modelId": {
+          "const": "deepseek-flash"
+        },
+        "authMode": {
+          "const": "api_key"
+        },
+        "consentFormatVersion": {
+          "const": 2
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        }
+      },
+      "$comment": "Owner-authorized current task+connection revision readout only. No consent, signing, reservation or provider call; pending/mixed scope refuses without default."
+    },
+    "qualificationPolicySelectionFlash21": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "taskId",
+        "connectionId",
+        "connectionRevision",
+        "providerId",
+        "modelId",
+        "authMode",
+        "consentFormatVersion",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "taskId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "providerId": {
+          "const": "deepseek"
+        },
+        "modelId": {
+          "const": "deepseek-flash"
+        },
+        "authMode": {
+          "const": "api_key"
+        },
+        "consentFormatVersion": {
+          "const": 2
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:e3020419b9841fb1e39c9dca0ff262c8761c19438263187c90b86b89976e9657"
+        }
+      },
+      "$comment": "Owner-authorized current task+connection revision readout only. No consent, signing, reservation or provider call; pending/mixed scope refuses without default."
+    },
+    "qualificationPolicySelection1": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/qualificationPolicySelectionOpenAI1"
+        },
+        {
+          "$ref": "#/$defs/qualificationPolicySelectionFlash19"
+        },
+        {
+          "$ref": "#/$defs/qualificationPolicySelectionFlash21"
+        }
+      ]
+    },
+    "qualificationPolicyQuery1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskId",
+        "connectionRevision"
+      ],
+      "properties": {
+        "taskId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "qualificationConsentRequest": {
+      "$ref": "https://warpmetal.com/contracts/agent-workspace-owner-v1.schema.json#/$defs/qualificationConsentRequest"
+    },
+    "qualificationConsent": {
+      "$ref": "https://warpmetal.com/contracts/agent-workspace-owner-v1.schema.json#/$defs/qualificationConsent"
+    }
+  }
+}

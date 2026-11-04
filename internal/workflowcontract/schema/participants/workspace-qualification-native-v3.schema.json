@@ -1,0 +1,588 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.warpmetal.com/contracts/workspace-qualification-native-v3.schema.json",
+  "title": "Native qualification sidecars; separately signed, immutable backend publication originals retained",
+  "$defs": {
+    "id": {
+      "$ref": "https://warpmetal.com/contracts/workspace-qualification-provider-v2.schema.json#/$defs/id"
+    },
+    "digest": {
+      "$ref": "https://warpmetal.com/contracts/workspace-qualification-provider-v2.schema.json#/$defs/digest"
+    },
+    "time": {
+      "$ref": "https://warpmetal.com/contracts/workspace-qualification-provider-v2.schema.json#/$defs/time"
+    },
+    "signature": {
+      "$ref": "https://warpmetal.com/contracts/workspace-qualification-provider-v2.schema.json#/$defs/signature"
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "contentBase64",
+        "signatureBase64"
+      ],
+      "properties": {
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "contentBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 43692
+        },
+        "signatureBase64": {
+          "$ref": "#/$defs/signature"
+        }
+      }
+    },
+    "ceilings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preparations",
+        "requests",
+        "outputTokens",
+        "requestBytes",
+        "responseBytes",
+        "retries"
+      ],
+      "properties": {
+        "preparations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 13
+        },
+        "requests": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 17
+        },
+        "outputTokens": {
+          "const": 1000
+        },
+        "requestBytes": {
+          "const": 32768
+        },
+        "responseBytes": {
+          "const": 262144
+        },
+        "retries": {
+          "const": 0
+        }
+      }
+    },
+    "nativeBootstrap3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "mode",
+        "providerPolicyDigest",
+        "accountingVersion",
+        "campaignId",
+        "sandboxId",
+        "instance",
+        "profileId",
+        "profileDigest",
+        "pluginSha256",
+        "caSha256",
+        "origin",
+        "expiresAt",
+        "ceilings",
+        "sandboxGeneration",
+        "imageDigest",
+        "case",
+        "authorityDigest",
+        "sourceBootstrap",
+        "producer",
+        "producerPublicKeyBase64"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 3
+        },
+        "mode": {
+          "const": "real_provider"
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        },
+        "accountingVersion": {
+          "const": 2
+        },
+        "campaignId": {
+          "$ref": "#/$defs/id"
+        },
+        "sandboxId": {
+          "$ref": "#/$defs/id"
+        },
+        "instance": {
+          "$ref": "#/$defs/id"
+        },
+        "profileId": {
+          "const": "opencode"
+        },
+        "profileDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "pluginSha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "caSha256": {
+          "const": ""
+        },
+        "origin": {
+          "const": "https://api.deepseek.com"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        },
+        "ceilings": {
+          "$ref": "#/$defs/ceilings"
+        },
+        "sandboxGeneration": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "imageDigest": {
+          "type": "string",
+          "minLength": 71,
+          "maxLength": 1024
+        },
+        "case": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v3.schema.json#/$defs/typedCase"
+        },
+        "authorityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceBootstrap": {
+          "$ref": "#/$defs/publication"
+        },
+        "producer": {
+          "$ref": "#/$defs/producer"
+        },
+        "producerPublicKeyBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 5464
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "purpose",
+        "qualificationId",
+        "reservationId",
+        "tuple",
+        "tupleDigest",
+        "createPermitDigest",
+        "workload",
+        "budget"
+      ],
+      "properties": {
+        "purpose": {
+          "const": "model_qualification_bootstrap"
+        },
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        },
+        "reservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "tuple": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v3.schema.json#/$defs/artifactApplicability2"
+        },
+        "tupleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "createPermitDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "workload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-qualification-provider-v2.schema.json#/$defs/workload"
+        },
+        "budget": {
+          "$ref": "https://warpmetal.com/contracts/workspace-qualification-provider-v2.schema.json#/$defs/budget"
+        }
+      }
+    },
+    "nativePolicy4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "mode",
+        "providerPolicyDigest",
+        "accountingVersion",
+        "campaignId",
+        "sandboxId",
+        "instance",
+        "profileId",
+        "profileDigest",
+        "pluginSha256",
+        "caSha256",
+        "origin",
+        "expiresAt",
+        "ceilings",
+        "providerId",
+        "authMode",
+        "modelId",
+        "authorizationBinding",
+        "preparedTupleDigest",
+        "preparations",
+        "run",
+        "sourceBootstrapDigest",
+        "sidecarBootstrapDigest",
+        "sourcePolicy"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 4
+        },
+        "mode": {
+          "const": "real_provider"
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        },
+        "accountingVersion": {
+          "const": 2
+        },
+        "campaignId": {
+          "$ref": "#/$defs/id"
+        },
+        "sandboxId": {
+          "$ref": "#/$defs/id"
+        },
+        "instance": {
+          "$ref": "#/$defs/id"
+        },
+        "profileId": {
+          "const": "opencode"
+        },
+        "profileDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "pluginSha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "caSha256": {
+          "const": ""
+        },
+        "origin": {
+          "const": "https://api.deepseek.com"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        },
+        "ceilings": {
+          "$ref": "#/$defs/ceilings"
+        },
+        "providerId": {
+          "const": "deepseek"
+        },
+        "authMode": {
+          "const": "api_key"
+        },
+        "modelId": {
+          "const": "deepseek-flash"
+        },
+        "authorizationBinding": {
+          "const": "native_activation_v3"
+        },
+        "preparedTupleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "preparations": {
+          "$ref": "https://warpmetal.com/contracts/workspace-qualification-provider-v2.schema.json#/$defs/policy4/properties/preparations"
+        },
+        "run": {
+          "$ref": "#/$defs/run"
+        },
+        "sourceBootstrapDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sidecarBootstrapDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourcePolicy": {
+          "$ref": "#/$defs/publication"
+        }
+      }
+    },
+    "authorizationObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "purpose",
+        "taskId",
+        "nodeTokenHash",
+        "qualificationId",
+        "preparationId",
+        "preparedTupleDigest",
+        "preparedReceiptDigest",
+        "nativeSessionId",
+        "nativeInputId",
+        "authorizationSha256",
+        "observedAt"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "purpose": {
+          "const": "qualification_authorization"
+        },
+        "taskId": {
+          "$ref": "#/$defs/id"
+        },
+        "nodeTokenHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        },
+        "preparedTupleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "preparedReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "nativeSessionId": {
+          "$ref": "#/$defs/id"
+        },
+        "nativeInputId": {
+          "$ref": "#/$defs/id"
+        },
+        "authorizationSha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "authorizationEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/authorizationObservation"
+        },
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "signature": {
+          "$ref": "#/$defs/signature"
+        }
+      }
+    },
+    "nativeActivation3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "mode",
+        "providerPolicyDigest",
+        "accountingVersion",
+        "purpose",
+        "sidecarPolicyDigest",
+        "sourcePolicyDigest",
+        "sourceActivation",
+        "authorizationObservation",
+        "issuedAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 3
+        },
+        "mode": {
+          "const": "real_provider"
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        },
+        "accountingVersion": {
+          "const": 2
+        },
+        "purpose": {
+          "const": "model_qualification_bootstrap"
+        },
+        "sidecarPolicyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourcePolicyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceActivation": {
+          "$ref": "#/$defs/publication"
+        },
+        "authorizationObservation": {
+          "$ref": "#/$defs/authorizationEnvelope"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "prepareRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "stage",
+        "bootstrapDigest",
+        "bootstrapSignatureDigest",
+        "policyDigest",
+        "policySignatureDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "stage": {
+          "const": "prepare"
+        },
+        "bootstrapDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "bootstrapSignatureDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "policyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "policySignatureDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "executeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "stage",
+        "sidecarPolicyDigest",
+        "activationSignatureDigest",
+        "authorizationObservation"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "stage": {
+          "const": "execute"
+        },
+        "sidecarPolicyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "activationSignatureDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authorizationObservation": {
+          "$ref": "#/$defs/authorizationEnvelope"
+        }
+      }
+    },
+    "prepareIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "stage",
+        "bootstrap",
+        "bootstrapDigest",
+        "policy",
+        "policyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "stage": {
+          "const": "prepare"
+        },
+        "bootstrap": {
+          "$ref": "#/$defs/nativeBootstrap3"
+        },
+        "bootstrapDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "policy": {
+          "$ref": "#/$defs/nativePolicy4"
+        },
+        "policyDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "executeIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "stage",
+        "activation",
+        "activationDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "stage": {
+          "const": "execute"
+        },
+        "activation": {
+          "$ref": "#/$defs/nativeActivation3"
+        },
+        "activationDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "keyId",
+        "keySHA256",
+        "serverId",
+        "nodeTokenHash"
+      ],
+      "properties": {
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "keySHA256": {
+          "$ref": "#/$defs/digest"
+        },
+        "serverId": {
+          "$ref": "#/$defs/id"
+        },
+        "nodeTokenHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}

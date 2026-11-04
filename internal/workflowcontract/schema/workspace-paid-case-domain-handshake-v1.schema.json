@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-paid-case-domain-handshake-v1.schema.json",
+  "title": "Private current-node paid case domain handshake v1",
+  "$defs": {
+    "adoptionRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "completeInventoryEnvelopeDigest", "demandManifestDigest", "runtimeReadback"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1},
+        "completeInventoryEnvelopeDigest": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/digest"},
+        "demandManifestDigest": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/digest"},
+        "runtimeReadback": {"$ref": "https://warpmetal.com/contracts/workspace-paid-case-domain-adoption-v1.schema.json#/$defs/paidLedgerReadbackEnvelope"}
+      }
+    },
+    "acceptanceRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "acceptance"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1},
+        "acceptance": {"$ref": "https://warpmetal.com/contracts/workspace-paid-case-domain-adoption-v1.schema.json#/$defs/paidCaseDomainAcceptanceEnvelope"}
+      }
+    }
+  }
+}

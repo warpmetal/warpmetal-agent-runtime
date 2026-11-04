@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-paid-case-domain-adoption-v1.schema.json",
+  "title": "Private case-relative paid-domain adoption v1",
+  "$defs": {
+    "id": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/id"},
+    "digest": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/digest"},
+    "time": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/time"},
+    "signature": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/signature"},
+    "scope": {"$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/controllerOwner"},
+    "window": {"$ref": "https://warpmetal.com/contracts/workspace-complete-execution-inventory-v1.schema.json#/$defs/validationWindow"},
+    "physicalId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "counter": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "bases": {
+      "type": "object", "additionalProperties": false,
+      "required": ["physicalRequests", "modelRequests", "preparations"],
+      "properties": {"physicalRequests": {"$ref": "#/$defs/counter"}, "modelRequests": {"$ref": "#/$defs/counter"}, "preparations": {"$ref": "#/$defs/counter"}}
+    },
+    "backendVector": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ledgerId", "physicalRequests", "modelRequests", "turns", "preparations", "reservedUsdMicros", "actualUsdMicros"],
+      "properties": {
+        "ledgerId": {"const": "model-qualification-and-product"},
+        "physicalRequests": {"$ref": "#/$defs/counter"}, "modelRequests": {"$ref": "#/$defs/counter"},
+        "turns": {"$ref": "#/$defs/counter"}, "preparations": {"$ref": "#/$defs/counter"},
+        "reservedUsdMicros": {"$ref": "#/$defs/counter"}, "actualUsdMicros": {"$ref": "#/$defs/counter"}
+      }
+    },
+    "operationRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operationId", "operationDigest"],
+      "properties": {"operationId": {"$ref": "#/$defs/physicalId"}, "operationDigest": {"$ref": "#/$defs/digest"}}
+    },
+    "paidOperationRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operationId", "operationDigest", "storagePhysicalIndex", "importedOriginalDigest"],
+      "properties": {
+        "operationId": {"$ref": "#/$defs/physicalId"}, "operationDigest": {"$ref": "#/$defs/digest"},
+        "storagePhysicalIndex": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "importedOriginalDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}
+      }
+    },
+    "qualificationImportRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["qualificationId", "eventId", "evidenceDigest"],
+      "properties": {"qualificationId": {"$ref": "#/$defs/id"}, "eventId": {"$ref": "#/$defs/id"}, "evidenceDigest": {"$ref": "#/$defs/digest"}}
+    },
+    "paidAccountingJoin": {
+      "$comment": "Locators only. Re-read original typed journal and Runtime operations/settlement originals. A null import retains full backend reserve; Runtime settled usage alone never releases it.",
+      "type": "object", "additionalProperties": false,
+      "required": ["demandManifestDigest", "allocationId", "journalId", "recordDigest", "domainAdoptionEnvelopeDigest", "physicalOperations", "qualificationImport"],
+      "properties": {
+        "demandManifestDigest": {"$ref": "#/$defs/digest"}, "allocationId": {"$ref": "#/$defs/id"},
+        "journalId": {"$ref": "#/$defs/id"}, "recordDigest": {"$ref": "#/$defs/digest"},
+        "domainAdoptionEnvelopeDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+        "physicalOperations": {"type": "array", "maxItems": 3, "uniqueItems": true, "items": {"$ref": "#/$defs/operationRef"}},
+        "qualificationImport": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/qualificationImportRef"}]}
+      }
+    },
+    "paidLedgerReadback": {
+      "$comment": "Existing independently configured Runtime producer's original observation, not a replacement for the original343 receipt or backend row. UNKNOWN/active PAID or OFFLINE owner blocks successor. First accepted bytes remain immutable.",
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "taskId", "serverId", "validationWindow", "candidateInventoryDigest", "baselineDigest", "paidHistoryDigest", "paidHistory", "offlineHistoryDigest", "owner", "cumulative", "observedAt", "expiresAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "purpose": {"const": "paid_case_ledger_readback"},
+        "taskId": {"$ref": "#/$defs/id"}, "serverId": {"$ref": "#/$defs/id"}, "validationWindow": {"$ref": "#/$defs/window"},
+        "candidateInventoryDigest": {"$ref": "#/$defs/digest"}, "baselineDigest": {"$ref": "#/$defs/digest"},
+        "paidHistoryDigest": {"$ref": "#/$defs/digest"},
+        "paidHistory": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"$ref": "#/$defs/paidOperationRef"}},
+        "offlineHistoryDigest": {"$ref": "#/$defs/digest"},
+        "owner": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/operationRef"}]},
+        "cumulative": {"$ref": "#/$defs/bases"}, "observedAt": {"$ref": "#/$defs/time"}, "expiresAt": {"$ref": "#/$defs/time"}
+      }
+    },
+    "paidLedgerReadbackEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {"payload": {"$ref": "#/$defs/paidLedgerReadback"}, "keyId": {"$ref": "#/$defs/id"}, "signature": {"$ref": "#/$defs/signature"}}
+    },
+    "limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["physicalRequests", "modelRequests", "accessRequests", "preparations", "usdMicros"],
+      "properties": {
+        "physicalRequests": {"type": "integer", "enum": [3, 26]}, "modelRequests": {"type": "integer", "enum": [2, 24]},
+        "accessRequests": {"type": "integer", "enum": [1, 2]}, "preparations": {"type": "integer", "enum": [1, 17]},
+        "usdMicros": {"type": "integer", "enum": [1263000, 10946000]}
+      }
+    },
+    "paidCaseDomainAdoption": {
+      "$comment": "Private projection of an already committed backend journal adoption under SAME financial-row lock. Producer transport is not financial self-authority; both owners independently verify originals, bases and current liability. No native/public request extension.",
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "attemptId", "completeInventoryEnvelopeDigest", "validationWindow", "candidateInventoryDigest", "scope", "domainKind", "caseId", "caseManifestDigest", "authorityDigest", "selectionEnvelopeDigest", "demandEnvelopeDigest", "demandManifestDigest", "selectedAllocationIds", "limits", "bases", "backendOpening", "unknownUsdMicros", "openingReceiptDigest", "producerReconciliationEnvelopeDigest", "runtimeReadbackEnvelopeDigest", "accountingJoins", "retainedAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "purpose": {"const": "paid_case_relative_domain_adoption"},
+        "attemptId": {"$ref": "#/$defs/id"}, "completeInventoryEnvelopeDigest": {"$ref": "#/$defs/digest"},
+        "validationWindow": {"$ref": "#/$defs/window"}, "candidateInventoryDigest": {"$ref": "#/$defs/digest"}, "scope": {"$ref": "#/$defs/scope"},
+        "domainKind": {"enum": ["paid_full26", "fresh_source_qualification_pair"]},
+        "caseId": {"$ref": "#/$defs/id"}, "caseManifestDigest": {"$ref": "#/$defs/digest"}, "authorityDigest": {"$ref": "#/$defs/digest"},
+        "selectionEnvelopeDigest": {"$ref": "#/$defs/digest"}, "demandEnvelopeDigest": {"$ref": "#/$defs/digest"}, "demandManifestDigest": {"$ref": "#/$defs/digest"},
+        "selectedAllocationIds": {"type": "array", "minItems": 2, "maxItems": 19, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "limits": {"$ref": "#/$defs/limits"}, "bases": {"$ref": "#/$defs/bases"}, "backendOpening": {"$ref": "#/$defs/backendVector"},
+        "unknownUsdMicros": {"$ref": "#/$defs/counter"}, "openingReceiptDigest": {"$ref": "#/$defs/digest"},
+        "producerReconciliationEnvelopeDigest": {"$ref": "#/$defs/digest"}, "runtimeReadbackEnvelopeDigest": {"$ref": "#/$defs/digest"},
+        "accountingJoins": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"$ref": "#/$defs/paidAccountingJoin"}},
+        "retainedAt": {"$ref": "#/$defs/time"}
+      },
+      "allOf": [{
+        "if": {"properties": {"domainKind": {"const": "paid_full26"}}},
+        "then": {"properties": {"selectedAllocationIds": {"minItems": 19, "maxItems": 19}, "limits": {"properties": {"physicalRequests": {"const": 26}, "modelRequests": {"const": 24}, "accessRequests": {"const": 2}, "preparations": {"const": 17}, "usdMicros": {"const": 10946000}}}}},
+        "else": {"properties": {"selectedAllocationIds": {"minItems": 2, "maxItems": 2}, "limits": {"properties": {"physicalRequests": {"const": 3}, "modelRequests": {"const": 2}, "accessRequests": {"const": 1}, "preparations": {"const": 1}, "usdMicros": {"const": 1263000}}}}}
+      }]
+    },
+    "paidCaseDomainAdoptionEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {"payload": {"$ref": "#/$defs/paidCaseDomainAdoption"}, "keyId": {"$ref": "#/$defs/id"}, "signature": {"$ref": "#/$defs/signature"}}
+    },
+    "paidCaseDomainAcceptance": {
+      "$comment": "Existing Runtime producer observation AFTER its first adoption-fact commit. No new grant/budget authority; each admit still rechecks SAME owner/history/cap and current process.",
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "adoptionEnvelopeDigest", "runtimeReadbackEnvelopeDigest", "acceptedAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "purpose": {"const": "paid_case_relative_domain_acceptance"},
+        "adoptionEnvelopeDigest": {"$ref": "#/$defs/digest"}, "runtimeReadbackEnvelopeDigest": {"$ref": "#/$defs/digest"}, "acceptedAt": {"$ref": "#/$defs/time"}
+      }
+    },
+    "paidCaseDomainAcceptanceEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {"payload": {"$ref": "#/$defs/paidCaseDomainAcceptance"}, "keyId": {"$ref": "#/$defs/id"}, "signature": {"$ref": "#/$defs/signature"}}
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-validation-baseline-live-v1.schema.json",
+  "title": "Manager-owned validation baseline and once-only live dispatch originals v1",
+  "$defs": {
+    "baseline": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "validationWindow", "authoritativeStore", "integratedConsumed", "integratedLimit", "liveConsumed", "liveLimit", "correctionAllocated", "correctionLimit"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1},
+        "purpose": {"const": "workspace_validation_attempt_baseline"},
+        "validationWindow": {"$ref": "workspace-workflow-budget-live-window-v1.schema.json#/$defs/validationWindow"},
+        "authoritativeStore": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^/[^\u0000]+$"},
+        "integratedConsumed": {"type": "integer", "const": 1},
+        "integratedLimit": {"type": "integer", "const": 3},
+        "liveConsumed": {"type": "integer", "const": 0},
+        "liveLimit": {"type": "integer", "const": 2},
+        "correctionAllocated": {"type": "integer", "const": 1},
+        "correctionLimit": {"type": "integer", "const": 1}
+      }
+    },
+    "baselineEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {
+        "payload": {"$ref": "#/$defs/baseline"},
+        "keyId": {"$ref": "workspace-workflow-v1.schema.json#/$defs/id"},
+        "signature": {"$ref": "workspace-workflow-budget-v2.schema.json#/$defs/signature"}
+      }
+    },
+    "liveReceipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "validationWindow", "attemptId", "dispatchReceiptDigest", "physicalAttemptDigest", "liveOrdinal", "liveLimit", "liveBaselineConsumed", "baselineEnvelopeDigest", "claimedAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1},
+        "purpose": {"const": "workspace_validation_live_dispatch"},
+        "validationWindow": {"$ref": "workspace-workflow-budget-live-window-v1.schema.json#/$defs/validationWindow"},
+        "attemptId": {"$ref": "workspace-workflow-v1.schema.json#/$defs/id"},
+        "dispatchReceiptDigest": {"$ref": "workspace-workflow-v1.schema.json#/$defs/digest"},
+        "physicalAttemptDigest": {"$ref": "workspace-workflow-v1.schema.json#/$defs/digest"},
+        "liveOrdinal": {"type": "integer", "enum": [1, 2]},
+        "liveLimit": {"type": "integer", "const": 2},
+        "liveBaselineConsumed": {"type": "integer", "const": 0},
+        "baselineEnvelopeDigest": {"$ref": "workspace-workflow-v1.schema.json#/$defs/digest"},
+        "claimedAt": {"$ref": "workspace-workflow-v1.schema.json#/$defs/time"}
+      }
+    },
+    "liveReceiptEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {
+        "payload": {"$ref": "#/$defs/liveReceipt"},
+        "keyId": {"$ref": "workspace-workflow-v1.schema.json#/$defs/id"},
+        "signature": {"$ref": "workspace-workflow-budget-v2.schema.json#/$defs/signature"}
+      }
+    }
+  }
+}

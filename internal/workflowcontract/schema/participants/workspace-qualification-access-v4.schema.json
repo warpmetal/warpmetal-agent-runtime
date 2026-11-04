@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.warpmetal.com/contracts/workspace-qualification-access-v4.schema.json",
+  "title": "Current exact Flash access reservation readback; not physical gate authorization",
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "accounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ledgerId",
+        "demandManifestDigest",
+        "allocation",
+        "reservationId",
+        "subjectId",
+        "modelDispatchStart",
+        "configDigest"
+      ],
+      "properties": {
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "demandManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "allocation": {
+          "allOf": [
+            {
+              "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/allocation"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "access"
+                },
+                "modelRequests": {
+                  "const": 0
+                },
+                "accessRequests": {
+                  "const": 1
+                },
+                "preparationOrdinal": {
+                  "const": 0
+                }
+              }
+            }
+          ]
+        },
+        "reservationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "subjectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "modelDispatchStart": {
+          "type": "null"
+        },
+        "configDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "formatVersion",
+    "providerPolicyDigest",
+    "accountingVersion",
+    "qualificationId",
+    "preparationId",
+    "reservationId",
+    "preparedTupleDigest",
+    "tupleDigest",
+    "authorityDigest",
+    "demandManifestDigest",
+    "allocation",
+    "accounting",
+    "request",
+    "expiresAt"
+  ],
+  "properties": {
+    "formatVersion": {
+      "const": 2
+    },
+    "providerPolicyDigest": {
+      "const": "sha256:e3020419b9841fb1e39c9dca0ff262c8761c19438263187c90b86b89976e9657"
+    },
+    "accountingVersion": {
+      "const": 2
+    },
+    "qualificationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "preparationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "reservationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "preparedTupleDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "tupleDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "authorityDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "demandManifestDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "allocation": {
+      "allOf": [
+        {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/allocation"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "access"
+            },
+            "modelRequests": {
+              "const": 0
+            },
+            "accessRequests": {
+              "const": 1
+            },
+            "preparationOrdinal": {
+              "const": 0
+            }
+          }
+        }
+      ]
+    },
+    "accounting": {
+      "$ref": "#/$defs/accounting"
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "url"
+      ],
+      "properties": {
+        "method": {
+          "const": "GET"
+        },
+        "url": {
+          "const": "https://api.deepseek.com/models"
+        }
+      }
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

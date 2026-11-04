@@ -1,0 +1,936 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-child-integrator-v1.schema.json",
+  "$comment": "Manager-frozen single-target integrator. New exact capability reads preparation2 and base policy2 coding_worker/business_worker/reviewer plus integrator policy3/control4. Failed new validation never falls back. Existing immutable contracts unchanged. Runtime ROOT Producer stages/reads/signs under registered root; Sandbox independently verifies source and before image without signer custody. Same target path must fit both settled author and assigned integrator scopes; no overwrite or path mapping. Schema validation alone supplies no target, financial, installed, native or source-read authority.",
+  "$defs": {
+    "integrationSourceGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "binding",
+        "assignmentId",
+        "use",
+        "reference",
+        "artifact",
+        "byteCount",
+        "rootGrantDigest",
+        "manifestDigest",
+        "target",
+        "targetBinding",
+        "expiresAt"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "binding": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/binding"
+        },
+        "assignmentId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/id"
+        },
+        "use": {
+          "enum": [
+            "integration_packet_source",
+            "integration_target_artifact"
+          ]
+        },
+        "reference": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/reference"
+        },
+        "artifact": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/nullableArtifactRef"
+        },
+        "byteCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16384
+        },
+        "rootGrantDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/digest"
+        },
+        "manifestDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/digest"
+        },
+        "target": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/resultPin"
+        },
+        "targetBinding": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/binding"
+        },
+        "expiresAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/time"
+        }
+      },
+      "allOf": [
+        {
+          "properties": {
+            "reference": {
+              "properties": {
+                "status": {
+                  "const": "accepted"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "use": {
+                "const": "integration_target_artifact"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "artifact": {
+                "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/artifactRef"
+              },
+              "byteCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 8192
+              }
+            }
+          }
+        }
+      ]
+    },
+    "integrationReadRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "binding",
+        "assignmentId",
+        "use",
+        "rootKind",
+        "workspace",
+        "registeredSourceId",
+        "rootAttestation",
+        "producer",
+        "candidateDescriptorDigest",
+        "expiresAt"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "binding": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/binding"
+        },
+        "assignmentId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/id"
+        },
+        "use": {
+          "enum": [
+            "integration_packet_source",
+            "integration_target_artifact"
+          ]
+        },
+        "rootKind": {
+          "const": "workspace"
+        },
+        "workspace": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/workspace"
+        },
+        "registeredSourceId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/id"
+        },
+        "rootAttestation": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/digest"
+        },
+        "producer": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/registeredProducer"
+        },
+        "candidateDescriptorDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/digest"
+        },
+        "expiresAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/time"
+        }
+      }
+    },
+    "integrationSourceScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "grant",
+        "root"
+      ],
+      "properties": {
+        "grant": {
+          "$ref": "#/$defs/integrationSourceGrant"
+        },
+        "root": {
+          "$ref": "#/$defs/integrationReadRoot"
+        }
+      }
+    },
+    "integrationByteSpan": {
+      "$comment": "Whole original source encoded losslessly in final immutable UTF-8 firstText. Runtime ROOT Producer owns source custody; Sandbox independently checks delivery and native before image.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "reference",
+        "artifact",
+        "rootGrantDigest",
+        "encoding",
+        "byteCount",
+        "offset",
+        "length"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "packet_source",
+            "target_artifact"
+          ]
+        },
+        "reference": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/reference"
+        },
+        "artifact": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/nullableArtifactRef"
+        },
+        "rootGrantDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/digest"
+        },
+        "encoding": {
+          "const": "json_string_fragment_utf8"
+        },
+        "byteCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16384
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16384
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16384
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "target_artifact"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "artifact": {
+                "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/artifactRef"
+              },
+              "byteCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 8192
+              }
+            }
+          }
+        }
+      ]
+    },
+    "integrationDelivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "deliveryPlanId",
+        "deliveryPlanDigest",
+        "intent",
+        "binding",
+        "assignment",
+        "target",
+        "targetBinding",
+        "inputId",
+        "inputDigest",
+        "inputByteCount",
+        "spans",
+        "notAfter"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "deliveryPlanId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/id"
+        },
+        "deliveryPlanDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/digest"
+        },
+        "intent": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/intentRef"
+        },
+        "binding": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/binding"
+        },
+        "assignment": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/assignmentReceipt"
+        },
+        "target": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/resultPin"
+        },
+        "targetBinding": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/binding"
+        },
+        "inputId": {
+          "$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/nativeInputId"
+        },
+        "inputDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/digest"
+        },
+        "inputByteCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384
+        },
+        "spans": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/integrationByteSpan"
+          },
+          "contains": {
+            "properties": {
+              "kind": {
+                "const": "target_artifact"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        "notAfter": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/time"
+        }
+      }
+    },
+    "productPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "targetKind",
+        "mode",
+        "stage",
+        "purpose",
+        "preparationPolicyDigest",
+        "case",
+        "intent",
+        "scope",
+        "root",
+        "applicability",
+        "qualification",
+        "reservation",
+        "budget",
+        "workload",
+        "instructions",
+        "preparedReceipt",
+        "binding",
+        "assignment",
+        "sourceReads",
+        "tools",
+        "reviewDelivery",
+        "issuedAt",
+        "expiresAt",
+        "providerPolicyDigest",
+        "accountingVersion",
+        "integrationDelivery"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 3
+        },
+        "targetKind": {
+          "const": "cell_session"
+        },
+        "mode": {
+          "const": "real_provider"
+        },
+        "stage": {
+          "const": "product"
+        },
+        "purpose": {
+          "const": "integrator"
+        },
+        "preparationPolicyDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "case": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v3.schema.json#/$defs/typedCase"
+        },
+        "intent": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/intentRef"
+        },
+        "scope": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/workScope"
+        },
+        "root": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/rootScope"
+        },
+        "applicability": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v3.schema.json#/$defs/artifactApplicability2"
+        },
+        "qualification": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/qualificationPin"
+        },
+        "reservation": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v3.schema.json#/$defs/reservation"
+        },
+        "budget": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/budget"
+        },
+        "workload": {
+          "allOf": [
+            {
+              "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/workload"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "integration2"
+                }
+              }
+            }
+          ]
+        },
+        "instructions": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/instructionPin"
+        },
+        "preparedReceipt": {
+          "$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/preparedReceipt"
+        },
+        "binding": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/binding"
+        },
+        "assignment": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/assignmentReceipt"
+        },
+        "sourceReads": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/integrationSourceScope"
+          },
+          "contains": {
+            "properties": {
+              "grant": {
+                "properties": {
+                  "use": {
+                    "const": "integration_target_artifact"
+                  }
+                },
+                "required": [
+                  "use"
+                ]
+              }
+            },
+            "required": [
+              "grant"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "reviewDelivery": {
+          "const": null
+        },
+        "issuedAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "integrationDelivery": {
+          "$ref": "#/$defs/integrationDelivery"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/productPolicy/allOf/0"
+        },
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/productPolicy/allOf/1"
+        }
+      ]
+    },
+    "productPolicyEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/productPolicy"
+        },
+        "keyId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "signature": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/signature"
+        }
+      }
+    },
+    "policySigningIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "handleId",
+        "stage",
+        "payload",
+        "policyBinding",
+        "notBefore"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 3
+        },
+        "handleId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "stage": {
+          "const": "product"
+        },
+        "payload": {
+          "$ref": "#/$defs/productPolicy"
+        },
+        "policyBinding": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v2.schema.json#/$defs/productPolicyBinding"
+        },
+        "notBefore": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        }
+      }
+    },
+    "policyAcceptRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "requestId",
+        "stage",
+        "preparationPolicy",
+        "policy",
+        "policyBinding"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 3
+        },
+        "requestId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "stage": {
+          "const": "product"
+        },
+        "preparationPolicy": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v2.schema.json#/$defs/preparationPolicyEnvelope"
+        },
+        "policy": {
+          "$ref": "#/$defs/productPolicyEnvelope"
+        },
+        "policyBinding": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v2.schema.json#/$defs/bindingEnvelope"
+        }
+      }
+    },
+    "controlGeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "targetKind",
+        "phase",
+        "preparationId",
+        "demand",
+        "preparationPolicy",
+        "policy",
+        "policyBinding",
+        "activation",
+        "authorizationObservation",
+        "providerPolicyDigest",
+        "accountingVersion"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 4
+        },
+        "targetKind": {
+          "const": "cell_session"
+        },
+        "phase": {
+          "const": "execute"
+        },
+        "preparationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "demand": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v3.schema.json#/$defs/demandManifestEnvelope"
+        },
+        "preparationPolicy": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v2.schema.json#/$defs/preparationPolicyEnvelope"
+        },
+        "policy": {
+          "$ref": "#/$defs/productPolicyEnvelope"
+        },
+        "policyBinding": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v2.schema.json#/$defs/bindingEnvelope"
+        },
+        "activation": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v2.schema.json#/$defs/activationEnvelope"
+        },
+        "authorizationObservation": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/authorizationEnvelope"
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        }
+      }
+    },
+    "controlDelivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "descriptor",
+        "generation"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 4
+        },
+        "descriptor": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/controlDescriptor"
+        },
+        "generation": {
+          "$ref": "#/$defs/controlGeneration"
+        }
+      }
+    },
+    "installedInputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workload",
+        "sourceReads",
+        "tools",
+        "reviewDelivery",
+        "integrationDelivery"
+      ],
+      "properties": {
+        "workload": {
+          "allOf": [
+            {
+              "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/workload"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "integration2"
+                }
+              }
+            }
+          ]
+        },
+        "sourceReads": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/integrationSourceScope"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "reviewDelivery": {
+          "const": null
+        },
+        "integrationDelivery": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/integrationDelivery"
+            }
+          ]
+        }
+      }
+    },
+    "installedInputObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "purpose",
+        "evidenceClass",
+        "configDigest",
+        "taskId",
+        "nodeTokenHash",
+        "preparationId",
+        "intentDigest",
+        "preparedTupleDigest",
+        "applicabilityDigest",
+        "root",
+        "assignmentDigest",
+        "consumerDigest",
+        "inputs",
+        "observedAt",
+        "notAfter"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "purpose": {
+          "const": "child_product_installed_inputs"
+        },
+        "evidenceClass": {
+          "enum": [
+            "source",
+            "live"
+          ]
+        },
+        "configDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/digest"
+        },
+        "taskId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/id"
+        },
+        "nodeTokenHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "preparationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/id"
+        },
+        "intentDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/digest"
+        },
+        "preparedTupleDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/digest"
+        },
+        "applicabilityDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/digest"
+        },
+        "root": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/rootScope"
+        },
+        "assignmentDigest": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/digest"
+            }
+          ]
+        },
+        "consumerDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/digest"
+        },
+        "inputs": {
+          "$ref": "#/$defs/installedInputs"
+        },
+        "observedAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/time"
+        },
+        "notAfter": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/time"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "assignmentDigest": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "inputs": {
+                "properties": {
+                  "sourceReads": {
+                    "maxItems": 0
+                  },
+                  "integrationDelivery": {
+                    "const": null
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "inputs": {
+                "properties": {
+                  "sourceReads": {
+                    "minItems": 1
+                  },
+                  "integrationDelivery": {
+                    "$ref": "#/$defs/integrationDelivery"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "installedInputEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/installedInputObservation"
+        },
+        "keyId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "signature": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/signature"
+        }
+      }
+    },
+    "baseProductPolicy": {
+      "allOf": [
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v2.schema.json#/$defs/productPolicy"
+        },
+        {
+          "properties": {
+            "purpose": {
+              "enum": [
+                "coding_worker",
+                "business_worker",
+                "reviewer"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "selectedProductPolicy": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/baseProductPolicy"
+        },
+        {
+          "$ref": "#/$defs/productPolicy"
+        }
+      ]
+    },
+    "baseControlGeneration": {
+      "allOf": [
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v2.schema.json#/$defs/controlGeneration"
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "execute"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "policy": {
+                "properties": {
+                  "payload": {
+                    "$ref": "#/$defs/baseProductPolicy"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "selectedControlGeneration": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/baseControlGeneration"
+        },
+        {
+          "$ref": "#/$defs/controlGeneration"
+        }
+      ]
+    },
+    "selectedControlDelivery": {
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v2.schema.json#/$defs/controlDelivery"
+            },
+            {
+              "properties": {
+                "generation": {
+                  "$ref": "#/$defs/baseControlGeneration"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "$ref": "#/$defs/controlDelivery"
+        }
+      ]
+    }
+  }
+}
