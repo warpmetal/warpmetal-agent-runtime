@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 )
@@ -33,6 +34,24 @@ func TestValidateManifestAcceptsFixedTemporarySandbox(t *testing.T) {
 	}
 	if err := ValidateManifest(manifest, "srv_test12345", 0); err != nil {
 		t.Fatal(err)
+	}
+	if originalPath := os.Getenv("WARPMETAL_HOST_IMAGE_SOURCE_MANIFEST"); originalPath != "" {
+		t.Run("owning_host_source_manifest", func(t *testing.T) {
+			// Exact normal backend manifest original, exported by the existing
+			// enrollment journey. Storage/venue/artifacts there are SOURCE
+			// suppliers; this checks the real Runtime wire without rewriting it.
+			raw, err := os.ReadFile(originalPath)
+			if err != nil || len(raw) > 128*1024 {
+				t.Fatalf("owning manifest original unavailable: %v", err)
+			}
+			var original Manifest
+			if err = json.Unmarshal(raw, &original); err != nil {
+				t.Fatal(err)
+			}
+			if err = ValidateManifest(original, original.ServerID, 0); err != nil {
+				t.Fatalf("normal owning manifest violates Runtime contract: %v", err)
+			}
+		})
 	}
 }
 

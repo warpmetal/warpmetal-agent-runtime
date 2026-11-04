@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.warpmetal.com/contracts/workspace-qualification-observations-v2.schema.json",
+  "title": "Protected Flash native observations; unchanged signed source and sidecar originals remain distinct",
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "originalRequestDigest",
+        "requestDigest",
+        "responseDigest",
+        "wireResponseDigest",
+        "dispatchDigest",
+        "reservationId",
+        "providerRequestId",
+        "responseId",
+        "requestIndex",
+        "physicalIndex",
+        "modelId",
+        "httpStatus",
+        "inputTokens",
+        "outputTokens",
+        "cachedInputTokens",
+        "reservedUsdMicros",
+        "actualUsdMicros",
+        "startedAt",
+        "completedAt"
+      ],
+      "properties": {
+        "originalRequestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "requestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "responseDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "wireResponseDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "dispatchDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "reservationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "providerRequestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "responseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "requestIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "physicalIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 19
+        },
+        "modelId": {
+          "const": "deepseek-flash"
+        },
+        "httpStatus": {
+          "const": 200
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1047576
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "cachedInputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1047576
+        },
+        "reservedUsdMicros": {
+          "const": 421000
+        },
+        "actualUsdMicros": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 421000
+        },
+        "startedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "callId",
+        "arguments",
+        "argumentsDigest",
+        "startedAt",
+        "exit",
+        "truncated",
+        "timeout",
+        "workspace",
+        "modelOutput",
+        "outputDigest",
+        "completedAt",
+        "observationDigest"
+      ],
+      "properties": {
+        "callId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "arguments": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32768
+        },
+        "argumentsDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "startedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "exit": {
+          "const": 0
+        },
+        "truncated": {
+          "const": false
+        },
+        "timeout": {
+          "const": false
+        },
+        "workspace": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "modelOutput": {},
+        "outputDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "observationDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "formatVersion",
+    "sourcePolicyDigest",
+    "sidecarPolicyDigest",
+    "nativeActivation",
+    "nativeBinarySHA256",
+    "requests",
+    "tool",
+    "blobs"
+  ],
+  "properties": {
+    "formatVersion": {
+      "const": 2
+    },
+    "sourcePolicyDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "sidecarPolicyDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "nativeActivation": {
+      "$ref": "https://api.warpmetal.com/contracts/workspace-qualification-native-v3.schema.json#/$defs/publication"
+    },
+    "nativeBinarySHA256": {
+      "$ref": "#/$defs/digest"
+    },
+    "requests": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "$ref": "#/$defs/request"
+      }
+    },
+    "tool": {
+      "$ref": "#/$defs/tool"
+    },
+    "blobs": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "propertyNames": {
+        "$ref": "#/$defs/digest"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 349528
+      }
+    }
+  }
+}

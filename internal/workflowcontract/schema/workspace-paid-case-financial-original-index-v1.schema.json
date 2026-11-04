@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-paid-case-financial-original-index-v1.schema.json",
+  "title": "Read-only committed LOCAL financial-original catalog v1",
+  "$defs": {
+    "financialOriginalIndex": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "validationWindow", "candidateInventoryDigest", "scope", "attemptId", "adoptionEnvelopeDigest", "localRetentions", "observedAt", "expiresAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1},
+        "purpose": {"const": "paid_case_financial_original_index"},
+        "validationWindow": {"$ref": "workspace-workflow-budget-live-window-v1.schema.json#/$defs/validationWindow"},
+        "candidateInventoryDigest": {"$ref": "workspace-workflow-v1.schema.json#/$defs/digest"},
+        "scope": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/controllerOwner"},
+        "attemptId": {"$ref": "workspace-workflow-v1.schema.json#/$defs/id"},
+        "adoptionEnvelopeDigest": {"$ref": "workspace-workflow-v1.schema.json#/$defs/digest"},
+        "localRetentions": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"$ref": "workspace-complete-execution-inventory-v1.schema.json#/$defs/localRetentionReference"}},
+        "observedAt": {"$ref": "workspace-workflow-v1.schema.json#/$defs/time"},
+        "expiresAt": {"$ref": "workspace-workflow-v1.schema.json#/$defs/time"}
+      }
+    },
+    "financialOriginalIndexEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {
+        "payload": {"$ref": "#/$defs/financialOriginalIndex"},
+        "keyId": {"$ref": "workspace-workflow-v1.schema.json#/$defs/id"},
+        "signature": {"$ref": "workspace-workflow-budget-v2.schema.json#/$defs/signature"}
+      }
+    }
+  }
+}

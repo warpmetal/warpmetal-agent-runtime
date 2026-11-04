@@ -1,0 +1,681 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v3.schema.json",
+  "title": "Policy-bound finite demand with fresh-initial-domain accounting2",
+  "$defs": {
+    "id": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+    },
+    "digest": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+    },
+    "time": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+    },
+    "signature": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/signature"
+    },
+    "keyIdentity": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/keyIdentity"
+    },
+    "producerIdentity": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/producerIdentity"
+    },
+    "consumer": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/consumer"
+    },
+    "allocation": {
+      "allOf": [
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/allocation"
+        },
+        {
+          "properties": {
+            "firstPhysicalIndex": {
+              "maximum": 19
+            },
+            "lastPhysicalIndex": {
+              "maximum": 19
+            },
+            "preparationOrdinal": {
+              "maximum": 13
+            }
+          }
+        }
+      ]
+    },
+    "reservation": {
+      "allOf": [
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/reservation"
+        },
+        {
+          "properties": {
+            "firstPhysicalIndex": {
+              "maximum": 19
+            },
+            "lastPhysicalIndex": {
+              "maximum": 19
+            },
+            "preparationOrdinal": {
+              "maximum": 13
+            }
+          }
+        }
+      ]
+    },
+    "controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sdkRetries",
+        "providerRetries",
+        "applicationRetries",
+        "auxiliaryRequests",
+        "maxConcurrentPhysicalRequests",
+        "requestBodyBytes",
+        "responseBodyBytes",
+        "deadlineSeconds",
+        "inputPlusOutputContextTokens",
+        "selectedMaxOutputTokens",
+        "unknownReservation"
+      ],
+      "properties": {
+        "sdkRetries": {
+          "type": "integer",
+          "const": 0
+        },
+        "providerRetries": {
+          "type": "integer",
+          "const": 0
+        },
+        "applicationRetries": {
+          "type": "integer",
+          "const": 0
+        },
+        "auxiliaryRequests": {
+          "type": "integer",
+          "const": 0
+        },
+        "maxConcurrentPhysicalRequests": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestBodyBytes": {
+          "type": "integer",
+          "const": 32768
+        },
+        "responseBodyBytes": {
+          "type": "integer",
+          "const": 262144
+        },
+        "deadlineSeconds": {
+          "type": "integer",
+          "const": 120
+        },
+        "inputPlusOutputContextTokens": {
+          "type": "integer",
+          "const": 1048576
+        },
+        "selectedMaxOutputTokens": {
+          "type": "integer",
+          "const": 1000
+        },
+        "unknownReservation": {
+          "const": "retain_full_until_authenticated_reconciliation"
+        }
+      }
+    },
+    "typedCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "caseId",
+        "caseManifestDigest",
+        "ledgerId",
+        "requests",
+        "modelRequests",
+        "accessRequests",
+        "preparations",
+        "qualificationTuples",
+        "usdMicros",
+        "physicalCeiling",
+        "usdCeilingMicros",
+        "pricingDigest",
+        "operatorKeySHA256",
+        "demandManifestDigest",
+        "tupleInventoryDigest",
+        "controlsDigest",
+        "accountingVersion",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 3
+        },
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "caseManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "requests": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 19
+        },
+        "modelRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 17
+        },
+        "accessRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "preparations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 13
+        },
+        "qualificationTuples": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "usdMicros": {
+          "type": "integer",
+          "const": 3000000
+        },
+        "physicalCeiling": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 19
+        },
+        "usdCeilingMicros": {
+          "type": "integer",
+          "const": 3000000
+        },
+        "pricingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "operatorKeySHA256": {
+          "$ref": "#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "tupleInventoryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "controlsDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/providerPolicyDigest"
+        }
+      }
+    },
+    "demandManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "caseId",
+        "caseManifestDigest",
+        "ledgerId",
+        "candidateInventoryDigest",
+        "accountScopeDigest",
+        "pricingDigest",
+        "tupleInventoryDigest",
+        "requestReserveMicros",
+        "allocations",
+        "controls",
+        "tariff",
+        "declaredAt",
+        "notAfter",
+        "accountingVersion",
+        "providerPolicyDigest",
+        "maximumExposureMicros",
+        "physicalRequestLimit"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 3
+        },
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "caseManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "candidateInventoryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "accountScopeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "pricingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "tupleInventoryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "requestReserveMicros": {
+          "type": "integer",
+          "const": 421000
+        },
+        "allocations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 19,
+          "items": {
+            "$ref": "#/$defs/allocation"
+          }
+        },
+        "controls": {
+          "$ref": "#/$defs/controls"
+        },
+        "tariff": {
+          "$ref": "#/$defs/tariff"
+        },
+        "declaredAt": {
+          "$ref": "#/$defs/time"
+        },
+        "notAfter": {
+          "$ref": "#/$defs/time"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/providerPolicyDigest"
+        },
+        "maximumExposureMicros": {
+          "type": "integer",
+          "const": 3000000
+        },
+        "physicalRequestLimit": {
+          "type": "integer",
+          "const": 19
+        }
+      }
+    },
+    "tupleInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "caseId",
+        "candidateInventoryDigest",
+        "observedAt",
+        "tuples"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "candidateInventoryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "tuples": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tupleDigest",
+              "applicability",
+              "consumers"
+            ],
+            "properties": {
+              "tupleDigest": {
+                "$ref": "#/$defs/digest"
+              },
+              "applicability": {
+                "$ref": "#/$defs/artifactApplicability2"
+              },
+              "consumers": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 13,
+                "items": {
+                  "$ref": "#/$defs/consumer"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "providerPolicyDigest": {
+      "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+    },
+    "artifactApplicability2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accountId",
+        "taskId",
+        "serverId",
+        "sandboxId",
+        "sandboxGeneration",
+        "backend",
+        "native",
+        "runtime",
+        "sandbox",
+        "profile",
+        "connection",
+        "model",
+        "caseManifestDigest",
+        "formatVersion",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "accountId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+        },
+        "taskId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+        },
+        "serverId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+        },
+        "sandboxId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+        },
+        "sandboxGeneration": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/positive"
+        },
+        "backend": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sourceInventoryDigest",
+            "imageDigest",
+            "migrationHead",
+            "contractDigest"
+          ],
+          "properties": {
+            "sourceInventoryDigest": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/digest"
+            },
+            "imageDigest": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/digest"
+            },
+            "migrationHead": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+            },
+            "contractDigest": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/digest"
+            }
+          }
+        },
+        "native": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/binaryArtifact"
+        },
+        "runtime": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/binaryArtifact"
+        },
+        "sandbox": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "registryManifestDigest",
+            "configDigest",
+            "pluginDigest"
+          ],
+          "properties": {
+            "registryManifestDigest": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/digest"
+            },
+            "configDigest": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/digest"
+            },
+            "pluginDigest": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/digest"
+            }
+          }
+        },
+        "profile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "setupOperationId",
+            "profileId",
+            "revision",
+            "profileDigest",
+            "materializerDigest",
+            "bundleDigest"
+          ],
+          "properties": {
+            "setupOperationId": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+            },
+            "profileId": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+            },
+            "revision": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/positive"
+            },
+            "profileDigest": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/digest"
+            },
+            "materializerDigest": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/digest"
+            },
+            "bundleDigest": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/digest"
+            }
+          }
+        },
+        "connection": {
+          "$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/credentialBinding"
+        },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "providerId",
+            "modelId",
+            "authMode",
+            "endpoint",
+            "engineProfileVersion",
+            "adapterVersion"
+          ],
+          "properties": {
+            "providerId": {
+              "const": "deepseek"
+            },
+            "modelId": {
+              "const": "deepseek-flash"
+            },
+            "authMode": {
+              "const": "api_key"
+            },
+            "endpoint": {
+              "const": "https://api.deepseek.com/responses"
+            },
+            "engineProfileVersion": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+            },
+            "adapterVersion": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+            }
+          }
+        },
+        "caseManifestDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/digest"
+        },
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/providerPolicyDigest"
+        }
+      }
+    },
+    "tariff": {
+      "const": {
+        "providerPolicyDigest": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f",
+        "inputMicrosPerMillion": 300000,
+        "outputMicrosPerMillion": 1200000,
+        "requestReserveMicros": 421000,
+        "discounts": "none",
+        "paidHostedTools": false
+      }
+    },
+    "demandManifestEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/demandManifest"
+        },
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "signature": {
+          "$ref": "#/$defs/signature"
+        }
+      }
+    },
+    "authority3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "caseId",
+        "caseManifestDigest",
+        "usdLimitMicros",
+        "requestLimit",
+        "turnLimit",
+        "backend",
+        "native",
+        "runtime",
+        "sandbox",
+        "profileBundleDigest",
+        "pricing",
+        "operator",
+        "producer",
+        "evidenceRoot",
+        "case",
+        "evidenceClass",
+        "tupleInventory",
+        "providerPolicyDigest",
+        "accountingVersion"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 3
+        },
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "caseManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "usdLimitMicros": {
+          "type": "integer",
+          "const": 3000000
+        },
+        "requestLimit": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 19
+        },
+        "turnLimit": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 17
+        },
+        "backend": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/artifactApplicability/properties/backend"
+        },
+        "native": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/binaryArtifact"
+        },
+        "runtime": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/binaryArtifact"
+        },
+        "sandbox": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/artifactApplicability/properties/sandbox"
+        },
+        "profileBundleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "pricing": {
+          "const": {
+            "modelId": "deepseek-flash",
+            "inputMicrosPerMillion": 300000,
+            "cachedInputMicrosPerMillion": 300000,
+            "outputMicrosPerMillion": 1200000
+          }
+        },
+        "operator": {
+          "$ref": "#/$defs/keyIdentity"
+        },
+        "producer": {
+          "$ref": "#/$defs/producerIdentity"
+        },
+        "evidenceRoot": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 4096,
+          "pattern": "^/"
+        },
+        "case": {
+          "$ref": "#/$defs/typedCase"
+        },
+        "evidenceClass": {
+          "enum": [
+            "source",
+            "live"
+          ]
+        },
+        "tupleInventory": {
+          "$ref": "#/$defs/tupleInventory"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/providerPolicyDigest"
+        }
+      },
+      "description": "Fresh initial domain only. Before any reservation, separately signed observed empty backend/Runtime openings must be durably accepted on the one ledger. Source and live evidence are disjoint; neither consent nor schema validity grants execution."
+    }
+  }
+}

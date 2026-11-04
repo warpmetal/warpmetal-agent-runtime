@@ -1,0 +1,2848 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.warpmetal.com/contracts/workspace-test-provider-operator-v3.schema.json",
+  "title": "Closed provider TEST operator, independent cold custody and exact current sources",
+  "$defs": {
+    "id": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+    },
+    "digest": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/digest"
+    },
+    "time": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/time"
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 108,
+      "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 1024,
+      "pattern": "^/[^\\u0000]*$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "protocol": {
+      "enum": [
+        "demandManifest5",
+        "backendOpening3",
+        "installedConsumerApproval1",
+        "qualificationCreatePermit1",
+        "qualificationAccessCapability2",
+        "qualificationBootstrap3",
+        "qualificationPolicy4",
+        "qualificationNativeBootstrap3",
+        "qualificationNativePolicy4",
+        "qualificationReservePermit1",
+        "qualificationActivation2",
+        "qualificationPublishPermit1",
+        "qualificationNativeActivation3",
+        "qualificationImportPermit1",
+        "controllerPolicy6",
+        "inputDeclarationPayload4",
+        "controllerActivityGrant1",
+        "controllerActivation4",
+        "childPreparationPolicy2",
+        "childProductPolicy2",
+        "integratorProductPolicy3",
+        "childProductPolicyBinding2",
+        "childActivation2",
+        "reviewerProductPolicy4",
+        "setupBootstrap1",
+        "advisoryPolicy7",
+        "advisoryDeclaration1",
+        "advisoryActivityGrant1",
+        "advisoryActivation5"
+      ]
+    },
+    "configurationReferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "WARPMETAL_MODEL_QUALIFICATION_CONFIG",
+        "WARPMETAL_WORKFLOW_PRODUCER_CONFIG",
+        "WARPMETAL_FIXTURE_TRUST_KEY"
+      ],
+      "properties": {
+        "WARPMETAL_MODEL_QUALIFICATION_CONFIG": {
+          "$ref": "#/$defs/path"
+        },
+        "WARPMETAL_WORKFLOW_PRODUCER_CONFIG": {
+          "$ref": "#/$defs/path"
+        },
+        "WARPMETAL_FIXTURE_TRUST_KEY": {
+          "$ref": "#/$defs/path"
+        }
+      }
+    },
+    "scopeMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tupleDigest",
+        "scopeDigest",
+        "owner",
+        "applicationOperationId",
+        "configurationDigest",
+        "applicationReceiptDigest",
+        "sourceIds"
+      ],
+      "properties": {
+        "tupleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "scopeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "owner": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/controllerOwner"
+        },
+        "applicationOperationId": {
+          "$ref": "#/$defs/id"
+        },
+        "configurationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "applicationReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 19,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "ledgerId",
+        "candidateInventoryDigest",
+        "accountScopeDigest",
+        "demandManifestDigest",
+        "members"
+      ],
+      "properties": {
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "candidateInventoryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "accountScopeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/scopeMember"
+          }
+        }
+      }
+    },
+    "scopeFreeze": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "generationId",
+        "hostId",
+        "keyId",
+        "coldReceiptDigest",
+        "configurationReferences",
+        "authorityDigest",
+        "approvedAt",
+        "expiresAt",
+        "purpose",
+        "freezeId",
+        "scope",
+        "workflowProducerInventoryDigest",
+        "participantInventoryDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 2
+        },
+        "generationId": {
+          "$ref": "#/$defs/id"
+        },
+        "hostId": {
+          "$ref": "#/$defs/id"
+        },
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "coldReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "configurationReferences": {
+          "$ref": "#/$defs/configurationReferences"
+        },
+        "authorityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "approvedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        },
+        "purpose": {
+          "const": "workspace_test_provider_operator_scope"
+        },
+        "freezeId": {
+          "$ref": "#/$defs/id"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "workflowProducerInventoryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "participantInventoryDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "$comment": "workflowProducerInventoryDigest hashes ordered exact [{participantId,producerConfigDigest}] for independently enrolled configs selected by task/node. No first-entry fallback or caller-supplied key/path; participantInventoryDigest separately pins public identity/scope."
+    },
+    "permit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "purpose",
+        "action",
+        "caseId",
+        "accountId",
+        "taskId",
+        "tupleDigest",
+        "requestDigest",
+        "nonce",
+        "issuedAt",
+        "notAfter",
+        "qualificationId",
+        "preparedTupleDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "purpose": {
+          "const": "model_qualification_bootstrap"
+        },
+        "action": {
+          "enum": [
+            "create",
+            "activate",
+            "import"
+          ]
+        },
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "accountId": {
+          "$ref": "#/$defs/id"
+        },
+        "taskId": {
+          "$ref": "#/$defs/id"
+        },
+        "tupleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "requestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{16,128}$"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "notAfter": {
+          "$ref": "#/$defs/time"
+        },
+        "qualificationId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "preparedTupleDigest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "qualificationCreateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "tuple",
+        "preparation",
+        "workload",
+        "budget"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "tuple": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/artifactApplicability2"
+        },
+        "preparation": {
+          "$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/cellPrepareRequest"
+        },
+        "workload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-qualification-provider-v4.schema.json#/$defs/workload"
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requests",
+            "turns",
+            "inputTokens",
+            "outputTokens",
+            "usdMicros",
+            "sdkRetries",
+            "applicationRetries",
+            "requestBytes",
+            "responseBytes",
+            "deadlineSeconds",
+            "pricingDigest",
+            "accessRequests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "integer",
+              "const": 2
+            },
+            "turns": {
+              "type": "integer",
+              "const": 2
+            },
+            "inputTokens": {
+              "type": "integer",
+              "const": 2095152
+            },
+            "outputTokens": {
+              "type": "integer",
+              "const": 2000
+            },
+            "usdMicros": {
+              "type": "integer",
+              "const": 842000
+            },
+            "sdkRetries": {
+              "type": "integer",
+              "const": 0
+            },
+            "applicationRetries": {
+              "type": "integer",
+              "const": 0
+            },
+            "requestBytes": {
+              "type": "integer",
+              "const": 32768
+            },
+            "responseBytes": {
+              "type": "integer",
+              "const": 262144
+            },
+            "deadlineSeconds": {
+              "type": "integer",
+              "const": 120
+            },
+            "pricingDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "accessRequests": {
+              "const": 1
+            }
+          }
+        }
+      }
+    },
+    "qualificationReserveRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "preparedReceiptDigest",
+        "bootstrapDigest",
+        "bootstrapSignatureDigest",
+        "policyDigest",
+        "policySignatureDigest",
+        "activationDigest",
+        "activationSignatureDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "preparedReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "bootstrapDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "bootstrapSignatureDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "policyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "policySignatureDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "activationDigest": {
+          "const": null
+        },
+        "activationSignatureDigest": {
+          "const": null
+        }
+      }
+    },
+    "qualificationPublishRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "preparedReceiptDigest",
+        "bootstrapDigest",
+        "bootstrapSignatureDigest",
+        "policyDigest",
+        "policySignatureDigest",
+        "activationDigest",
+        "activationSignatureDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "preparedReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "bootstrapDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "bootstrapSignatureDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "policyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "policySignatureDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "activationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "activationSignatureDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "qualificationNativeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executionId",
+        "operationId",
+        "sessionId",
+        "inputId",
+        "attempt",
+        "fence",
+        "binarySHA256"
+      ],
+      "properties": {
+        "executionId": {
+          "$ref": "#/$defs/id"
+        },
+        "operationId": {
+          "$ref": "#/$defs/id"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/id"
+        },
+        "inputId": {
+          "$ref": "#/$defs/id"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fence": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "binarySHA256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "qualificationToolOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "toolCallId",
+        "tool",
+        "exitCode",
+        "artifactRelativePath",
+        "artifactSize",
+        "argumentsDigest",
+        "workspaceDigest",
+        "artifactDigest",
+        "terminalJSONDigest",
+        "outcomeDigest",
+        "toolObservationDigest"
+      ],
+      "properties": {
+        "toolCallId": {
+          "$ref": "#/$defs/id"
+        },
+        "tool": {
+          "const": "shell"
+        },
+        "exitCode": {
+          "const": 0
+        },
+        "artifactRelativePath": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,100}\\.txt$"
+        },
+        "artifactSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 262144
+        },
+        "argumentsDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "workspaceDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "artifactDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "terminalJSONDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "outcomeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "toolObservationDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "qualificationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "qualificationId",
+        "tuple",
+        "tupleDigest",
+        "permitDigest",
+        "preparedTupleDigest",
+        "preparedReceiptDigest",
+        "policyDigest",
+        "terminalReportDigest",
+        "preparationId",
+        "grantId",
+        "nativeIdentity",
+        "requests",
+        "toolOutcome",
+        "startedAt",
+        "completedAt"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        },
+        "tuple": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/artifactApplicability2"
+        },
+        "tupleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "permitDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "preparedTupleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "preparedReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "policyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "terminalReportDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        },
+        "grantId": {
+          "$ref": "#/$defs/id"
+        },
+        "nativeIdentity": {
+          "$ref": "#/$defs/qualificationNativeIdentity"
+        },
+        "requests": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "https://api.warpmetal.com/contracts/workspace-qualification-observations-v2.schema.json#/$defs/request"
+          }
+        },
+        "toolOutcome": {
+          "$ref": "#/$defs/qualificationToolOutcome"
+        },
+        "startedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "qualificationImportRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "evidence"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "formatVersion",
+            "qualificationId",
+            "tuple",
+            "tupleDigest",
+            "permitDigest",
+            "preparedTupleDigest",
+            "preparedReceiptDigest",
+            "policyDigest",
+            "terminalReportDigest",
+            "preparationId",
+            "grantId",
+            "nativeIdentity",
+            "requests",
+            "toolOutcome",
+            "startedAt",
+            "completedAt",
+            "producerAttestation"
+          ],
+          "properties": {
+            "formatVersion": {
+              "const": 1
+            },
+            "qualificationId": {
+              "$ref": "#/$defs/id"
+            },
+            "tuple": {
+              "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/artifactApplicability2"
+            },
+            "tupleDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "permitDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "preparedTupleDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "preparedReceiptDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "policyDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "terminalReportDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "preparationId": {
+              "$ref": "#/$defs/id"
+            },
+            "grantId": {
+              "$ref": "#/$defs/id"
+            },
+            "nativeIdentity": {
+              "$ref": "#/$defs/qualificationNativeIdentity"
+            },
+            "requests": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "https://api.warpmetal.com/contracts/workspace-qualification-observations-v2.schema.json#/$defs/request"
+              }
+            },
+            "toolOutcome": {
+              "$ref": "#/$defs/qualificationToolOutcome"
+            },
+            "startedAt": {
+              "$ref": "#/$defs/time"
+            },
+            "completedAt": {
+              "$ref": "#/$defs/time"
+            },
+            "producerAttestation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "payload",
+                "keyId",
+                "signature"
+              ],
+              "properties": {
+                "payload": {
+                  "$ref": "#/$defs/qualificationEvidence"
+                },
+                "keyId": {
+                  "$ref": "#/$defs/id"
+                },
+                "signature": {
+                  "$ref": "#/$defs/signature"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "installedApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "purpose",
+        "configDigest",
+        "observationDigest",
+        "notAfter"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "purpose": {
+          "const": "installed_consumer_adoption_approval"
+        },
+        "configDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "observationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "notAfter": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "controllerConsumer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "native",
+        "runtime",
+        "sandbox",
+        "evidenceClass",
+        "adapterVersion",
+        "budgetSchemaSHA256",
+        "policyFormatVersion",
+        "activationFormatVersion",
+        "materializer"
+      ],
+      "properties": {
+        "profile": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ],
+          "items": false
+        },
+        "native": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/authority5/properties/native"
+        },
+        "runtime": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/authority5/properties/runtime"
+        },
+        "sandbox": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/authority5/properties/sandbox"
+        },
+        "evidenceClass": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/authority5/properties/evidenceClass"
+        },
+        "adapterVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "budgetSchemaSHA256": {
+          "$ref": "#/$defs/hash"
+        },
+        "policyFormatVersion": {
+          "const": 6
+        },
+        "activationFormatVersion": {
+          "const": 4
+        },
+        "materializer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "declaredDigest",
+            "installedDigest",
+            "closureVersion"
+          ],
+          "properties": {
+            "declaredDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "installedDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "closureVersion": {
+              "const": "warpmetal-workspace-content-v1"
+            }
+          }
+        }
+      }
+    },
+    "childConsumer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "native",
+        "runtime",
+        "sandbox",
+        "evidenceClass",
+        "adapterVersion",
+        "budgetSchemaSHA256",
+        "childProductSchemaSHA256"
+      ],
+      "properties": {
+        "profile": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ],
+          "items": false
+        },
+        "native": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/authority5/properties/native"
+        },
+        "runtime": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/authority5/properties/runtime"
+        },
+        "sandbox": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/authority5/properties/sandbox"
+        },
+        "evidenceClass": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/authority5/properties/evidenceClass"
+        },
+        "adapterVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "budgetSchemaSHA256": {
+          "$ref": "#/$defs/hash"
+        },
+        "childProductSchemaSHA256": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "installedObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "purpose",
+        "configDigest",
+        "taskId",
+        "nodeTokenHash",
+        "sandboxId",
+        "sandboxGeneration",
+        "setupOperationId",
+        "setupReceiptDigest",
+        "profile",
+        "materializerDigest",
+        "native",
+        "runtime",
+        "sandbox",
+        "evidenceClass",
+        "consumers",
+        "observedAt",
+        "notAfter"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "purpose": {
+          "const": "installed_consumer_adoption"
+        },
+        "configDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "taskId": {
+          "$ref": "#/$defs/id"
+        },
+        "nodeTokenHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "sandboxId": {
+          "$ref": "#/$defs/id"
+        },
+        "sandboxGeneration": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "setupOperationId": {
+          "$ref": "#/$defs/id"
+        },
+        "setupReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "profile": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ],
+          "items": false
+        },
+        "materializerDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "native": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/authority5/properties/native"
+        },
+        "runtime": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/authority5/properties/runtime"
+        },
+        "sandbox": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/authority5/properties/sandbox"
+        },
+        "evidenceClass": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/authority5/properties/evidenceClass"
+        },
+        "consumers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "controllerActivity",
+            "childProduct"
+          ],
+          "properties": {
+            "controllerActivity": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/controllerConsumer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "childProduct": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/childConsumer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "observedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "notAfter": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "controllerHeaderObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "formatVersion",
+            "targetKind",
+            "preparationId",
+            "preparedReceiptDigest",
+            "authorizationSha256"
+          ],
+          "properties": {
+            "formatVersion": {
+              "const": 1
+            },
+            "targetKind": {
+              "const": "controller_authorization"
+            },
+            "preparationId": {
+              "$ref": "#/$defs/id"
+            },
+            "preparedReceiptDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "authorizationSha256": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "signature": {
+          "$ref": "#/$defs/signature"
+        }
+      }
+    },
+    "issuanceHeader": {
+      "type": "object",
+      "required": [
+        "formatVersion",
+        "generationId",
+        "hostId",
+        "keyId",
+        "coldReceiptDigest",
+        "configurationReferences",
+        "authorityDigest",
+        "approvedAt",
+        "expiresAt",
+        "purpose",
+        "scopeFreezeDigest",
+        "scopeMemberDigest",
+        "protocol",
+        "requestId",
+        "workflowProducerInventoryDigest",
+        "participantInventoryDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 2
+        },
+        "generationId": {
+          "$ref": "#/$defs/id"
+        },
+        "hostId": {
+          "$ref": "#/$defs/id"
+        },
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "coldReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "configurationReferences": {
+          "$ref": "#/$defs/configurationReferences"
+        },
+        "authorityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "approvedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        },
+        "purpose": {
+          "const": "workspace_test_provider_operator_issuance"
+        },
+        "scopeFreezeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "scopeMemberDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "protocol": {
+          "$ref": "#/$defs/protocol"
+        },
+        "requestId": {
+          "$ref": "#/$defs/id"
+        },
+        "workflowProducerInventoryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "participantInventoryDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "$comment": "workflowProducerInventoryDigest hashes ordered exact [{participantId,producerConfigDigest}] for independently enrolled configs selected by task/node. No first-entry fallback or caller-supplied key/path; participantInventoryDigest separately pins public identity/scope."
+    },
+    "demandManifest5Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/demandManifest"
+        }
+      }
+    },
+    "demandManifest5Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "demandManifest5"
+            },
+            "input": {
+              "$ref": "#/$defs/demandManifest5Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "backendOpening3Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v4.schema.json#/$defs/backendOpening3"
+        }
+      }
+    },
+    "backendOpening3Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "backendOpening3"
+            },
+            "input": {
+              "$ref": "#/$defs/backendOpening3Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "installedConsumerApproval1Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "setupOperationId",
+        "payload",
+        "observation"
+      ],
+      "properties": {
+        "setupOperationId": {
+          "$ref": "#/$defs/id"
+        },
+        "payload": {
+          "$ref": "#/$defs/installedApproval"
+        },
+        "observation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "payload",
+            "keyId",
+            "signature"
+          ],
+          "properties": {
+            "payload": {
+              "$ref": "#/$defs/installedObservation"
+            },
+            "keyId": {
+              "$ref": "#/$defs/id"
+            },
+            "signature": {
+              "$ref": "#/$defs/signature"
+            }
+          }
+        }
+      }
+    },
+    "installedConsumerApproval1Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "installedConsumerApproval1"
+            },
+            "input": {
+              "$ref": "#/$defs/installedConsumerApproval1Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "qualificationCreatePermit1Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request",
+        "permit"
+      ],
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/qualificationCreateRequest"
+        },
+        "permit": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/permit"
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create"
+                },
+                "qualificationId": {
+                  "const": null
+                },
+                "preparedTupleDigest": {
+                  "const": null
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "qualificationCreatePermit1Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "qualificationCreatePermit1"
+            },
+            "input": {
+              "$ref": "#/$defs/qualificationCreatePermit1Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "qualificationAccessCapability2Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualificationId",
+        "payload"
+      ],
+      "properties": {
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        },
+        "payload": {
+          "$ref": "https://warpmetal.com/contracts/agent-workspace-qualification-provider-v4.schema.json#/$defs/qualificationAccessCapability"
+        }
+      }
+    },
+    "qualificationAccessCapability2Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "qualificationAccessCapability2"
+            },
+            "input": {
+              "$ref": "#/$defs/qualificationAccessCapability2Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "qualificationBootstrap3Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualificationId",
+        "publication",
+        "contentBase64"
+      ],
+      "properties": {
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        },
+        "publication": {
+          "$ref": "https://warpmetal.com/contracts/workspace-qualification-provider-v4.schema.json#/$defs/bootstrap3"
+        },
+        "contentBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 43692,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+        }
+      }
+    },
+    "qualificationBootstrap3Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "qualificationBootstrap3"
+            },
+            "input": {
+              "$ref": "#/$defs/qualificationBootstrap3Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "qualificationPolicy4Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualificationId",
+        "publication",
+        "contentBase64"
+      ],
+      "properties": {
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        },
+        "publication": {
+          "$ref": "https://warpmetal.com/contracts/workspace-qualification-provider-v4.schema.json#/$defs/policy4"
+        },
+        "contentBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 43692,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+        }
+      }
+    },
+    "qualificationPolicy4Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "qualificationPolicy4"
+            },
+            "input": {
+              "$ref": "#/$defs/qualificationPolicy4Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "qualificationNativeBootstrap3Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualificationId",
+        "publication",
+        "contentBase64"
+      ],
+      "properties": {
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        },
+        "publication": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-qualification-native-v5.schema.json#/$defs/nativeBootstrap3"
+        },
+        "contentBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 43692,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+        }
+      }
+    },
+    "qualificationNativeBootstrap3Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "qualificationNativeBootstrap3"
+            },
+            "input": {
+              "$ref": "#/$defs/qualificationNativeBootstrap3Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "qualificationNativePolicy4Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualificationId",
+        "publication",
+        "contentBase64"
+      ],
+      "properties": {
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        },
+        "publication": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-qualification-native-v5.schema.json#/$defs/nativePolicy4"
+        },
+        "contentBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 43692,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+        }
+      }
+    },
+    "qualificationNativePolicy4Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "qualificationNativePolicy4"
+            },
+            "input": {
+              "$ref": "#/$defs/qualificationNativePolicy4Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "qualificationReservePermit1Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request",
+        "permit",
+        "qualificationId"
+      ],
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/qualificationReserveRequest"
+        },
+        "permit": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/permit"
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "activate"
+                },
+                "qualificationId": {
+                  "$ref": "#/$defs/id"
+                },
+                "preparedTupleDigest": {
+                  "$ref": "#/$defs/digest"
+                }
+              }
+            }
+          ]
+        },
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "qualificationReservePermit1Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "qualificationReservePermit1"
+            },
+            "input": {
+              "$ref": "#/$defs/qualificationReservePermit1Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "qualificationActivation2Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualificationId",
+        "publication",
+        "contentBase64"
+      ],
+      "properties": {
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        },
+        "publication": {
+          "$ref": "https://warpmetal.com/contracts/workspace-qualification-provider-v4.schema.json#/$defs/activation2"
+        },
+        "contentBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 43692,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+        }
+      }
+    },
+    "qualificationActivation2Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "qualificationActivation2"
+            },
+            "input": {
+              "$ref": "#/$defs/qualificationActivation2Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "qualificationPublishPermit1Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request",
+        "permit",
+        "qualificationId"
+      ],
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/qualificationPublishRequest"
+        },
+        "permit": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/permit"
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "activate"
+                },
+                "qualificationId": {
+                  "$ref": "#/$defs/id"
+                },
+                "preparedTupleDigest": {
+                  "$ref": "#/$defs/digest"
+                }
+              }
+            }
+          ]
+        },
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "qualificationPublishPermit1Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "qualificationPublishPermit1"
+            },
+            "input": {
+              "$ref": "#/$defs/qualificationPublishPermit1Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "qualificationNativeActivation3Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualificationId",
+        "publication",
+        "contentBase64"
+      ],
+      "properties": {
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        },
+        "publication": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-qualification-native-v5.schema.json#/$defs/nativeActivation3"
+        },
+        "contentBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 43692,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+        }
+      }
+    },
+    "qualificationNativeActivation3Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "qualificationNativeActivation3"
+            },
+            "input": {
+              "$ref": "#/$defs/qualificationNativeActivation3Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "qualificationImportPermit1Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request",
+        "permit",
+        "qualificationId"
+      ],
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/qualificationImportRequest"
+        },
+        "permit": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/permit"
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "import"
+                },
+                "qualificationId": {
+                  "$ref": "#/$defs/id"
+                },
+                "preparedTupleDigest": {
+                  "$ref": "#/$defs/digest"
+                }
+              }
+            }
+          ]
+        },
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "qualificationImportPermit1Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "qualificationImportPermit1"
+            },
+            "input": {
+              "$ref": "#/$defs/qualificationImportPermit1Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "controllerPolicy6Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serviceRegistrationId",
+        "inputId",
+        "allocationId",
+        "leasePath",
+        "payload"
+      ],
+      "properties": {
+        "serviceRegistrationId": {
+          "$ref": "#/$defs/id"
+        },
+        "inputId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "leasePath": {
+          "$ref": "#/$defs/path"
+        },
+        "payload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-controller-provider-v4.schema.json#/$defs/controllerPolicy6"
+        }
+      }
+    },
+    "controllerPolicy6Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "controllerPolicy6"
+            },
+            "input": {
+              "$ref": "#/$defs/controllerPolicy6Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "inputDeclarationPayload4Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "priorDeclarationDigest",
+        "newInputId",
+        "allocationId",
+        "payload",
+        "policyPreimage"
+      ],
+      "properties": {
+        "priorDeclarationDigest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "newInputId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "payload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-single-v3.schema.json#/$defs/inputDeclarationPayload4"
+        },
+        "policyPreimage": {
+          "$ref": "https://warpmetal.com/contracts/workspace-controller-provider-v4.schema.json#/$defs/controllerPolicy6"
+        }
+      }
+    },
+    "inputDeclarationPayload4Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "inputDeclarationPayload4"
+            },
+            "input": {
+              "$ref": "#/$defs/inputDeclarationPayload4Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "controllerActivityGrant1Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serviceRegistrationId",
+        "inputId",
+        "allocationId",
+        "leasePath",
+        "payload",
+        "preparationId"
+      ],
+      "properties": {
+        "serviceRegistrationId": {
+          "$ref": "#/$defs/id"
+        },
+        "inputId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "leasePath": {
+          "$ref": "#/$defs/path"
+        },
+        "payload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/controllerActivityGrant"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "controllerActivityGrant1Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "controllerActivityGrant1"
+            },
+            "input": {
+              "$ref": "#/$defs/controllerActivityGrant1Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "controllerActivation4Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serviceRegistrationId",
+        "inputId",
+        "allocationId",
+        "leasePath",
+        "payload",
+        "preparationId",
+        "headerObservation"
+      ],
+      "properties": {
+        "serviceRegistrationId": {
+          "$ref": "#/$defs/id"
+        },
+        "inputId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "leasePath": {
+          "$ref": "#/$defs/path"
+        },
+        "payload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-controller-provider-v4.schema.json#/$defs/controllerActivation4"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        },
+        "headerObservation": {
+          "$ref": "#/$defs/controllerHeaderObservation"
+        }
+      }
+    },
+    "controllerActivation4Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "controllerActivation4"
+            },
+            "input": {
+              "$ref": "#/$defs/controllerActivation4Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "childPreparationPolicy2Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handleId",
+        "preparationId",
+        "allocationId",
+        "leasePath",
+        "payload"
+      ],
+      "properties": {
+        "handleId": {
+          "$ref": "#/$defs/id"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "leasePath": {
+          "$ref": "#/$defs/path"
+        },
+        "payload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v4.schema.json#/$defs/preparationPolicy"
+        }
+      }
+    },
+    "childPreparationPolicy2Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "childPreparationPolicy2"
+            },
+            "input": {
+              "$ref": "#/$defs/childPreparationPolicy2Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "childProductPolicy2Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handleId",
+        "preparationId",
+        "allocationId",
+        "leasePath",
+        "payload"
+      ],
+      "properties": {
+        "handleId": {
+          "$ref": "#/$defs/id"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "leasePath": {
+          "$ref": "#/$defs/path"
+        },
+        "payload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v4.schema.json#/$defs/productPolicy"
+        }
+      }
+    },
+    "childProductPolicy2Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "childProductPolicy2"
+            },
+            "input": {
+              "$ref": "#/$defs/childProductPolicy2Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "integratorProductPolicy3Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handleId",
+        "preparationId",
+        "allocationId",
+        "leasePath",
+        "payload"
+      ],
+      "properties": {
+        "handleId": {
+          "$ref": "#/$defs/id"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "leasePath": {
+          "$ref": "#/$defs/path"
+        },
+        "payload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-integrator-v3.schema.json#/$defs/productPolicy"
+        }
+      }
+    },
+    "integratorProductPolicy3Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "integratorProductPolicy3"
+            },
+            "input": {
+              "$ref": "#/$defs/integratorProductPolicy3Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "childProductPolicyBinding2Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handleId",
+        "preparationId",
+        "allocationId",
+        "leasePath",
+        "payload"
+      ],
+      "properties": {
+        "handleId": {
+          "$ref": "#/$defs/id"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "leasePath": {
+          "$ref": "#/$defs/path"
+        },
+        "payload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v4.schema.json#/$defs/productPolicyBinding"
+        }
+      }
+    },
+    "childProductPolicyBinding2Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "childProductPolicyBinding2"
+            },
+            "input": {
+              "$ref": "#/$defs/childProductPolicyBinding2Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "childActivation2Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handleId",
+        "preparationId",
+        "allocationId",
+        "leasePath",
+        "payload"
+      ],
+      "properties": {
+        "handleId": {
+          "$ref": "#/$defs/id"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "leasePath": {
+          "$ref": "#/$defs/path"
+        },
+        "payload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-provider-v4.schema.json#/$defs/activation"
+        }
+      }
+    },
+    "childActivation2Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "childActivation2"
+            },
+            "input": {
+              "$ref": "#/$defs/childActivation2Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "issuanceApproval": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/demandManifest5Approval"
+        },
+        {
+          "$ref": "#/$defs/backendOpening3Approval"
+        },
+        {
+          "$ref": "#/$defs/installedConsumerApproval1Approval"
+        },
+        {
+          "$ref": "#/$defs/qualificationCreatePermit1Approval"
+        },
+        {
+          "$ref": "#/$defs/qualificationAccessCapability2Approval"
+        },
+        {
+          "$ref": "#/$defs/qualificationBootstrap3Approval"
+        },
+        {
+          "$ref": "#/$defs/qualificationPolicy4Approval"
+        },
+        {
+          "$ref": "#/$defs/qualificationNativeBootstrap3Approval"
+        },
+        {
+          "$ref": "#/$defs/qualificationNativePolicy4Approval"
+        },
+        {
+          "$ref": "#/$defs/qualificationReservePermit1Approval"
+        },
+        {
+          "$ref": "#/$defs/qualificationActivation2Approval"
+        },
+        {
+          "$ref": "#/$defs/qualificationPublishPermit1Approval"
+        },
+        {
+          "$ref": "#/$defs/qualificationNativeActivation3Approval"
+        },
+        {
+          "$ref": "#/$defs/qualificationImportPermit1Approval"
+        },
+        {
+          "$ref": "#/$defs/controllerPolicy6Approval"
+        },
+        {
+          "$ref": "#/$defs/inputDeclarationPayload4Approval"
+        },
+        {
+          "$ref": "#/$defs/controllerActivityGrant1Approval"
+        },
+        {
+          "$ref": "#/$defs/controllerActivation4Approval"
+        },
+        {
+          "$ref": "#/$defs/childPreparationPolicy2Approval"
+        },
+        {
+          "$ref": "#/$defs/childProductPolicy2Approval"
+        },
+        {
+          "$ref": "#/$defs/integratorProductPolicy3Approval"
+        },
+        {
+          "$ref": "#/$defs/childProductPolicyBinding2Approval"
+        },
+        {
+          "$ref": "#/$defs/childActivation2Approval"
+        },
+        {
+          "$ref": "#/$defs/reviewerProductPolicy4Approval"
+        },
+        {
+          "$ref": "#/$defs/advisoryPolicy7Approval"
+        },
+        {
+          "$ref": "#/$defs/advisoryDeclaration1Approval"
+        },
+        {
+          "$ref": "#/$defs/advisoryActivityGrant1Approval"
+        },
+        {
+          "$ref": "#/$defs/advisoryActivation5Approval"
+        }
+      ]
+    },
+    "reviewerProductPolicy4Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handleId",
+        "preparationId",
+        "allocationId",
+        "leasePath",
+        "payload"
+      ],
+      "properties": {
+        "handleId": {
+          "$ref": "#/$defs/id"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "leasePath": {
+          "$ref": "#/$defs/path"
+        },
+        "payload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-reviewer-v3.schema.json#/$defs/productPolicy"
+        }
+      }
+    },
+    "reviewerProductPolicy4Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "reviewerProductPolicy4"
+            },
+            "input": {
+              "$ref": "#/$defs/reviewerProductPolicy4Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "setupBootstrapReferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "WARPMETAL_SETUP_BOOTSTRAP_CONFIG",
+        "WARPMETAL_WORKFLOW_PRODUCER_CONFIG",
+        "WARPMETAL_APPLICATION_FIXTURE_AUTHORITY",
+        "WARPMETAL_EXISTING_HOST_TEST_ENROLLMENT_CONFIG",
+        "WARPMETAL_FIXTURE_CANDIDATE_CONFIG",
+        "WARPMETAL_FIXTURE_TRUST_KEY"
+      ],
+      "properties": {
+        "WARPMETAL_SETUP_BOOTSTRAP_CONFIG": {
+          "$ref": "#/$defs/path"
+        },
+        "WARPMETAL_WORKFLOW_PRODUCER_CONFIG": {
+          "$ref": "#/$defs/path"
+        },
+        "WARPMETAL_APPLICATION_FIXTURE_AUTHORITY": {
+          "$ref": "#/$defs/path"
+        },
+        "WARPMETAL_EXISTING_HOST_TEST_ENROLLMENT_CONFIG": {
+          "$ref": "#/$defs/path"
+        },
+        "WARPMETAL_FIXTURE_CANDIDATE_CONFIG": {
+          "$ref": "#/$defs/path"
+        },
+        "WARPMETAL_FIXTURE_TRUST_KEY": {
+          "$ref": "#/$defs/path"
+        }
+      }
+    },
+    "setupBootstrapApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "purpose",
+        "generationId",
+        "hostId",
+        "keyId",
+        "requestId",
+        "enrollmentId",
+        "caseId",
+        "accountId",
+        "coldReceiptDigest",
+        "enrollmentDeclarationDigest",
+        "candidateDescriptorDigest",
+        "bootstrapConfigDigest",
+        "nodeTokenHash",
+        "runtimeRevision",
+        "configurationReferences",
+        "approvedAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "purpose": {
+          "const": "workspace_setup_bootstrap"
+        },
+        "generationId": {
+          "$ref": "#/$defs/id"
+        },
+        "hostId": {
+          "$ref": "#/$defs/id"
+        },
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "requestId": {
+          "$ref": "#/$defs/id"
+        },
+        "enrollmentId": {
+          "$ref": "#/$defs/id"
+        },
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "accountId": {
+          "$ref": "#/$defs/id"
+        },
+        "coldReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "enrollmentDeclarationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "candidateDescriptorDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "bootstrapConfigDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "nodeTokenHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "runtimeRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "configurationReferences": {
+          "$ref": "#/$defs/setupBootstrapReferences"
+        },
+        "approvedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "setupBootstrapConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "purpose",
+        "operator",
+        "plugin",
+        "ca",
+        "origin"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "purpose": {
+          "const": "workspace_setup_bootstrap"
+        },
+        "operator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "keyId",
+            "keyPath",
+            "keySHA256"
+          ],
+          "properties": {
+            "keyId": {
+              "$ref": "#/$defs/id"
+            },
+            "keyPath": {
+              "$ref": "#/$defs/path"
+            },
+            "keySHA256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        "plugin": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/path"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        "ca": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/path"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        "origin": {
+          "type": "string",
+          "pattern": "^https://127\\.0\\.0\\.1:[1-9][0-9]{0,4}$"
+        }
+      }
+    },
+    "advisoryPolicy7Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serviceRegistrationId",
+        "inputId",
+        "allocationId",
+        "leasePath",
+        "payload"
+      ],
+      "properties": {
+        "serviceRegistrationId": {
+          "$ref": "#/$defs/id"
+        },
+        "inputId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "leasePath": {
+          "$ref": "#/$defs/path"
+        },
+        "payload": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-controller-advisory-v2.schema.json#/$defs/advisoryPolicy7"
+        }
+      }
+    },
+    "advisoryPolicy7Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "advisoryPolicy7"
+            },
+            "input": {
+              "$ref": "#/$defs/advisoryPolicy7Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "advisoryDeclaration1Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "priorDeclarationDigest",
+        "newInputId",
+        "allocationId",
+        "payload",
+        "policyPreimage"
+      ],
+      "properties": {
+        "priorDeclarationDigest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "newInputId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "payload": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-controller-advisory-v2.schema.json#/$defs/advisoryDeclaration1"
+        },
+        "policyPreimage": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-controller-advisory-v2.schema.json#/$defs/advisoryPolicy7"
+        }
+      }
+    },
+    "advisoryDeclaration1Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "advisoryDeclaration1"
+            },
+            "input": {
+              "$ref": "#/$defs/advisoryDeclaration1Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "advisoryActivityGrant1Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serviceRegistrationId",
+        "inputId",
+        "allocationId",
+        "leasePath",
+        "payload",
+        "preparationId"
+      ],
+      "properties": {
+        "serviceRegistrationId": {
+          "$ref": "#/$defs/id"
+        },
+        "inputId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "leasePath": {
+          "$ref": "#/$defs/path"
+        },
+        "payload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/controllerActivityGrant"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "advisoryActivityGrant1Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "advisoryActivityGrant1"
+            },
+            "input": {
+              "$ref": "#/$defs/advisoryActivityGrant1Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "advisoryActivation5Input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serviceRegistrationId",
+        "inputId",
+        "allocationId",
+        "leasePath",
+        "payload",
+        "preparationId",
+        "headerObservation"
+      ],
+      "properties": {
+        "serviceRegistrationId": {
+          "$ref": "#/$defs/id"
+        },
+        "inputId": {
+          "$ref": "#/$defs/id"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "leasePath": {
+          "$ref": "#/$defs/path"
+        },
+        "payload": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-controller-advisory-v2.schema.json#/$defs/advisoryActivation5"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        },
+        "headerObservation": {
+          "$ref": "#/$defs/controllerHeaderObservation"
+        }
+      }
+    },
+    "advisoryActivation5Approval": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/issuanceHeader"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "advisoryActivation5"
+            },
+            "input": {
+              "$ref": "#/$defs/advisoryActivation5Input"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/scopeFreeze"
+    },
+    {
+      "$ref": "#/$defs/issuanceApproval"
+    }
+  ]
+}

@@ -85,11 +85,16 @@ type passEngine struct{}
 
 func (passEngine) Ensure(context.Context, model.Sandbox, string, string) error        { return nil }
 func (passEngine) Replace(context.Context, model.Sandbox, string, string, bool) error { return nil }
-func (passEngine) Start(context.Context, string) error                                { return nil }
-func (passEngine) Stop(context.Context, string) error                                 { return nil }
-func (passEngine) Restart(context.Context, string) error                              { return nil }
-func (passEngine) Remove(context.Context, string) error                               { return nil }
-func (passEngine) Preflight(context.Context, string) error                            { return nil }
+func (passEngine) Recreate(context.Context, model.Sandbox, string, string, bool) error {
+	return nil
+}
+func (passEngine) Start(context.Context, string) error                      { return nil }
+func (passEngine) Stop(context.Context, string) error                       { return nil }
+func (passEngine) Restart(context.Context, string) error                    { return nil }
+func (passEngine) Remove(context.Context, string) error                     { return nil }
+func (passEngine) Preflight(context.Context, string) error                  { return nil }
+func (passEngine) ObserveCellWitness(context.Context, string) (bool, error) { return false, nil }
+func (passEngine) VerifyCellLifecycle(context.Context) error                { return nil }
 func (passEngine) ExecSetup(context.Context, string, []byte) ([]byte, []byte, error) {
 	return nil, nil, nil
 }

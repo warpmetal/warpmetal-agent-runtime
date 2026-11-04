@@ -20,6 +20,15 @@ import (
 
 const maxResponseBytes = 2 << 20
 
+// Endpoint-private raw readers may need the response metadata as well as bytes.
+// The common request path still owns authentication, redirects and wire limits.
+type controlPlaneBytes struct {
+	Bytes         []byte
+	Status        int
+	ContentType   string
+	ContentDigest string
+}
+
 var managedServiceIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 
 type Client struct {
@@ -31,6 +40,7 @@ type Client struct {
 type ResponseError struct {
 	Status int
 	Code   string
+	Detail map[string]any
 }
 
 func (e *ResponseError) Error() string {
@@ -100,10 +110,42 @@ func (c Client) Manifest(ctx context.Context) (model.Manifest, error) {
 	return result, err
 }
 
+// ReportCellPreparation posts one node-authenticated prepared receipt to the
+// protected POST /internal/runtime/cell-preparation endpoint and returns the
+// exact prepared view. It never creates an execution grant; only a separately
+// authorized registered-manager grant transitions the manifest to execute.
+func (c Client) ReportCellPreparation(ctx context.Context, report model.CellPreparationReport) (model.CellPreparationView, error) {
+	var view model.CellPreparationView
+	err := c.request(
+		ctx,
+		http.MethodPost,
+		"/internal/runtime/cell-preparation",
+		c.NodeToken,
+		report,
+		&view,
+		true,
+	)
+	return view, err
+}
+
+// ReportAck is the ordered acceptance view of one Runtime report (P3/R2).
+type ReportAck struct {
+	Accepted         bool  `json:"accepted"`
+	Replayed         bool  `json:"replayed"`
+	ReportEpoch      int64 `json:"reportEpoch"`
+	DesiredRevision  int64 `json:"desiredRevision"`
+	AppliedRevision  int64 `json:"appliedRevision"`
+	ResyncGeneration int64 `json:"resyncGeneration"`
+}
+
 func (c Client) Report(ctx context.Context, report model.Report) error {
-	var response struct {
-		Accepted bool `json:"accepted"`
-	}
+	_, err := c.ReportAck(ctx, report)
+	return err
+}
+
+// ReportAck posts one report and returns its ordered acceptance view (P3/R2).
+func (c Client) ReportAck(ctx context.Context, report model.Report) (ReportAck, error) {
+	var response ReportAck
 	if err := c.request(
 		ctx,
 		http.MethodPost,
@@ -113,12 +155,98 @@ func (c Client) Report(ctx context.Context, report model.Report) error {
 		&response,
 		false,
 	); err != nil {
-		return err
+		return ReportAck{}, err
 	}
 	if !response.Accepted {
-		return errors.New("control plane did not accept report")
+		return response, errors.New("control plane did not accept report")
 	}
-	return nil
+	return response, nil
+}
+
+// CellCredentialResult carries the V3 discriminated material and immutable lease
+// identity, or the retained V2 APIKey envelope. Plaintext is never journaled; the caller
+// forwards it to the native protected store, keyed by CredentialID so a rotated
+// lease is a distinct connection (never a stale reuse). ConnectionID and
+// ConnectionRevision are the account-owned connection identity the Runtime must
+// validate against the manifest credentialBinding, never discard.
+type CellCredentialResult struct {
+	CredentialID       string          `json:"credentialId"`
+	APIKey             string          `json:"apiKey"`
+	ConnectionID       string          `json:"connectionId"`
+	ConnectionRevision int64           `json:"connectionRevision"`
+	Material           json.RawMessage `json:"material,omitempty"`
+}
+
+// CellCredential unseals one cell-owner provider credential for this node over
+// the authenticated control-plane transport.
+func (c Client) CellCredential(ctx context.Context, serviceRegistrationID string) (CellCredentialResult, error) {
+	result, err := c.fetchCellCredential(ctx, serviceRegistrationID)
+	if err != nil {
+		return CellCredentialResult{}, err
+	}
+	if (result.APIKey == "" && len(result.Material) == 0) || result.CredentialID == "" {
+		return CellCredentialResult{}, errors.New("cell credential response is empty")
+	}
+	if result.ConnectionID == "" || result.ConnectionRevision < 1 {
+		return CellCredentialResult{}, errors.New("cell credential response has no connection lease identity")
+	}
+	return result, nil
+}
+
+// CellCredentialWithTimeout fetches the SAME immutable cell-credential lease
+// under an explicit per-request transport deadline. The default control-plane
+// client aborts every request at its own Timeout (30s when unwired), which is
+// shorter than the control-plane budget an idempotent lease fetch is allowed to
+// use; a slow-but-healthy backend (a 22s manifest refresh was measured through
+// the same venue transport) therefore failed every attempt at the transport
+// deadline while the backend answered 200 (R-WP120-1).
+//
+// The receiver is never mutated and the underlying Transport (TLS roots,
+// connection pool) is shared, only the per-request Timeout differs, so the
+// call cannot weaken any other endpoint's transport bound.
+func (c Client) CellCredentialWithTimeout(ctx context.Context, serviceRegistrationID string, timeout time.Duration) (CellCredentialResult, error) {
+	if timeout <= 0 {
+		return c.CellCredential(ctx, serviceRegistrationID)
+	}
+	deadline := timeout
+	base := c.HTTP
+	if base == nil {
+		base = &http.Client{}
+	}
+	clone := *base
+	clone.Timeout = deadline
+	c.HTTP = &clone
+	return c.CellCredential(ctx, serviceRegistrationID)
+}
+
+// LegacyCellCredential preserves the V2 key-only lease envelope. Only the
+// retained V2 path calls this; V3 requires CellCredential plus its material union
+// and exact connection binding and never falls back to this method.
+func (c Client) LegacyCellCredential(ctx context.Context, serviceRegistrationID string) (CellCredentialResult, error) {
+	result, err := c.fetchCellCredential(ctx, serviceRegistrationID)
+	if err != nil {
+		return CellCredentialResult{}, err
+	}
+	if result.APIKey == "" || result.CredentialID == "" || len(result.Material) != 0 {
+		return CellCredentialResult{}, errors.New("legacy cell credential response is invalid")
+	}
+	return result, nil
+}
+
+func (c Client) fetchCellCredential(ctx context.Context, serviceRegistrationID string) (CellCredentialResult, error) {
+	var result CellCredentialResult
+	if err := c.request(
+		ctx,
+		http.MethodPost,
+		"/internal/runtime/cell-credential",
+		c.NodeToken,
+		map[string]string{"serviceRegistrationId": serviceRegistrationID},
+		&result,
+		false,
+	); err != nil {
+		return CellCredentialResult{}, err
+	}
+	return result, nil
 }
 
 func (c Client) InsightPolicies(ctx context.Context) (model.InsightPolicyEnvelopeV1, error) {
@@ -262,6 +390,21 @@ func (c Client) request(
 	result any,
 	strict bool,
 ) error {
+	return c.requestWithKey(ctx, method, path, token, body, result, strict, "")
+}
+
+func (c Client) requestWithKey(ctx context.Context, method, path, token string, body, result any, strict bool, idempotencyKey string) error {
+	return c.requestWithWorkflowLease(ctx, method, path, token, body, result, strict, idempotencyKey, "")
+}
+
+func (c Client) requestWithWorkflowLease(ctx context.Context, method, path, token string, body, result any, strict bool, idempotencyKey, workflowLease string) error {
+	return c.requestWithResponseLimit(ctx, method, path, token, body, result, strict, idempotencyKey, workflowLease, 0)
+}
+
+// A positive maximum is endpoint-selected and counts the WHOLE response wire,
+// including whitespace, rather than the decoded JSON projection. Zero preserves
+// the existing transport behavior/caps for every unrelated caller.
+func (c Client) requestWithResponseLimit(ctx context.Context, method, path, token string, body, result any, strict bool, idempotencyKey, workflowLease string, maximum int) error {
 	origin, err := url.Parse(c.Origin)
 	if err != nil || origin.Scheme != "https" || origin.Host == "" {
 		return errors.New("control-plane origin must be an absolute HTTPS URL")
@@ -286,6 +429,12 @@ func (c Client) request(
 	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("User-Agent", "warpmetald/1")
+	if idempotencyKey != "" {
+		request.Header.Set("Idempotency-Key", idempotencyKey)
+	}
+	if workflowLease != "" {
+		request.Header.Set("X-WarpMetal-Workflow-Lease", workflowLease)
+	}
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
@@ -293,16 +442,35 @@ func (c Client) request(
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
+	if workflowLease != "" {
+		// Action authority cannot follow redirects or spread the independently
+		// enrolled workflow lease to another host/path. Old request behavior stays
+		// unchanged for callers without this additive protected action header.
+		copy := *httpClient
+		copy.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+		httpClient = &copy
+	}
 	response, err := httpClient.Do(request)
 	if err != nil {
 		return fmt.Errorf("control-plane request failed: %w", err)
 	}
 	defer response.Body.Close()
-	limited := io.LimitReader(response.Body, maxResponseBytes)
+	var limited io.Reader = io.LimitReader(response.Body, maxResponseBytes)
+	if maximum > 0 {
+		raw, err := io.ReadAll(io.LimitReader(response.Body, int64(maximum)+1))
+		if err != nil {
+			return fmt.Errorf("read control-plane response: %w", err)
+		}
+		if len(raw) > maximum {
+			return errors.New("control-plane response exceeds endpoint wire cap")
+		}
+		limited = bytes.NewReader(raw)
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		var apiError struct {
 			Error struct {
-				Code string `json:"code"`
+				Code   string         `json:"code"`
+				Detail map[string]any `json:"detail"`
 			} `json:"error"`
 		}
 		_ = json.NewDecoder(limited).Decode(&apiError)
@@ -310,7 +478,33 @@ func (c Client) request(
 		if code == "" {
 			code = "unexpected_status"
 		}
-		return &ResponseError{Status: response.StatusCode, Code: code}
+		return &ResponseError{Status: response.StatusCode, Code: code, Detail: apiError.Error.Detail}
+	}
+	// Fixed private byte readers reuse the SAME origin/auth/redirect/response
+	// boundary. Raw output requires an explicit endpoint cap, never JSON coercion.
+	var raw *[]byte
+	var metadata *controlPlaneBytes
+	switch value := result.(type) {
+	case *[]byte:
+		raw = value
+	case *controlPlaneBytes:
+		raw, metadata = &value.Bytes, value
+	}
+	if raw != nil {
+		if maximum <= 0 {
+			return errors.New("raw control-plane response requires endpoint cap")
+		}
+		content, err := io.ReadAll(limited)
+		if err != nil {
+			return err
+		}
+		*raw = content
+		if metadata != nil {
+			metadata.Status = response.StatusCode
+			metadata.ContentType = response.Header.Get("Content-Type")
+			metadata.ContentDigest = response.Header.Get("X-Content-Digest")
+		}
+		return nil
 	}
 	decoder := json.NewDecoder(limited)
 	if strict {

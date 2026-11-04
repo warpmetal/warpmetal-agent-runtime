@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-source-local-originals-v1.schema.json",
+  "title": "Independent SOURCE registered-process and current-control originals v1",
+  "$defs": {
+    "id": {"$ref": "workspace-workflow-v1.schema.json#/$defs/id"},
+    "digest": {"$ref": "workspace-workflow-v1.schema.json#/$defs/digest"},
+    "time": {"$ref": "workspace-workflow-v1.schema.json#/$defs/time"},
+    "scope": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/controllerOwner"},
+    "targetKind": {"$ref": "workspace-source-local-grant-v1.schema.json#/$defs/targetKind"},
+    "registeredProcess": {"$ref": "workspace-source-local-grant-v1.schema.json#/$defs/registeredProcessRef"},
+    "currentControl": {"$ref": "workspace-source-local-grant-v1.schema.json#/$defs/currentControlRef"},
+    "signature": {"$ref": "workspace-workflow-budget-v2.schema.json#/$defs/signature"},
+    "registeredProcessObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "scope", "candidateInventoryDigest", "targetKind", "preparationId", "registeredProcess", "observedAt", "expiresAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1},
+        "purpose": {"const": "source_registered_process_observation"},
+        "scope": {"$ref": "#/$defs/scope"},
+        "candidateInventoryDigest": {"$ref": "#/$defs/digest"},
+        "targetKind": {"$ref": "#/$defs/targetKind"},
+        "preparationId": {"$ref": "#/$defs/id"},
+        "registeredProcess": {"$ref": "#/$defs/registeredProcess"},
+        "observedAt": {"$ref": "#/$defs/time"}, "expiresAt": {"$ref": "#/$defs/time"}
+      }
+    },
+    "registeredProcessObservationEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {"payload": {"$ref": "#/$defs/registeredProcessObservation"}, "keyId": {"$ref": "#/$defs/id"}, "signature": {"$ref": "#/$defs/signature"}}
+    },
+    "currentControlObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "scope", "candidateInventoryDigest", "targetKind", "preparationId", "registeredProcess", "currentControl"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1},
+        "purpose": {"const": "source_current_control_observation"},
+        "scope": {"$ref": "#/$defs/scope"},
+        "candidateInventoryDigest": {"$ref": "#/$defs/digest"},
+        "targetKind": {"$ref": "#/$defs/targetKind"}, "preparationId": {"$ref": "#/$defs/id"},
+        "registeredProcess": {"$ref": "#/$defs/registeredProcess"}, "currentControl": {"$ref": "#/$defs/currentControl"}
+      }
+    },
+    "currentControlObservationEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {"payload": {"$ref": "#/$defs/currentControlObservation"}, "keyId": {"$ref": "#/$defs/id"}, "signature": {"$ref": "#/$defs/signature"}}
+    },
+    "controlOriginal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["serviceRegistrationId", "serviceGeneration", "operationId", "desiredRevision", "actionRevision", "controlRevision", "configDigest", "desiredState"],
+      "properties": {
+        "serviceRegistrationId": {"$ref": "#/$defs/id"},
+        "serviceGeneration": {"$ref": "workspace-workflow-v1.schema.json#/$defs/positive"},
+        "operationId": {"$ref": "#/$defs/id"},
+        "desiredRevision": {"$ref": "workspace-workflow-v1.schema.json#/$defs/positive"},
+        "actionRevision": {"$ref": "workspace-workflow-v1.schema.json#/$defs/positive"},
+        "controlRevision": {"$ref": "workspace-workflow-v1.schema.json#/$defs/positive"},
+        "configDigest": {"$ref": "#/$defs/digest"},
+        "desiredState": {"enum": ["active", "paused", "stopped", "retired", "revoked"]}
+      }
+    },
+    "originalBase64": {"type": "string", "minLength": 4, "maxLength": 66560, "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"},
+    "processObservationRequest": {
+      "type": "object", "additionalProperties": false, "required": ["formatVersion", "observation", "registrationBase64"],
+      "properties": {"formatVersion": {"type": "integer", "const": 1}, "observation": {"$ref": "#/$defs/registeredProcessObservationEnvelope"}, "registrationBase64": {"$ref": "#/$defs/originalBase64"}}
+    },
+    "currentControlResponse": {
+      "type": "object", "additionalProperties": false, "required": ["observation", "controlBase64"],
+      "properties": {"observation": {"$ref": "#/$defs/currentControlObservationEnvelope"}, "controlBase64": {"$ref": "#/$defs/originalBase64"}}
+    },
+    "terminalReferenceEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {"payload": {"$ref": "workspace-source-local-grant-v1.schema.json#/$defs/terminalReference"}, "keyId": {"$ref": "#/$defs/id"}, "signature": {"$ref": "#/$defs/signature"}}
+    }
+  }
+}

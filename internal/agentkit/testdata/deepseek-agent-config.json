@@ -1,0 +1,197 @@
+{
+ "formatVersion": 2,
+ "workspaceName": "DeepSeek agent",
+ "purpose": "A coding workspace driven by DeepSeek models: triage the repository, run the test suite, then make scoped changes with verifiable acceptance.",
+ "profiles": [
+  {
+   "profileId": "manager",
+   "name": "Orchestrator",
+   "description": "",
+   "approvedProfile": null,
+   "tools": [],
+   "modelSelection": null
+  },
+  {
+   "profileId": "advisor",
+   "name": "Foreman",
+   "description": "",
+   "approvedProfile": null,
+   "tools": [],
+   "modelSelection": null
+  },
+  {
+   "profileId": "code-specialist",
+   "name": "Code specialist",
+   "description": "Plans and carries out repository changes inside this workspace.",
+   "approvedProfile": null,
+   "tools": [],
+   "modelSelection": null
+  }
+ ],
+ "roles": {
+  "managerProfileId": "manager",
+  "advisorProfileId": "advisor"
+ },
+ "lanes": [],
+ "limits": {
+  "maxActiveChildren": null,
+  "modelRequests": null,
+  "modelTurns": null,
+  "inputTokens": null,
+  "outputTokens": null,
+  "usdMicros": null,
+  "wallClockSeconds": null
+ },
+ "agentSetup": {
+  "agentInstructions": "# AGENTS.md — DeepSeek coding agent\n\nYou are the workspace agent for this repository. Work in small, reviewable steps.\n\n## First response\n- Restate the task in one sentence and list the files you will inspect.\n- Ask a question only when the repository cannot answer it.\n\n## Working agreement\n- Read `AGENTS.md`, `README` and the project manifest before editing.\n- Prefer the documented setup/test commands; quote exact command output as evidence.\n- Keep changes inside the task's allowed scope; report anything else instead of editing it.\n- Use `deepseek-chat` for routine edits and `deepseek-reasoner` for planning or hard failures.\n\n## Boundaries\n- Never write credentials, tokens or `.env` values into files, commits or logs.\n- Do not push, deploy, or change billing/provider settings from the workspace.\n- Ask before deleting files, rewriting history or changing CI configuration.\n",
+  "models": {
+   "providers": [
+    {
+     "id": "deepseek",
+     "kind": "deepseek",
+     "baseUrl": null,
+     "auth": {
+      "connectionRef": "deepseek"
+     }
+    }
+   ],
+   "roleDefaults": [
+    {
+     "roleId": "manager",
+     "providerId": "deepseek",
+     "defaultModel": "deepseek-chat",
+     "allowedModels": [
+      "deepseek-chat",
+      "deepseek-reasoner"
+     ],
+     "params": {
+      "temperature": null,
+      "topP": null,
+      "maxOutputTokens": null,
+      "reasoningEffort": null
+     }
+    },
+    {
+     "roleId": "advisor",
+     "providerId": "deepseek",
+     "defaultModel": "deepseek-reasoner",
+     "allowedModels": [
+      "deepseek-chat",
+      "deepseek-reasoner"
+     ],
+     "params": {
+      "temperature": null,
+      "topP": null,
+      "maxOutputTokens": null,
+      "reasoningEffort": "high"
+     }
+    },
+    {
+     "roleId": "code-specialist",
+     "providerId": "deepseek",
+     "defaultModel": "deepseek-chat",
+     "allowedModels": [
+      "deepseek-chat",
+      "deepseek-reasoner"
+     ],
+     "params": {
+      "temperature": null,
+      "topP": null,
+      "maxOutputTokens": null,
+      "reasoningEffort": null
+     }
+    }
+   ]
+  },
+  "toolProviders": [
+   {
+    "id": "filesystem",
+    "kind": "cli",
+    "endpointRef": null,
+    "scopes": [
+     "read",
+     "write"
+    ],
+    "approval": "ask",
+    "auth": null
+   },
+   {
+    "id": "shell",
+    "kind": "cli",
+    "endpointRef": null,
+    "scopes": [
+     "exec"
+    ],
+    "approval": "ask",
+    "auth": null
+   },
+   {
+    "id": "git",
+    "kind": "cli",
+    "endpointRef": null,
+    "scopes": [
+     "status",
+     "diff",
+     "commit"
+    ],
+    "approval": "ask",
+    "auth": null
+   }
+  ],
+  "skills": [
+   {
+    "id": "warpmetal-agent-sandbox",
+    "name": "WarpMetal Agent Sandbox",
+    "sourceRepo": "warpmetal/skills",
+    "pinnedRef": "23b16ad85d492ac0eec87e93d24b2c3d6f3b2fd9",
+    "requiredTools": [
+     "shell",
+     "filesystem",
+     "git"
+    ],
+    "notes": "Catalog entry warpmetal-agent-sandbox 0.1.0 pinned to warpmetal/skills commit 23b16ad85d492ac0eec87e93d24b2c3d6f3b2fd9; runtime skill installation is a later phase."
+   }
+  ],
+  "runtime": {
+   "imageRef": "warpmetal-workspace-base:2026-10",
+   "toolProfile": "base-2026-10",
+   "packages": [
+    "git",
+    "ripgrep",
+    "nodejs22",
+    "python3"
+   ],
+   "env": []
+  },
+  "repo": {
+   "url": "https://github.com/example/deepseek-workspace",
+   "branch": "main",
+   "path": "/workspace",
+   "setupCommands": [
+    "npm ci"
+   ],
+   "testCommands": [
+    "npm test"
+   ]
+  },
+  "firstTask": {
+   "prompt": "Inspect this repository and report: the runtime and package manager, how to run the test suite, the three riskiest files to change, and a concrete first change with its acceptance check. Do not modify files in this first task.",
+   "allowedChanges": [
+    "read any workspace file",
+    "run read-only inspection commands"
+   ],
+   "acceptance": [
+    "The runtime, package manager and exact test command are stated with evidence.",
+    "Three risky files are named with a one-line reason each.",
+    "The proposed first change names its files and a verifiable acceptance check.",
+    "No file was modified during this task."
+   ]
+  },
+  "capacityHint": {
+   "maxActiveChildren": 2,
+   "cpuMillis": 2000,
+   "memoryMiB": 4096,
+   "workspaceDiskGiB": 40
+  }
+ }
+}

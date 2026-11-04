@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.warpmetal.com/contracts/workspace-first-task-provider-v2.schema.json",
+  "title": "Owner first-task originals and responses for explicit Flash preparation2; owner request1 unchanged",
+  "$defs": {
+    "ownerFirstTaskFields2": {
+      "type": "object",
+      "required": [
+        "formatVersion",
+        "firstTaskId",
+        "setupIntentId",
+        "requestId",
+        "applicationId",
+        "applicationOperationId",
+        "applicationOperationDigest",
+        "configurationId",
+        "configurationRevision",
+        "configurationDigest",
+        "owner",
+        "parent",
+        "inputText",
+        "parentActivityRequest",
+        "createdAt",
+        "statusUrl"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "firstTaskId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "setupIntentId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "requestId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "applicationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "applicationOperationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "applicationOperationDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/digest"
+        },
+        "configurationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "configurationRevision": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/positive"
+        },
+        "configurationDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/digest"
+        },
+        "owner": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/controllerOwner"
+        },
+        "parent": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/ownerFirstTaskParent"
+        },
+        "inputText": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384
+        },
+        "parentActivityRequest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-controller-provider-v2.schema.json#/$defs/controllerPreparationRequest2"
+        },
+        "createdAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/time"
+        },
+        "statusUrl": {
+          "type": "string",
+          "pattern": "^/internal/account/agent-workspace-setup-intents/[A-Za-z0-9][A-Za-z0-9._:-]{0,127}/tasks/[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        }
+      }
+    },
+    "ownerFirstTaskOriginal2": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ownerFirstTaskFields2"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ownerFirstTaskResponse2": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ownerFirstTaskFields2"
+        },
+        {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/ownerFirstTaskStatus"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

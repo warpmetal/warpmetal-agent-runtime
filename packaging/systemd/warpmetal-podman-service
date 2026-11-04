@@ -5,10 +5,18 @@ cgroup_path=/sys/fs/cgroup/system.slice/warpmetal-podman.service
 /usr/bin/mkdir "$cgroup_path/manager"
 printf '%s\n' "$$" > "$cgroup_path/manager/cgroup.procs"
 
+# The delegated Podman service must carry the trusted SA9 hook directory itself,
+# not only on the one-shot local `podman create` invocation. A create-time
+# `--hooks-dir` is not persisted across the remote-service start phase, so the
+# `precreate` config hook (which injects the childless procfs witness for a
+# cell container) runs in the SERVICE process and needs the hook directory here.
+# The directory is root/control-owned and immutable; the rootless runtime user
+# only reads it (never a container bind, never worker-reachable).
 exec /usr/bin/podman \
   --runroot /run/warpmetal-podman/containers \
   --runtime crun \
   --cgroup-manager cgroupfs \
+  --hooks-dir /usr/libexec/warpmetal-agent-runtime/hooks \
   system service \
   --time=0 \
   unix:///run/warpmetal-podman/podman.sock

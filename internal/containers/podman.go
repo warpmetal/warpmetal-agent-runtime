@@ -9,17 +9,26 @@ import (
 	"io"
 	"os/exec"
 	"os/user"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/physicalgate"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/qualification"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/setupsource"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 )
 
 type Engine interface {
 	Ensure(context.Context, model.Sandbox, string, string) error
 	Replace(context.Context, model.Sandbox, string, string, bool) error
+	// Recreate performs a controlled replacement that forces a re-create even
+	// when the image digest is unchanged, for the legacy->cell transition (so
+	// an existing running box is re-created with the SA9 witness hook applied).
+	Recreate(context.Context, model.Sandbox, string, string, bool) error
 	Start(context.Context, string) error
 	Stop(context.Context, string) error
 	Restart(context.Context, string) error
@@ -27,21 +36,65 @@ type Engine interface {
 	Preflight(context.Context, string) error
 	ExecSetup(context.Context, string, []byte) ([]byte, []byte, error)
 	Exec(context.Context, string, string, bool, SessionInput, io.Writer, io.Writer) error
+	// ObserveCellWitness verifies the running cell container's CURRENT mount
+	// namespace actually carries the reviewed childless procfs witness. It is
+	// the only source of observed cell readiness; the desired cell flag alone
+	// is never accepted. It proves PREREQUISITE witness availability, not
+	// worker private-proc isolation (the live gate's oracle), and it does not
+	// distinguish a fresh procfs from a non-recursive parent-proc bind.
+	ObserveCellWitness(context.Context, string) (bool, error)
+	// VerifyCellLifecycle re-runs the fail-closed SA9 capability negotiation
+	// (trusted immutable hook storage plus the pinned Podman/crun precreate
+	// support) WITHOUT creating, starting, or replacing a container. The
+	// reconcile adopt path uses it before it treats an already-running
+	// container as a cell, so readiness is never committed on a host that
+	// could not create the witness in the first place.
+	VerifyCellLifecycle(context.Context) error
 }
 
 type ManagedSupervisorAction string
 
 const (
-	ManagedSupervisorEnroll                   ManagedSupervisorAction = "enroll"
-	ManagedSupervisorStart                    ManagedSupervisorAction = "start"
+	ManagedSupervisorEnroll             ManagedSupervisorAction = "enroll"
+	ManagedSupervisorStart              ManagedSupervisorAction = "start"
+	ManagedSupervisorMaterializeProfile ManagedSupervisorAction = "materialize-profile"
+	// WP-211B: the packaged agent-kit materializer action. Same fixed supervisor
+	// binary and capability launcher, same no-shell argv contract; gated by a
+	// compiled TEST adoption record and receives only a bounded closed request.
+	ManagedSupervisorMaterializeAgentKit      ManagedSupervisorAction = "materialize-agent-kit"
 	ManagedSupervisorRestart                  ManagedSupervisorAction = "restart"
 	ManagedSupervisorRebind                   ManagedSupervisorAction = "rebind"
+	ManagedSupervisorCredential               ManagedSupervisorAction = "credential"
 	ManagedSupervisorStatus                   ManagedSupervisorAction = "status"
 	ManagedSupervisorRegisterSource           ManagedSupervisorAction = "register-source"
 	ManagedSupervisorRegisterHandoffWorkspace ManagedSupervisorAction = "register-handoff-workspace"
 	ManagedSupervisorDrain                    ManagedSupervisorAction = "drain"
 	ManagedSupervisorStop                     ManagedSupervisorAction = "stop"
+	ManagedSupervisorControllerPrepare        ManagedSupervisorAction = "controller-prepare"
+	ManagedSupervisorControllerPrompt         ManagedSupervisorAction = "controller-prompt"
+	ManagedSupervisorControllerOutput         ManagedSupervisorAction = "controller-output"
+	ManagedSupervisorControllerHeader         ManagedSupervisorAction = "controller-header"
+	ManagedSupervisorChildHeader              ManagedSupervisorAction = "child-header"
+	ManagedSupervisorSourceTerminalCapture    ManagedSupervisorAction = "source-terminal-capture"
+	ManagedSupervisorChildEffectCapture       ManagedSupervisorAction = "child-effect-capture"
+	ManagedSupervisorReviewerCapture          ManagedSupervisorAction = "reviewer-assessment-capture"
+	// ManagedSupervisorCell is the trusted cell controller boundary. It runs
+	// OUTSIDE the bwrap jail with credentials and network and dispatches to the
+	// SA4 adapter (runner/warpmetal_cell_adapter.py: create_child -> bind_workspace
+	// -> admit_first_step, and observe/recover/classify_child). It is never the
+	// credential-less jailed tool entrypoint (runner/warpmetal_cell_tool.py).
+	ManagedSupervisorCell ManagedSupervisorAction = "cell"
+	// ManagedSupervisorPrepare is the formatVersion 3 prepare-only cell command.
+	// It runs the SAME trusted cell adapter OUTSIDE the bwrap jail and returns a
+	// safe prepared receipt WITHOUT a prompt grant; it never takes the launch
+	// path (no admit_first_step). V2 same-pass launch is never a v3 fallback.
+	ManagedSupervisorPrepare ManagedSupervisorAction = "prepare"
 )
+
+// ManagedCellAdapterPath is the installed trusted SA4 cell adapter. It runs
+// outside the bwrap jail with credentials and network; it is never the jailed,
+// credential-less tool entrypoint (warpmetal_cell_tool.py).
+const ManagedCellAdapterPath = "/usr/local/libexec/warpmetal-agent-cells/warpmetal_cell_adapter.py"
 
 type ManagedWorkerAction string
 
@@ -71,7 +124,98 @@ type SessionBridgeGrantV1 struct {
 	AllowedMethods     []string              `json:"allowedMethods"`
 	IssuedAt           time.Time             `json:"issuedAt"`
 	ExpiresAt          time.Time             `json:"expiresAt"`
+	// Capability is empty for the legacy exact-session grant, preserving its
+	// wire bytes, and "foreman_chat" for the additive advisory chat grant.
+	Capability string               `json:"capability,omitempty"`
+	Chat       *SessionBridgeChatV1 `json:"chat,omitempty"`
 }
+
+// SessionBridgeChatV1 is the host-generated policy for one Foreman chat
+// bridge. The bridge re-resolves the exact native session and enforces these
+// bounds authoritatively; the connector enforces the same values locally.
+type SessionBridgeChatV1 struct {
+	Protocol              string `json:"protocol"`
+	MaxQuestionBytes      int    `json:"maxQuestionBytes"`
+	MaxReplyBytes         int    `json:"maxReplyBytes"`
+	MaxQuestionsPerMinute int    `json:"maxQuestionsPerMinute"`
+	MaxConcurrent         int    `json:"maxConcurrent"`
+	HandoffID             string `json:"handoffId"`
+	NativeSessionID       string `json:"nativeSessionId"`
+	ServiceRegistrationID string `json:"serviceRegistrationId"`
+	ServiceGeneration     int64  `json:"serviceGeneration"`
+	ProjectID             string `json:"projectId"`
+	WorkspaceEpoch        string `json:"workspaceEpoch"`
+	// Advisory is the additive read-only admission scope for the Foreman chat
+	// prompt. It is issued by the Runtime from the exact controller-parent
+	// receipt; the bridge presents it to the native controller guard for chat
+	// questions only. It carries no tool, review, decision, mutation or takeover
+	// capability and expires with the 120-second chat consent.
+	Advisory *ForemanChatAdvisoryV1 `json:"advisory,omitempty"`
+	// Qualification is the venue-scoped, host-generated qualification client
+	// configuration. The bridge presents the signed controller policy and a
+	// per-preparation activation to the image-owned verifier. It is disabled by
+	// default (`nil`) and never owner-controlled.
+	Qualification *ForemanChatQualificationV1 `json:"qualification,omitempty"`
+}
+
+// ForemanChatQualificationV1 is the closed qualification client configuration
+// for one Foreman chat grant. The Runtime supplies the venue paths and the
+// signed policy digest; the bridge reads only and never writes the tree.
+type ForemanChatQualificationV1 struct {
+	FormatVersion int    `json:"formatVersion"`
+	Tree          string `json:"tree"`
+	Key           string `json:"key"`
+	PolicyDigest  string `json:"policyDigest"`
+	Broker        string `json:"broker"`
+}
+
+const (
+	ForemanChatQualificationFormat = 1
+	// ForemanChatAdvisoryModel is the single model authority the installed
+	// qualification plugin admits for real-provider controller activity. The
+	// Foreman advisory projection must equal it (there is no per-owner rewrite
+	// and no post-hoc native model switch).
+	ForemanChatAdvisoryModelID = "gpt-4.1-mini-2025-04-14"
+)
+
+// ForemanChatAdvisoryV1 is the closed read-only scope the bridge may turn into
+// the one native controller prompt admission for the consented Foreman chat.
+// Every field is re-derived from the exact controller-parent identity at handoff
+// time; no caller-supplied scope is accepted.
+type ForemanChatAdvisoryV1 struct {
+	FormatVersion         int       `json:"formatVersion"`
+	Capability            string    `json:"capability"`
+	AdmissionID           string    `json:"admissionId"`
+	ServerID              string    `json:"serverId"`
+	SandboxID             string    `json:"sandboxId"`
+	SandboxGeneration     int64     `json:"sandboxGeneration"`
+	Instance              string    `json:"instance"`
+	NativeSessionID       string    `json:"nativeSessionId"`
+	ServiceRegistrationID string    `json:"serviceRegistrationId"`
+	ServiceGeneration     int64     `json:"serviceGeneration"`
+	Role                  string    `json:"role"`
+	RoleBindingID         string    `json:"roleBindingId"`
+	HandoffID             string    `json:"handoffId"`
+	IssuedAt              time.Time `json:"issuedAt"`
+	ExpiresAt             time.Time `json:"expiresAt"`
+	// Projection and RoleAgentDigest are the exact controller-parent projection
+	// the Runtime adopted and signed. The bridge hashes the same object to the
+	// same roleAgentDigest before it will present any qualification admission;
+	// the signed policy must match both. Worker/manager projections are never
+	// emitted here.
+	Projection      *model.ControllerRoleProjection `json:"projection"`
+	RoleAgentDigest string                          `json:"roleAgentDigest"`
+}
+
+const (
+	ForemanChatCapability         = "foreman_chat"
+	ForemanChatAdvisoryCapability = "foreman_chat_read_only"
+	ForemanChatProtocol           = "wm-foreman-chat/1"
+	ForemanChatQuestionBytes      = 16 * 1024
+	ForemanChatReplyBytes         = 1024 * 1024
+	ForemanChatQuestionsPerMinute = 6
+	ForemanChatMaxConcurrent      = 1
+)
 
 type SessionHandoffLaunch struct {
 	Grant      SessionBridgeGrantV1
@@ -102,9 +246,58 @@ var (
 )
 
 type Podman struct {
-	RuntimeUser      string
+	RuntimeUser       string
+	PhysicalStore     *state.Store
+	PhysicalProcesses *physicalgate.ProcessRegistry
+	PhysicalAccess    *physicalgate.AccessRegistry
+	SourceTerminal    *physicalgate.SourceTerminalConsumer
+	// QualificationRoot is operator configuration only, empty by default.
+	// It is independent of the SA9 witness hook directory.
+	QualificationRoot          string
+	QualificationProducer      *qualification.ProducerConfig
+	QualificationServerID      string
+	QualificationNodeTokenHash string
+	// HooksDir is the trusted SA9 hook storage directory the engine configures
+	// for both the delegated Podman service and the cell create path. Empty
+	// selects the packaged CellHookDirectory; tests and non-default
+	// installations may override it. It must equal the directory the
+	// warpmetal-podman-service is started with, and verifyCellLifecycle fails
+	// closed when the installed hook there is not the reviewed allowlisted
+	// configuration.
+	HooksDir string
+	// CellLifecycle overrides the packaged SA9 hook storage and allowlisted
+	// profile. Empty selects DefaultCellLifecycle; tests and non-default
+	// installations may set it.
+	CellLifecycle *CellLifecycle
+	// SetupTestSource is operator-only configuration for the setup runner's
+	// default-off test-venue source gate (WP-60). It is empty in production,
+	// so ExecSetup adds no gate environment. When enabled, ExecSetup adds
+	// exactly the mode and exact-URL allowlist environment to the setup
+	// runner process. The setup request JSON can never influence it.
+	SetupTestSource  *setupsource.Config
 	runCommand       func(context.Context, bool, ...string) (string, error)
 	runStreamCommand func(context.Context, bool, SessionInput, io.Writer, io.Writer, ...string) error
+	// networkHelperPIDs is a narrow test seam for the rootless network-helper
+	// cleanup on stop/remove. Production leaves it nil and observes the live
+	// container's conmon/netns footprint in /proc.
+	networkHelperPIDs func(context.Context, string) []networkHelperProcess
+	// helperProcesses is the narrow test seam for the read-only /proc process
+	// view used by network-helper attribution. Production leaves it nil.
+	helperProcesses helperProcessTable
+	// killProcess is the narrow test seam for signal delivery; production uses
+	// syscall.Kill.
+	killProcess func(int, syscall.Signal) error
+}
+
+// networkHelperProcess identifies one rootless network helper (slirp4netns or
+// pasta) that must not outlive the cell it serves. StartTime is the /proc stat
+// start time (field 22), used to refuse a recycled PID; zero means the identity
+// could not be read and the process is only signalled when it still exists.
+type networkHelperProcess struct {
+	PID       int
+	StartTime uint64
+	Comm      string
+	State     string
 }
 
 const (
@@ -162,11 +355,25 @@ func (p Podman) Ensure(
 	workspace string,
 	imageDigest string,
 ) error {
+	// A cell sandbox must never launch without the reviewed SA9 witness: the
+	// capability negotiation is fail-closed, with no silent no-witness fallback.
+	if sandbox.Cell {
+		if err := p.verifyCellLifecycle(ctx, p.cellLifecycle()); err != nil {
+			return err
+		}
+	}
 	name := containerName(sandbox.ID)
+	args, err := p.managedCreateArguments(ctx, name, sandbox, workspace, imageDigest)
+	if err != nil {
+		return err
+	}
 	exists := p.run(ctx, nil, "container", "exists", name) == nil
 	if !exists {
-		args := createArguments(name, sandbox, workspace, imageDigest)
 		if err := p.run(ctx, nil, args...); err != nil {
+			return err
+		}
+	} else if p.QualificationRoot != "" {
+		if err := p.verifyQualificationMounts(ctx, sandbox.ID); err != nil {
 			return err
 		}
 	}
@@ -185,8 +392,45 @@ func (p Podman) Replace(
 	imageDigest string,
 	running bool,
 ) error {
+	return p.replaceContainer(ctx, sandbox, workspace, imageDigest, running, false)
+}
+
+// Recreate performs the same controlled replacement as Replace but forces a
+// re-create even when the image digest is unchanged. It is the legitimate
+// controller-authorized transition for a legacy box enabled as a cell: the
+// existing running container is stopped, retained under a deterministic backup
+// name, and re-created with the SA9 witness hook applied, preserving the
+// workspace and rolling back to the backup on failure. It is never an unsafe
+// reset and never abandons the workspace.
+func (p Podman) Recreate(
+	ctx context.Context,
+	sandbox model.Sandbox,
+	workspace string,
+	imageDigest string,
+	running bool,
+) error {
+	return p.replaceContainer(ctx, sandbox, workspace, imageDigest, running, true)
+}
+
+func (p Podman) replaceContainer(
+	ctx context.Context,
+	sandbox model.Sandbox,
+	workspace string,
+	imageDigest string,
+	running bool,
+	force bool,
+) error {
+	if sandbox.Cell {
+		if err := p.verifyCellLifecycle(ctx, p.cellLifecycle()); err != nil {
+			return err
+		}
+	}
 	name := containerName(sandbox.ID)
 	backup := name + "-image-backup"
+	args, err := p.managedCreateArguments(ctx, name, sandbox, workspace, imageDigest)
+	if err != nil {
+		return err
+	}
 	if err := p.run(ctx, nil, "image", "exists", imageDigest); err != nil {
 		if err := p.run(ctx, nil, "pull", imageDigest); err != nil {
 			return fmt.Errorf("%w: %v", ErrImagePullFailed, err)
@@ -195,28 +439,38 @@ func (p Podman) Replace(
 
 	currentExists := p.containerExists(ctx, name)
 	backupExists := p.containerExists(ctx, backup)
-	if currentExists {
-		currentDigest, err := p.containerImageDigest(ctx, name)
+	if currentExists && backupExists {
+		// Both the current container and its deterministic backup exist: a prior
+		// replacement was interrupted after the new container was created but
+		// before the backup was removed. Verify the current container is the
+		// intended ready replacement before dropping the backup — never by the
+		// annotation class alone.
+		if force && sandbox.Cell {
+			if err := p.setContainerState(ctx, name, true); err != nil {
+				return err
+			}
+		}
+		ready, err := p.verifyReplacementReady(ctx, sandbox, name, imageDigest, force)
 		if err != nil {
 			return err
 		}
-		if currentDigest == imageDigest {
+		if ready {
 			if err := p.setContainerState(ctx, name, running); err != nil {
-				if backupExists {
-					return p.rollbackReplacement(ctx, name, backup, running, err)
-				}
 				return err
 			}
-			if backupExists {
-				if err := p.removeContainer(ctx, backup); err != nil {
-					return fmt.Errorf("remove completed image backup: %w", err)
-				}
+			if err := p.removeContainer(ctx, backup); err != nil {
+				return fmt.Errorf("remove completed image backup: %w", err)
 			}
 			return nil
 		}
-		if backupExists {
-			return errors.New("podman image replacement state is ambiguous")
+		if force && sandbox.Cell {
+			// A forced cell transition that is not verified ready rolls back to
+			// the retained legacy backup (never strands a not-ready container).
+			return p.rollbackReplacement(ctx, name, backup, running, errors.New("replacement not verified ready"))
 		}
+		return errors.New("podman image replacement state is ambiguous")
+	}
+	if currentExists {
 		if err := p.stopContainer(ctx, name); err != nil {
 			return err
 		}
@@ -233,7 +487,6 @@ func (p Podman) Replace(
 		backupExists = true
 	}
 
-	args := createArguments(name, sandbox, workspace, imageDigest)
 	if err := p.run(ctx, nil, args...); err != nil {
 		if backupExists {
 			return p.rollbackReplacement(ctx, name, backup, running, err)
@@ -247,11 +500,42 @@ func (p Podman) Replace(
 		return err
 	}
 	if backupExists {
+		// For a forced cell transition, do not drop the rollback backup until the
+		// recreated container is verified as the intended ready target (image
+		// matches AND the witness is actually mounted) — the annotation alone
+		// identifies a class, not a unique replacement. A not-ready recreation
+		// rolls back to the retained legacy container instead of stranding it.
+		if force && sandbox.Cell {
+			ready, err := p.ObserveCellWitness(ctx, sandbox.ID)
+			if err != nil || !ready {
+				return p.rollbackReplacement(ctx, name, backup, running, errors.New("cell witness unavailable after recreation"))
+			}
+		}
 		if err := p.removeContainer(ctx, backup); err != nil {
 			return fmt.Errorf("remove completed image backup: %w", err)
 		}
 	}
 	return nil
+}
+
+// verifyReplacementReady reports whether the current container is the intended
+// ready replacement before its deterministic backup is dropped. The image
+// digest must match the target, and for a forced cell transition the container
+// must additionally carry the allowlisted annotation AND have the witness
+// actually mounted (a live observation, not the annotation class alone). The
+// caller must ensure the container is running before the witness check.
+func (p Podman) verifyReplacementReady(ctx context.Context, sandbox model.Sandbox, name, imageDigest string, force bool) (bool, error) {
+	currentDigest, err := p.containerImageDigest(ctx, name)
+	if err != nil {
+		return false, err
+	}
+	if currentDigest != imageDigest {
+		return false, nil
+	}
+	if !force || !sandbox.Cell {
+		return true, nil
+	}
+	return p.ObserveCellWitness(ctx, sandbox.ID)
 }
 
 func (p Podman) rollbackReplacement(
@@ -341,7 +625,11 @@ func (p Podman) Start(ctx context.Context, id string) error {
 }
 
 func (p Podman) Stop(ctx context.Context, id string) error {
-	return p.stopContainer(ctx, containerName(id))
+	name := containerName(id)
+	helpers := p.observeNetworkHelpers(ctx, name)
+	stopErr := p.stopContainer(ctx, name)
+	cleanupErr := p.terminateNetworkHelpers(ctx, helpers)
+	return errors.Join(stopErr, cleanupErr)
 }
 
 func (p Podman) Restart(ctx context.Context, id string) error {
@@ -379,7 +667,11 @@ func (p Podman) Unpause(ctx context.Context, id string) error {
 }
 
 func (p Podman) Remove(ctx context.Context, id string) error {
-	return p.removeContainer(ctx, containerName(id))
+	name := containerName(id)
+	helpers := p.observeNetworkHelpers(ctx, name)
+	removeErr := p.removeContainer(ctx, name)
+	cleanupErr := p.terminateNetworkHelpers(ctx, helpers)
+	return errors.Join(removeErr, cleanupErr)
 }
 
 // Preflight is a credential-free readiness oracle for the immutable nested
@@ -441,6 +733,12 @@ type prefixedSessionInput struct {
 
 func (i prefixedSessionInput) InterruptRead() error { return i.input.InterruptRead() }
 
+// setupRequestInput adapts the bounded setup request reader to the shared
+// stream seam. Setup execution is not interactive, so an interrupt is a no-op.
+type setupRequestInput struct{ io.Reader }
+
+func (setupRequestInput) InterruptRead() error { return nil }
+
 // ExecSessionHandoff is the only Runtime path to the managed Team bridge. Its
 // typed launch is entirely host-generated; neither an owner command nor shell
 // text can influence the executable or argv.
@@ -462,12 +760,55 @@ func (p Podman) ExecSessionHandoff(
 		grant.Engine.Port < 1 || grant.Engine.Port > 65535 || grant.IssuedAt.IsZero() ||
 		grant.ExpiresAt.IsZero() || !grant.ExpiresAt.After(grant.IssuedAt) ||
 		len(grant.AllowedPaths) != 1 || grant.AllowedPaths[0] != "/api" ||
-		len(grant.AllowedMethods) != len(wantMethods) {
+		grant.Capability == "" && len(grant.AllowedMethods) != len(wantMethods) {
 		return errors.New("invalid session handoff launch")
 	}
-	for index := range wantMethods {
-		if grant.AllowedMethods[index] != wantMethods[index] {
-			return errors.New("invalid session handoff method policy")
+	if grant.Capability == "" {
+		for index := range wantMethods {
+			if grant.AllowedMethods[index] != wantMethods[index] {
+				return errors.New("invalid session handoff method policy")
+			}
+		}
+	}
+	if grant.Capability != "" {
+		// Additive Foreman chat launch. Only the fixed POST chat path is
+		// permitted, and the host-generated chat policy must be the frozen
+		// packet-A policy bound to this exact sandbox and target.
+		chat := grant.Chat
+		wantChatMethods := []string{"GET", "POST"}
+		var advisory *ForemanChatAdvisoryV1
+		if chat != nil {
+			advisory = chat.Advisory
+		}
+		if grant.Capability != "foreman_chat" || chat == nil || chat.Qualification == nil ||
+			!validForemanChatQualification(chat.Qualification) ||
+			chat.Protocol != ForemanChatProtocol ||
+			chat.MaxQuestionBytes != ForemanChatQuestionBytes || chat.MaxReplyBytes != ForemanChatReplyBytes ||
+			chat.MaxQuestionsPerMinute != ForemanChatQuestionsPerMinute ||
+			chat.MaxConcurrent != ForemanChatMaxConcurrent ||
+			chat.HandoffID == "" || !strings.HasPrefix(chat.NativeSessionID, "ses_") ||
+			chat.ServiceRegistrationID == "" || chat.ServiceGeneration < 1 ||
+			chat.ProjectID == "" || chat.WorkspaceEpoch == "" ||
+			advisory == nil || advisory.FormatVersion != 1 ||
+			advisory.Capability != ForemanChatAdvisoryCapability ||
+			!strings.HasPrefix(advisory.AdmissionID, "fca_") ||
+			advisory.ServerID != grant.ServerID || advisory.SandboxID != grant.SandboxID ||
+			advisory.SandboxGeneration != grant.Generation || advisory.Instance != grant.Instance ||
+			advisory.NativeSessionID != chat.NativeSessionID ||
+			advisory.ServiceRegistrationID != chat.ServiceRegistrationID ||
+			advisory.ServiceGeneration != chat.ServiceGeneration ||
+			advisory.Role != "orchestrator" || advisory.RoleBindingID == "" ||
+			advisory.HandoffID != chat.HandoffID ||
+			advisory.Projection == nil || advisory.RoleAgentDigest != model.WorkspaceDigest(*advisory.Projection) ||
+			advisory.Projection.NativeAgentID != "warpmetal-controller-orchestrator" ||
+			advisory.Projection.ToolsDisabled != true || advisory.Projection.MCPDisabled != true ||
+			advisory.Projection.ModelSelection == nil ||
+			advisory.Projection.ModelSelection.Authority != (model.CellPreparedAuthorityV3{ProviderID: "openai", ModelID: ForemanChatAdvisoryModelID, AuthMode: "api_key"}) ||
+			advisory.Projection.ModelSelection.CredentialBinding == nil ||
+			advisory.IssuedAt.IsZero() || advisory.ExpiresAt.IsZero() ||
+			!advisory.IssuedAt.Equal(grant.IssuedAt) || !advisory.ExpiresAt.Equal(grant.ExpiresAt) ||
+			!slices.Equal(grant.AllowedMethods, wantChatMethods) {
+			return errors.New("invalid Foreman chat launch")
 		}
 	}
 	grantJSON, err := json.Marshal(grant)
@@ -489,6 +830,50 @@ func (p Podman) ExecSessionHandoff(
 	return p.runCommandStreams(executionContext, true, stdin, stdout, stderr, args...)
 }
 
+// validForemanChatQualification keeps the qualification client configuration a
+// closed, host-generated shape: absolute venue paths, an explicit signed policy
+// digest, and a broker outside the read-only tree.
+func validForemanChatQualification(value *ForemanChatQualificationV1) bool {
+	if value == nil || value.FormatVersion != ForemanChatQualificationFormat ||
+		!absoluteConversationPath(value.Tree) || !absoluteConversationPath(value.Key) ||
+		!absoluteConversationPath(value.Broker) || value.Tree == value.Key ||
+		strings.HasPrefix(value.Key, strings.TrimSuffix(value.Tree, "/")+"/") ||
+		len(value.PolicyDigest) != 71 || !strings.HasPrefix(value.PolicyDigest, "sha256:") {
+		return false
+	}
+	for _, character := range value.PolicyDigest[7:] {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func absoluteConversationPath(value string) bool {
+	return strings.HasPrefix(value, "/") && !strings.Contains(value, "//") &&
+		!strings.Contains(value, "/../") && !strings.HasSuffix(value, "/..") &&
+		!strings.ContainsAny(value, " \t\r\n")
+}
+
+// ForemanChatQualificationFromEnv parses the optional venue configuration. It
+// is never a product default: an empty value leaves Foreman chat unconfigured
+// and the handoff refuses before any bridge process exists.
+func ForemanChatQualificationFromEnv(raw string) (*ForemanChatQualificationV1, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var value ForemanChatQualificationV1
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
+		return nil, errors.New("invalid Foreman chat qualification configuration")
+	}
+	if !validForemanChatQualification(&value) {
+		return nil, errors.New("invalid Foreman chat qualification configuration")
+	}
+	return &value, nil
+}
+
 func execArguments(id, command string, tty bool) []string {
 	args := []string{"exec", "-i"}
 	if tty {
@@ -505,8 +890,8 @@ func execArguments(id, command string, tty bool) []string {
 
 // ExecSetup is the only container execution path available to setup
 // reconciliation. The caller can select a sandbox and provide JSON stdin, but
-// cannot influence the executable, argv, uid, working directory, timeout, or
-// output limits.
+// cannot influence the executable, argv, uid, working directory, timeout,
+// output limits, or the test-venue source gate environment.
 func (p Podman) ExecSetup(
 	ctx context.Context,
 	id string,
@@ -515,18 +900,29 @@ func (p Podman) ExecSetup(
 	if len(request) == 0 || len(request) > maxSetupRequestBytes {
 		return nil, nil, errors.New("setup request exceeds the allowed size")
 	}
+	// The default-off test-venue gate is operator configuration on this
+	// Runtime instance, never request data. A requested-but-invalid gate fails
+	// closed here, before any container execution.
+	gateEnvironment, err := p.SetupTestSource.Environment()
+	if err != nil {
+		return nil, nil, fmt.Errorf("setup test source: %w", err)
+	}
 	executionContext, cancel := context.WithTimeout(ctx, setupOperationTimeout)
 	defer cancel()
 	receipt := &boundedBuffer{maximum: maxSetupReceiptBytes}
 	diagnostic := &boundedBuffer{maximum: maxSetupDiagnosticBytes}
-	args := []string{
-		"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent",
+	args := []string{"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent"}
+	for _, variable := range gateEnvironment {
+		args = append(args, "--env", variable)
+	}
+	args = append(args,
 		containerName(id), "/usr/local/libexec/warpmetal-capability-launcher",
 		"/usr/local/bin/warpmetal-setup-runner",
-	}
-	err := p.runRemoteStreams(
+	)
+	err = p.runCommandStreams(
 		executionContext,
-		bytes.NewReader(request),
+		true,
+		setupRequestInput{bytes.NewReader(request)},
 		receipt,
 		diagnostic,
 		args...,
@@ -599,24 +995,58 @@ func (p Podman) ExecManager(ctx context.Context, id string, request []byte) ([]b
 
 func (p Podman) ExecManagedSupervisor(ctx context.Context, id string, action ManagedSupervisorAction, request []byte) ([]byte, []byte, error) {
 	switch action {
-	case ManagedSupervisorEnroll, ManagedSupervisorStart, ManagedSupervisorRestart, ManagedSupervisorRebind, ManagedSupervisorStatus,
-		ManagedSupervisorRegisterSource, ManagedSupervisorRegisterHandoffWorkspace, ManagedSupervisorDrain, ManagedSupervisorStop:
+	case ManagedSupervisorEnroll, ManagedSupervisorStart, ManagedSupervisorRestart, ManagedSupervisorRebind, ManagedSupervisorCredential,
+		ManagedSupervisorStatus, ManagedSupervisorRegisterSource, ManagedSupervisorRegisterHandoffWorkspace, ManagedSupervisorDrain,
+		ManagedSupervisorControllerPrepare, ManagedSupervisorControllerPrompt, ManagedSupervisorControllerOutput, ManagedSupervisorControllerHeader, ManagedSupervisorChildHeader, ManagedSupervisorChildEffectCapture, ManagedSupervisorChildResultCapture, ManagedSupervisorChildIntegrationCapture, ManagedSupervisorChildPreparedCapture, ManagedSupervisorChildCompletedCapture, ManagedSupervisorReviewerCapture, ManagedSupervisorSourceTerminalCapture,
+		ManagedSupervisorQualificationHeader, ManagedSupervisorStop, ManagedSupervisorCell, ManagedSupervisorPrepare, ManagedSupervisorMaterializeProfile,
+		ManagedSupervisorMaterializeAgentKit:
 	default:
 		return nil, nil, errors.New("unsupported managed supervisor action")
 	}
-	if len(request) == 0 || len(request) > 64*1024 {
+	maximum := 64 * 1024
+	if action == ManagedSupervisorMaterializeProfile {
+		// Complete immutable content through the same fixed Supervisor, not a
+		// command/URL/import executor. Retained launch/activity limits unchanged.
+		maximum = 2 * 1024 * 1024
+	}
+	if action == ManagedSupervisorMaterializeAgentKit {
+		// Bounded closed invocation document (WP-211A channel contract): the
+		// nested materializer request alone is bounded to 512 KiB by the
+		// supervisor; the outer document adds only the adoption/closure facts.
+		maximum = 640 * 1024
+	}
+	if len(request) == 0 || len(request) > maximum {
 		return nil, nil, errors.New("managed supervisor request exceeds the allowed size")
 	}
-	executionContext, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	executionTimeout := 5 * time.Minute
+	if action == ManagedSupervisorMaterializeAgentKit {
+		// Offline local file work with a 30 s in-channel deadline; the exec
+		// binding keeps a tighter outer kill so a wedged cell cannot hold the
+		// reconcile pass. The child receives no network or credential use here.
+		executionTimeout = 90 * time.Second
+	}
+	executionContext, cancel := context.WithTimeout(ctx, executionTimeout)
 	defer cancel()
-	receipt := &boundedBuffer{maximum: 64 * 1024}
+	receipt := &boundedBuffer{maximum: model.ControllerTransportReceiptMaximum(string(action))}
 	diagnostic := &boundedBuffer{maximum: 16 * 1024}
-	args := []string{"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent", containerName(id), "/usr/local/libexec/warpmetal-capability-launcher", "/usr/local/bin/warpmetal-opencode-supervisor", string(action)}
+	// The member supervisor actions run the packaged supervisor. The cell action
+	// and the v3 prepare action run the trusted SA4 cell adapter (create_child ->
+	// bind_workspace -> admit_first_step, and observe/recover/classify_child) as
+	// an unjailed python3 process with credentials and network. Neither runs the
+	// credential-less bwrap tool entrypoint; prepare never admits a first step.
+	launcherCommand := []string{"/usr/local/bin/warpmetal-opencode-supervisor", string(action)}
+	if action == ManagedSupervisorCell || action == ManagedSupervisorPrepare {
+		launcherCommand = []string{"/usr/bin/python3", ManagedCellAdapterPath}
+	}
+	args := append([]string{"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent", containerName(id), capabilityLauncherPath}, launcherCommand...)
 	err := p.runRemoteStreams(executionContext, bytes.NewReader(request), receipt, diagnostic, args...)
 	if receipt.overflow || diagnostic.overflow {
 		err = errors.Join(err, errors.New("managed supervisor output exceeds the allowed size"))
 	}
 	if err != nil {
+		return receipt.Bytes(), diagnostic.Bytes(), err
+	}
+	if err := p.registerSupervisorPhysicalProcess(ctx, id, receipt.Bytes()); err != nil {
 		return receipt.Bytes(), diagnostic.Bytes(), err
 	}
 	return receipt.Bytes(), diagnostic.Bytes(), nil
@@ -879,10 +1309,35 @@ func createArguments(
 	workspace string,
 	imageDigest string,
 ) []string {
+	return createArgumentsWithLifecycle(name, sandbox, workspace, imageDigest, DefaultCellLifecycle())
+}
+
+// createArgumentsWithLifecycle builds the immutable Podman create argv. A
+// legacy Team/member sandbox (sandbox.Cell == false) is byte-for-byte
+// unchanged. A cell sandbox additionally names the trusted hook storage with
+// the explicit `--hooks-dir` persistent flag and carries the exact allowlisted
+// lifecycle annotation, so the packaged `precreate` config hook injects the
+// fixed childless procfs witness at container creation. Exactly one of each is
+// emitted per create, so reconciler re-create cannot accumulate duplicates.
+func createArgumentsWithLifecycle(
+	name string,
+	sandbox model.Sandbox,
+	workspace string,
+	imageDigest string,
+	lifecycle CellLifecycle,
+) []string {
 	memory := strconv.Itoa(sandbox.Resources.MemoryMiB) + "m"
 	cpu := fmt.Sprintf("%.3f", float64(sandbox.Resources.CPUMillicores)/1000)
-	return []string{
+	arguments := []string{
 		"create",
+	}
+	if sandbox.Cell {
+		arguments = append(arguments,
+			"--hooks-dir", lifecycle.Directory,
+			"--annotation", CellLifecycleAnnotationKey+"="+lifecycle.Profile,
+		)
+	}
+	return append(arguments,
 		"--name", name,
 		"--pull", "missing",
 		"--read-only",
@@ -895,15 +1350,15 @@ func createArguments(
 		"--cgroup-parent", podmanCgroupParent,
 		"--cap-drop", "ALL",
 		"--security-opt", "no-new-privileges",
-		"--label", imageDigestLabel + "=" + imageDigest,
+		"--label", imageDigestLabel+"="+imageDigest,
 		"--network", "slirp4netns:allow_host_loopback=false",
 		"--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=256m",
-		"--volume", workspace + ":/home/agent:rw,nodev,nosuid,Z",
+		"--volume", workspace+":/home/agent:rw,nodev,nosuid,Z",
 		"--workdir", "/home/agent",
 		"--entrypoint", "/bin/sh",
 		imageDigest,
 		"-c", capabilityLauncherDispatch, "warpmetal-shell", "-c", "trap : TERM INT; sleep infinity & wait",
-	}
+	)
 }
 
 func containerName(id string) string { return "warpmetal-" + id }

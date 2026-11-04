@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -20,6 +21,11 @@ import (
 
 type Store struct {
 	db *sql.DB
+	// journalInFlight guards the single-connection V3 journal write: at most ONE
+	// bounded write may be outstanding. A second caller fails closed with
+	// ErrCellV3JournalBusy instead of queueing behind a wedged statement and
+	// growing the pass latency without bound (R-WP125-2).
+	journalInFlight atomic.Bool
 }
 
 type LocalSandbox struct {
@@ -37,6 +43,17 @@ type LocalSandbox struct {
 	ImageDigest        string
 	ErrorCode          string
 	ErrorMessage       string
+	// CellReady is the OBSERVED cell witness readiness: the running container's
+	// mount namespace actually carries the reviewed childless procfs witness. It
+	// is never derived from the desired cell flag, hook-file presence, or a
+	// create request, and it is cleared on any generation/container transition.
+	CellReady bool
+	// Cell is the DESIRED cell-mode capability last applied to this sandbox. It
+	// is stored so the reconciler can detect the legacy->cell transition on an
+	// existing running box and perform a controlled container replacement that
+	// applies the SA9 witness hook (a same-generation, same-image enable must
+	// not be silently left not-ready forever).
+	Cell bool
 }
 
 type LocalGrant struct {
@@ -346,9 +363,33 @@ func (s *Store) initialize(ctx context.Context) error {
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=FULL;
 PRAGMA foreign_keys=ON;
+-- R-WP125-2: bound every local lock wait. Without it a contending writer fails
+-- with a bare "database is locked" (or waits unbounded through the single pooled
+-- connection). 2s is the store's own lock budget; the journal write additionally
+-- carries a caller-side bound (state.ErrCellV3JournalBusy).
+PRAGMA busy_timeout=2000;
 CREATE TABLE IF NOT EXISTS metadata (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+-- P3/R2: persisted Runtime report sequence and terminal reconciliation block.
+-- One singleton row; the seq survives restarts so a replayed report never looks
+-- like a new body, and a terminal block is only cleared by a newer manifest
+-- desired revision (auto-recovery) or an operator resync.
+CREATE TABLE IF NOT EXISTS report_sync_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  sequence INTEGER NOT NULL DEFAULT 0,
+  last_epoch INTEGER NOT NULL DEFAULT 0,
+  blocked_code TEXT NOT NULL DEFAULT '',
+  blocked_detail TEXT NOT NULL DEFAULT '',
+  blocked_since TEXT NOT NULL DEFAULT '',
+  blocked_desired_revision INTEGER NOT NULL DEFAULT 0,
+  blocked_resync_generation INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS cell_qualification_pins (
+ preparation_id TEXT PRIMARY KEY REFERENCES cell_v3_operations(preparation_id),
+ prepared_tuple_digest TEXT NOT NULL,
+ policy_digest TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sandboxes (
   id TEXT PRIMARY KEY,
@@ -368,6 +409,8 @@ CREATE TABLE IF NOT EXISTS sandboxes (
   image_digest TEXT NOT NULL,
   error_code TEXT NOT NULL DEFAULT '',
   error_message TEXT NOT NULL DEFAULT '',
+  cell_ready INTEGER NOT NULL DEFAULT 0,
+  cell INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS sandboxes_expiry_idx ON sandboxes(expires_at);
@@ -382,6 +425,33 @@ CREATE TABLE IF NOT EXISTS grants (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS grants_sandbox_idx ON grants(sandbox_id);
+-- WP-211B: verified in-cell agent-kit materialization audit records. One row per
+-- (materialization identity, workspace) so two cells on one node that share an
+-- account configuration/kit keep separate verified evidence; retries
+-- insert-or-read and never duplicate. No authority is implied by the record; it
+-- is evidence of the verified envelope.
+CREATE TABLE IF NOT EXISTS agent_kit_materializations (
+  materialization_id TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  sandbox_id TEXT NOT NULL,
+  sandbox_generation INTEGER NOT NULL CHECK(sandbox_generation > 0),
+  configuration_id TEXT NOT NULL,
+  configuration_revision INTEGER NOT NULL CHECK(configuration_revision > 0),
+  configuration_digest TEXT NOT NULL,
+  kit_digest TEXT NOT NULL,
+  adoption_id TEXT NOT NULL,
+  venue TEXT NOT NULL,
+  closure_digest TEXT NOT NULL,
+  envelope_digest TEXT NOT NULL,
+  receipt_digest TEXT NOT NULL,
+  instruction_digest TEXT NOT NULL,
+  skill_content_digests_json BLOB NOT NULL,
+  envelope_json BLOB NOT NULL,
+  verified_at TEXT NOT NULL,
+  PRIMARY KEY(materialization_id,sandbox_id,sandbox_generation)
+);
+CREATE INDEX IF NOT EXISTS agent_kit_materializations_operation_idx
+ON agent_kit_materializations(operation_id);
 CREATE TABLE IF NOT EXISTS setup_operations (
   id TEXT PRIMARY KEY,
   sandbox_id TEXT NOT NULL REFERENCES sandboxes(id) ON DELETE CASCADE,
@@ -547,13 +617,14 @@ CREATE TABLE IF NOT EXISTS continuity_remote_operation_retirements (
 );
 CREATE TABLE IF NOT EXISTS managed_workspace_projects (
   selection_id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL UNIQUE,
+  project_id TEXT NOT NULL,
   sandbox_id TEXT NOT NULL,
   sandbox_generation INTEGER NOT NULL CHECK(sandbox_generation > 0),
   team_id TEXT NOT NULL DEFAULT '',
   report_json BLOB NOT NULL,
   private_json BLOB NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  UNIQUE(project_id, sandbox_id, sandbox_generation)
 );
 CREATE INDEX IF NOT EXISTS managed_workspace_projects_team_idx
 ON managed_workspace_projects(sandbox_id, sandbox_generation, team_id);
@@ -567,6 +638,84 @@ CREATE TABLE IF NOT EXISTS managed_services (
   service_generation INTEGER NOT NULL CHECK(service_generation > 0),
   report_json BLOB,
   error_code TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS controller_parent_services (
+  service_id TEXT PRIMARY KEY,
+  intent_json BLOB NOT NULL,
+  creation_dispatched INTEGER NOT NULL DEFAULT 0 CHECK(creation_dispatched IN (0,1)),
+  native_session_id TEXT UNIQUE,
+  report_json BLOB,
+  accepted_receipt_digest TEXT NOT NULL DEFAULT '',
+  block_code TEXT NOT NULL DEFAULT ''
+);
+-- Secret-free immutable correlation only, never a counter/reservation/queue.
+-- Parent/child request and physical-cost ledgers remain the existing global ones.
+` + controllerActivitySchema + `
+-- Owning caller correlation and unknown-before-dispatch only. This is NOT a
+-- second physical owner, budget, work queue or qualification/admission authority.
+CREATE TABLE IF NOT EXISTS owned_continuation_journal (
+ caller_id TEXT NOT NULL,
+ step TEXT NOT NULL,
+ claim_json BLOB NOT NULL,
+ result_json BLOB,
+ PRIMARY KEY(caller_id,step)
+);
+CREATE TABLE IF NOT EXISTS workspace_applications (
+  operation_id TEXT PRIMARY KEY,
+  operation_json BLOB NOT NULL,
+  envelope_json BLOB,
+  applied INTEGER NOT NULL DEFAULT 0 CHECK(applied IN (0,1)),
+  application_id TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS cell_operations (
+  operation_id TEXT PRIMARY KEY,
+  entry_json BLOB NOT NULL,
+  phase TEXT NOT NULL CHECK(phase IN ('pending','admitted','terminal','exhausted','unknown','failed')),
+  attempt INTEGER NOT NULL CHECK(attempt >= 0),
+  child_json BLOB,
+  exhausted INTEGER NOT NULL DEFAULT 0 CHECK(exhausted IN (0,1)),
+  report_json BLOB,
+  error_code TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cell_operations_phase_idx ON cell_operations(phase);
+CREATE TABLE IF NOT EXISTS cell_v3_operations (
+  preparation_id TEXT PRIMARY KEY,
+  operation_id TEXT NOT NULL,
+  native_session_id TEXT NOT NULL,
+  connection_id TEXT NOT NULL,
+  connection_revision INTEGER NOT NULL CHECK(connection_revision >= 1),
+  credential_id TEXT NOT NULL DEFAULT '',
+  native_credential_id TEXT NOT NULL DEFAULT '',
+  entry_json BLOB NOT NULL,
+  phase TEXT NOT NULL CHECK(phase IN ('pending','prepared','reported','unknown','failed')),
+  attempt INTEGER NOT NULL CHECK(attempt >= 0),
+  prepared_receipt_digest TEXT NOT NULL DEFAULT '',
+  receipt_json BLOB,
+  error_code TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL,
+  UNIQUE(native_session_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS cell_v3_operations_binding_idx
+  ON cell_v3_operations(connection_id, connection_revision, credential_id)
+  WHERE credential_id <> '';
+CREATE INDEX IF NOT EXISTS cell_v3_operations_phase_idx ON cell_v3_operations(phase);
+CREATE TABLE IF NOT EXISTS cell_v3_native_context (
+  preparation_id TEXT PRIMARY KEY REFERENCES cell_v3_operations(preparation_id),
+  parent_session_id TEXT NOT NULL,
+  worktree_dir TEXT NOT NULL,
+  report_json BLOB,
+  effect_json BLOB
+);
+CREATE TABLE IF NOT EXISTS cell_v3_executions (
+  preparation_id TEXT PRIMARY KEY REFERENCES cell_v3_operations(preparation_id),
+  grant_json BLOB NOT NULL,
+  phase TEXT NOT NULL CHECK(phase IN ('pending','admitted','terminal','exhausted','unknown')),
+  parent_session_id TEXT NOT NULL,
+  worktree_dir TEXT NOT NULL,
+  effect_json BLOB,
+  report_json BLOB,
   updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS continuation_preparations (
@@ -646,10 +795,276 @@ CREATE TABLE IF NOT EXISTS insight_outbox_retirements (
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("initialize local database: %w", err)
 	}
+	if _, err := s.db.ExecContext(ctx, physicalSchema); err != nil {
+		return fmt.Errorf("initialize physical gate: %w", err)
+	}
+	if err := s.ensurePhysicalClassSchema(ctx); err != nil {
+		return fmt.Errorf("upgrade physical evidence class: %w", err)
+	}
 	if err := s.ensureCheckpointLifecycleSchema(ctx); err != nil {
 		return fmt.Errorf("upgrade checkpoint lifecycle schema: %w", err)
 	}
+	if err := s.ensureCellSchema(ctx); err != nil {
+		return fmt.Errorf("upgrade cell readiness schema: %w", err)
+	}
+	if err := s.ensureManagedProjectIdentitySchema(ctx); err != nil {
+		return fmt.Errorf("upgrade managed project identity schema: %w", err)
+	}
+	if err := s.ensureAgentKitWorkspaceScopeSchema(ctx); err != nil {
+		return fmt.Errorf("upgrade agent kit workspace scope schema: %w", err)
+	}
+	if err := s.ensureControllerActivitySchema(ctx); err != nil {
+		return fmt.Errorf("upgrade existing controller stages: %w", err)
+	}
+	if err := s.ensureControllerParentSchema(ctx); err != nil {
+		return fmt.Errorf("upgrade controller parent block code: %w", err)
+	}
 	return nil
+}
+
+// ensureCellSchema adds the additive `cell_ready` and `cell` columns to an
+// existing sandboxes table. It is a no-op on a fresh database (the columns are
+// in the base CREATE TABLE) and on a database that already carries them.
+func (s *Store) ensureCellSchema(ctx context.Context) error {
+	for _, column := range []string{"cell_ready", "cell"} {
+		rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(sandboxes)`)
+		if err != nil {
+			return err
+		}
+		found := false
+		for rows.Next() {
+			var cid, notNull, primaryKey int
+			var name, kind string
+			var defaultValue any
+			if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+				rows.Close()
+				return err
+			}
+			if name == column {
+				found = true
+			}
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		if !found {
+			if _, err := s.db.ExecContext(ctx,
+				`ALTER TABLE sandboxes ADD COLUMN `+column+` INTEGER NOT NULL DEFAULT 0`); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// ensureAgentKitWorkspaceScopeSchema rebuilds the legacy single-key agent-kit
+// materialization table into the workspace-scoped composite identity
+// (materialization_id, sandbox_id, sandbox_generation). The old table admitted
+// only one row per deterministic materialization identity, which made a second
+// workspace on the same node see the first workspace's retained envelope and
+// fail closed with agent_kit_persistence_conflict ("retained evidence"). Every
+// existing row is preserved under its own sandbox/generation; a fresh database
+// already has the composite key and the function is a no-op.
+func (s *Store) ensureAgentKitWorkspaceScopeSchema(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(agent_kit_materializations)`)
+	if err != nil {
+		return err
+	}
+	scoped := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, kind string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		// pk ordinal 2 is sandbox_id in the workspace-scoped primary key.
+		if name == "sandbox_id" && primaryKey > 0 {
+			scoped = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if scoped {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	const rebuild = `
+CREATE TABLE agent_kit_materializations_workspace_scoped (
+  materialization_id TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  sandbox_id TEXT NOT NULL,
+  sandbox_generation INTEGER NOT NULL CHECK(sandbox_generation > 0),
+  configuration_id TEXT NOT NULL,
+  configuration_revision INTEGER NOT NULL CHECK(configuration_revision > 0),
+  configuration_digest TEXT NOT NULL,
+  kit_digest TEXT NOT NULL,
+  adoption_id TEXT NOT NULL,
+  venue TEXT NOT NULL,
+  closure_digest TEXT NOT NULL,
+  envelope_digest TEXT NOT NULL,
+  receipt_digest TEXT NOT NULL,
+  instruction_digest TEXT NOT NULL,
+  skill_content_digests_json BLOB NOT NULL,
+  envelope_json BLOB NOT NULL,
+  verified_at TEXT NOT NULL,
+  PRIMARY KEY(materialization_id,sandbox_id,sandbox_generation)
+);
+INSERT INTO agent_kit_materializations_workspace_scoped(
+ materialization_id,operation_id,sandbox_id,sandbox_generation,configuration_id,
+ configuration_revision,configuration_digest,kit_digest,adoption_id,venue,closure_digest,
+ envelope_digest,receipt_digest,instruction_digest,skill_content_digests_json,envelope_json,verified_at)
+SELECT materialization_id,operation_id,sandbox_id,sandbox_generation,configuration_id,
+ configuration_revision,configuration_digest,kit_digest,adoption_id,venue,closure_digest,
+ envelope_digest,receipt_digest,instruction_digest,skill_content_digests_json,envelope_json,verified_at
+FROM agent_kit_materializations;
+DROP TABLE agent_kit_materializations;
+ALTER TABLE agent_kit_materializations_workspace_scoped RENAME TO agent_kit_materializations;
+CREATE INDEX IF NOT EXISTS agent_kit_materializations_operation_idx
+ON agent_kit_materializations(operation_id);`
+	if _, err := tx.ExecContext(ctx, rebuild); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ensureControllerParentSchema adds the additive local `block_code` diagnostic
+// column to an existing controller_parent_services table (R-WP122-2). It is a
+// no-op on a fresh database (the column is in the base CREATE TABLE) and on a
+// database that already carries it. The column never leaves the node: wire
+// reports keep the backend's closed lastError enum.
+func (s *Store) ensureControllerParentSchema(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(controller_parent_services)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, kind string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "block_code" {
+			found = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE controller_parent_services ADD COLUMN block_code TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
+// ensureManagedProjectIdentitySchema replaces the pre-WP-59 local table whose
+// `project_id` was UNIQUE across the whole node. Project identity is scoped to
+// one workspace (sandbox generation): two cells on the same node may both
+// materialize the project named `global` without sharing a durable selection.
+// The rebuild is one transaction, preserves every row, and is a no-op on a
+// fresh database and on a database already carrying the composite constraint.
+func (s *Store) ensureManagedProjectIdentitySchema(ctx context.Context) error {
+	var ddl string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT sql FROM sqlite_master WHERE type='table' AND name='managed_workspace_projects'`).Scan(&ddl)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	normalized := strings.ToUpper(strings.Join(strings.Fields(ddl), ""))
+	if !strings.Contains(normalized, "PROJECT_IDTEXTNOTNULLUNIQUE") {
+		return nil
+	}
+	const rebuilt = `CREATE TABLE managed_workspace_projects_v2 (
+  selection_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  sandbox_id TEXT NOT NULL,
+  sandbox_generation INTEGER NOT NULL CHECK(sandbox_generation > 0),
+  team_id TEXT NOT NULL DEFAULT '',
+  report_json BLOB NOT NULL,
+  private_json BLOB NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(project_id, sandbox_id, sandbox_generation)
+)`
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, statement := range []string{
+		`DROP TABLE IF EXISTS managed_workspace_projects_v2`,
+		rebuilt,
+		`INSERT INTO managed_workspace_projects_v2(
+selection_id, project_id, sandbox_id, sandbox_generation, team_id, report_json, private_json, updated_at)
+SELECT selection_id, project_id, sandbox_id, sandbox_generation, team_id, report_json, private_json, updated_at
+FROM managed_workspace_projects`,
+		`DROP TABLE managed_workspace_projects`,
+		`ALTER TABLE managed_workspace_projects_v2 RENAME TO managed_workspace_projects`,
+		`CREATE INDEX IF NOT EXISTS managed_workspace_projects_team_idx
+ON managed_workspace_projects(sandbox_id, sandbox_generation, team_id)`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// ReportSync is the persisted ordered-report state (P3/R2).
+type ReportSync struct {
+	Sequence                int64
+	LastEpoch               int64
+	BlockedCode             string
+	BlockedDetail           string
+	BlockedSince            string
+	BlockedDesiredRevision  int64
+	BlockedResyncGeneration int64
+}
+
+// ReportSyncState reads the singleton reconciliation state (zero value when the
+// Runtime has never reported).
+func (s *Store) ReportSyncState(ctx context.Context) (ReportSync, error) {
+	var value ReportSync
+	err := s.db.QueryRowContext(ctx, `SELECT sequence, last_epoch, blocked_code,
+		blocked_detail, blocked_since, blocked_desired_revision,
+		blocked_resync_generation FROM report_sync_state WHERE id = 1`).Scan(
+		&value.Sequence, &value.LastEpoch, &value.BlockedCode, &value.BlockedDetail,
+		&value.BlockedSince, &value.BlockedDesiredRevision,
+		&value.BlockedResyncGeneration,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return value, nil
+	}
+	return value, err
+}
+
+// PutReportSyncState persists the singleton reconciliation state.
+func (s *Store) PutReportSyncState(ctx context.Context, value ReportSync) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO report_sync_state
+		(id, sequence, last_epoch, blocked_code, blocked_detail, blocked_since,
+		 blocked_desired_revision, blocked_resync_generation)
+		VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET sequence=excluded.sequence,
+		 last_epoch=excluded.last_epoch, blocked_code=excluded.blocked_code,
+		 blocked_detail=excluded.blocked_detail, blocked_since=excluded.blocked_since,
+		 blocked_desired_revision=excluded.blocked_desired_revision,
+		 blocked_resync_generation=excluded.blocked_resync_generation`,
+		value.Sequence, value.LastEpoch, value.BlockedCode, value.BlockedDetail,
+		value.BlockedSince, value.BlockedDesiredRevision, value.BlockedResyncGeneration,
+	)
+	return err
 }
 
 func (s *Store) Revision(ctx context.Context) (int64, error) {
@@ -696,7 +1111,7 @@ func (s *Store) Sandbox(ctx context.Context, id string) (*LocalSandbox, error) {
 const sandboxSelect = `SELECT id, name, desired_state, observed_state, generation,
 observed_generation, lifetime, expires_in_seconds, started_at, expires_at,
 cpu_millicores, memory_mib, workspace_disk_gib, pids_limit, image_digest,
-error_code, error_message FROM sandboxes`
+error_code, error_message, cell_ready, cell FROM sandboxes`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -706,6 +1121,7 @@ func scanSandbox(row scanner) (*LocalSandbox, error) {
 	var value LocalSandbox
 	var expiresSeconds sql.NullInt64
 	var started, expires sql.NullString
+	var cellReady, cell int
 	err := row.Scan(
 		&value.ID,
 		&value.Name,
@@ -724,10 +1140,14 @@ func scanSandbox(row scanner) (*LocalSandbox, error) {
 		&value.ImageDigest,
 		&value.ErrorCode,
 		&value.ErrorMessage,
+		&cellReady,
+		&cell,
 	)
 	if err != nil {
 		return nil, err
 	}
+	value.CellReady = cellReady == 1
+	value.Cell = cell == 1
 	if expiresSeconds.Valid {
 		seconds := int(expiresSeconds.Int64)
 		value.ExpiresInSeconds = &seconds
@@ -767,8 +1187,8 @@ func (s *Store) PutSandbox(ctx context.Context, value LocalSandbox) error {
 id, name, desired_state, observed_state, generation, observed_generation,
 lifetime, expires_in_seconds, started_at, expires_at, cpu_millicores,
 memory_mib, workspace_disk_gib, pids_limit, image_digest, error_code,
-error_message, updated_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+error_message, cell_ready, cell, updated_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
 name=excluded.name, desired_state=excluded.desired_state,
 observed_state=excluded.observed_state, generation=excluded.generation,
@@ -778,6 +1198,7 @@ expires_at=excluded.expires_at, cpu_millicores=excluded.cpu_millicores,
 memory_mib=excluded.memory_mib, workspace_disk_gib=excluded.workspace_disk_gib,
 pids_limit=excluded.pids_limit, image_digest=excluded.image_digest,
 error_code=excluded.error_code, error_message=excluded.error_message,
+cell_ready=excluded.cell_ready, cell=excluded.cell,
 updated_at=excluded.updated_at`,
 		value.ID,
 		value.Name,
@@ -796,6 +1217,8 @@ updated_at=excluded.updated_at`,
 		value.ImageDigest,
 		value.ErrorCode,
 		value.ErrorMessage,
+		boolInt(value.CellReady),
+		boolInt(value.Cell),
 		time.Now().UTC().Format(time.RFC3339Nano),
 	)
 	return err

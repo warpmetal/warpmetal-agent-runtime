@@ -1,0 +1,1194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/agent-workspace-owner-v1.schema.json",
+  "title": "Owner connection metadata, pending setup intent, control and Elements transport",
+  "$comment": "Endpoint selects its definition. UTF-8 byte/JSON parser/account/producer rules in F1_FULL_SCOPE_BACKEND_CONTRACT.md also apply; no schema-valid field grants execution or payment authority.",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "positive": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "nonnegative": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "capacityHostResources": {
+      "description": "Host/plan catalog-envelope dimensions only; pids are per sandbox and excluded. Nominal accounting, not measured host RSS/free disk/swap.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpuMillicores",
+        "memoryMiB",
+        "workspaceDiskGiB"
+      ],
+      "properties": {
+        "cpuMillicores": {
+          "$ref": "#/$defs/nonnegative"
+        },
+        "memoryMiB": {
+          "$ref": "#/$defs/nonnegative"
+        },
+        "workspaceDiskGiB": {
+          "$ref": "#/$defs/nonnegative"
+        }
+      }
+    },
+    "observedCapacity": {
+      "description": "Additive WP-39 current-capacity handle. Null when no existing-target Runtime allocation was observed (for example a new checkout); absence is explicit and never zero capacity. Numbers are catalog allocatable/allocated/available accounting plus the snapshot's own source/observedAt/validUntil/allocationDigest freshness handles, not measured host headroom and not sizing approval.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sourceRef",
+            "serverId",
+            "observedAt",
+            "validUntil",
+            "allocationDigest",
+            "allocatable",
+            "allocated",
+            "available"
+          ],
+          "properties": {
+            "source": {
+              "const": "runtime-catalog-envelope"
+            },
+            "sourceRef": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "serverId": {
+              "$ref": "#/$defs/id"
+            },
+            "observedAt": {
+              "$ref": "#/$defs/time"
+            },
+            "validUntil": {
+              "$ref": "#/$defs/time"
+            },
+            "allocationDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "allocatable": {
+              "$ref": "#/$defs/capacityHostResources"
+            },
+            "allocated": {
+              "$ref": "#/$defs/capacityHostResources"
+            },
+            "available": {
+              "$ref": "#/$defs/capacityHostResources"
+            }
+          }
+        }
+      ]
+    },
+    "connectionMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "connectionId",
+        "connectionRevision",
+        "providerId",
+        "authMode",
+        "allowedModels",
+        "state",
+        "createdAt"
+      ],
+      "properties": {
+        "connectionId": {
+          "$ref": "#/$defs/id"
+        },
+        "connectionRevision": {
+          "$ref": "#/$defs/positive"
+        },
+        "providerId": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$"
+        },
+        "authMode": {
+          "enum": [
+            "api_key",
+            "chatgpt_subscription"
+          ]
+        },
+        "allowedModels": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[^\\u0000-\\u001F\\u007F]+$"
+          }
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[^\\u0000-\\u001F\\u007F]+$"
+        },
+        "baseUrl": {
+          "type": "string",
+          "minLength": 9,
+          "maxLength": 512,
+          "pattern": "^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?(/[A-Za-z0-9._~%/-]*)*$"
+        },
+        "state": {
+          "enum": [
+            "active",
+            "revoked"
+          ]
+        },
+        "createdAt": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "connectionTest": {
+      "description": "Bounded pre-save reachability/auth observation for an owner custom OpenAI-compatible endpoint. Never persists or returns key material.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "reachable",
+        "authenticated",
+        "status",
+        "endpointHost",
+        "checkedAt"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "reachable": {
+          "type": "boolean"
+        },
+        "authenticated": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 100,
+          "maximum": 599
+        },
+        "endpointHost": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253
+        },
+        "checkedAt": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "qualificationConsentRequest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/qualificationConsentRequestV1"
+        },
+        {
+          "$ref": "#/$defs/qualificationConsentRequestV2"
+        },
+        {
+          "$ref": "#/$defs/qualificationConsentRequestV3"
+        }
+      ]
+    },
+    "qualificationConsent": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/qualificationConsentV1"
+        },
+        {
+          "$ref": "#/$defs/qualificationConsentV2"
+        },
+        {
+          "$ref": "#/$defs/qualificationConsentV3"
+        }
+      ]
+    },
+    "qualificationAccessCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "accountId",
+        "taskId",
+        "connectionId",
+        "connectionRevision",
+        "providerId",
+        "modelId",
+        "authMode",
+        "scope",
+        "sourceDigest",
+        "notAfter"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "reviewed_owner_project_capability",
+            "owner_authorized_qualification_probe"
+          ]
+        },
+        "accountId": {
+          "$ref": "#/$defs/id"
+        },
+        "taskId": {
+          "$ref": "#/$defs/id"
+        },
+        "connectionId": {
+          "$ref": "#/$defs/id"
+        },
+        "connectionRevision": {
+          "$ref": "#/$defs/positive"
+        },
+        "providerId": {
+          "const": "openai"
+        },
+        "modelId": {
+          "const": "gpt-4.1-mini-2025-04-14"
+        },
+        "authMode": {
+          "const": "api_key"
+        },
+        "scope": {
+          "enum": [
+            "responses:write",
+            "qualification:responses_probe"
+          ]
+        },
+        "sourceDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "notAfter": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "owner_authorized_qualification_probe"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope": {
+                "const": "qualification:responses_probe"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "scope": {
+                "const": "responses:write"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "connectionList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/connectionMetadata"
+          }
+        },
+        "nextCursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "target": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "registrationIntentId"
+          ],
+          "properties": {
+            "kind": {
+              "const": "checkout"
+            },
+            "registrationIntentId": {
+              "$ref": "#/$defs/id"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "serverId",
+            "sandboxId",
+            "sandboxGeneration"
+          ],
+          "properties": {
+            "kind": {
+              "const": "existing"
+            },
+            "serverId": {
+              "$ref": "#/$defs/id"
+            },
+            "sandboxId": {
+              "$ref": "#/$defs/id"
+            },
+            "sandboxGeneration": {
+              "$ref": "#/$defs/positive"
+            }
+          }
+        }
+      ]
+    },
+    "setupCreateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "requestId",
+        "configurationId",
+        "configurationRevision",
+        "target"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/id"
+        },
+        "configurationId": {
+          "$ref": "#/$defs/id"
+        },
+        "configurationRevision": {
+          "$ref": "#/$defs/positive"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        }
+      }
+    },
+    "setupApplyRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "requestId",
+        "expectedConfigurationDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/id"
+        },
+        "expectedConfigurationDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "path",
+        "message",
+        "blockingFor"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/id"
+        },
+        "path": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "blockingFor": {
+          "enum": [
+            "save",
+            "activation"
+          ]
+        }
+      }
+    },
+    "setupIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "setupIntentId",
+        "configurationId",
+        "configurationRevision",
+        "configurationDigest",
+        "target",
+        "state",
+        "issues",
+        "createdAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "setupIntentId": {
+          "$ref": "#/$defs/id"
+        },
+        "configurationId": {
+          "$ref": "#/$defs/id"
+        },
+        "configurationRevision": {
+          "$ref": "#/$defs/positive"
+        },
+        "configurationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "state": {
+          "const": "pending"
+        },
+        "issues": {
+          "type": "array",
+          "maxItems": 101,
+          "items": {
+            "$ref": "#/$defs/issue"
+          }
+        },
+        "createdAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "controlRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "action",
+        "fence"
+      ],
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 2
+        },
+        "requestId": {
+          "$ref": "#/$defs/id"
+        },
+        "action": {
+          "enum": [
+            "hold",
+            "release",
+            "revoke"
+          ]
+        },
+        "fence": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "elementsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "requestId",
+        "routingToken"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/id"
+        },
+        "routingToken": {
+          "type": "string",
+          "pattern": "^srt_[A-Za-z0-9_-]{43,160}$"
+        },
+        "savedPaymentOrderId": {
+          "$ref": "#/$defs/id",
+          "$comment": "Optional same-owner captured source order; never a browser provider ID or inherited renewal/redisplay authority."
+        }
+      }
+    },
+    "stripeRoutingRead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "route",
+        "selectedMethod",
+        "automaticRenewal",
+        "expiresAt"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "route": {
+          "enum": [
+            "BR",
+            "NON_BR",
+            "UNKNOWN"
+          ]
+        },
+        "selectedMethod": {
+          "enum": [
+            "UNSELECTED",
+            "card",
+            "pix"
+          ]
+        },
+        "automaticRenewal": {
+          "type": "boolean"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "stripeElementsConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "enabled",
+        "mode",
+        "publishableKey"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "mode": {
+          "const": "test"
+        },
+        "publishableKey": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^pk_test_[A-Za-z0-9]+$"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": false
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "publishableKey": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "publishableKey": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "elementsResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "paymentAttemptId",
+        "clientSecret",
+        "expiresAt"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "paymentAttemptId": {
+          "$ref": "#/$defs/id"
+        },
+        "clientSecret": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^cs_[A-Za-z0-9_]+_secret_[A-Za-z0-9_-]+$",
+          "$comment": "Transient private transport only; never persist, log, echo in errors, or place in a URL."
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "qualificationConsentRequestV1": {
+      "description": "Owner-authorized bounded probe consent, not provider-write or cloud-admin proof. testProjectId is the manager-frozen application TEST-case project identifier, NOT a required OpenAI proj_ identifier. Server verifies account/task/connection revision; project label is retained verbatim in the signed source and requires case mapping, not provider lookup.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "requestId",
+        "taskId",
+        "connectionRevision",
+        "testProjectId"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/id"
+        },
+        "taskId": {
+          "$ref": "#/$defs/id"
+        },
+        "connectionRevision": {
+          "$ref": "#/$defs/positive"
+        },
+        "testProjectId": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "qualificationConsentRequestV2": {
+      "description": "Owner-authorized bounded probe consent, not provider-write or cloud-admin proof. testProjectId is the manager-frozen application TEST-case project identifier, NOT a required OpenAI proj_ identifier. Server verifies account/task/connection revision; project label is retained verbatim in the signed source and requires case mapping, not provider lookup.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "requestId",
+        "taskId",
+        "connectionRevision",
+        "testProjectId",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "requestId": {
+          "$ref": "#/$defs/id"
+        },
+        "taskId": {
+          "$ref": "#/$defs/id"
+        },
+        "connectionRevision": {
+          "$ref": "#/$defs/positive"
+        },
+        "testProjectId": {
+          "$ref": "#/$defs/id"
+        },
+        "providerPolicyDigest": {
+          "type": "string",
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        }
+      }
+    },
+    "qualificationConsentV1": {
+      "description": "Immutable authenticated account probe consent. testProjectId identifies the application TEST case; its presence proves neither project registration nor provider permissions. Qualification binds the actual task/sandbox/setup/controller/native/connection tuple independently. No OpenAI project header is derived from this value.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "consentId",
+        "kind",
+        "accountId",
+        "taskId",
+        "connectionId",
+        "connectionRevision",
+        "providerId",
+        "modelId",
+        "authMode",
+        "scope",
+        "testProjectId",
+        "createdAt",
+        "expiresAt",
+        "sourceDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "consentId": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "owner_authorized_qualification_probe"
+        },
+        "accountId": {
+          "$ref": "#/$defs/id"
+        },
+        "taskId": {
+          "$ref": "#/$defs/id"
+        },
+        "connectionId": {
+          "$ref": "#/$defs/id"
+        },
+        "connectionRevision": {
+          "$ref": "#/$defs/positive"
+        },
+        "providerId": {
+          "const": "openai"
+        },
+        "modelId": {
+          "const": "gpt-4.1-mini-2025-04-14"
+        },
+        "authMode": {
+          "const": "api_key"
+        },
+        "scope": {
+          "const": "qualification:responses_probe"
+        },
+        "testProjectId": {
+          "$ref": "#/$defs/id"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        },
+        "sourceDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "qualificationConsentV2": {
+      "description": "Immutable authenticated account probe consent. testProjectId identifies the application TEST case; its presence proves neither project registration nor provider permissions. Qualification binds the actual task/sandbox/setup/controller/native/connection tuple independently. No OpenAI project header is derived from this value.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "consentId",
+        "kind",
+        "accountId",
+        "taskId",
+        "connectionId",
+        "connectionRevision",
+        "providerId",
+        "modelId",
+        "authMode",
+        "scope",
+        "testProjectId",
+        "createdAt",
+        "expiresAt",
+        "sourceDigest",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "consentId": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "owner_authorized_qualification_probe"
+        },
+        "accountId": {
+          "$ref": "#/$defs/id"
+        },
+        "taskId": {
+          "$ref": "#/$defs/id"
+        },
+        "connectionId": {
+          "$ref": "#/$defs/id"
+        },
+        "connectionRevision": {
+          "$ref": "#/$defs/positive"
+        },
+        "providerId": {
+          "const": "deepseek"
+        },
+        "modelId": {
+          "const": "deepseek-flash"
+        },
+        "authMode": {
+          "const": "api_key"
+        },
+        "scope": {
+          "const": "qualification:responses_probe"
+        },
+        "testProjectId": {
+          "$ref": "#/$defs/id"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        },
+        "sourceDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerPolicyDigest": {
+          "type": "string",
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        }
+      }
+    },
+    "qualificationConsentRequestV3": {
+      "description": "Owner-authorized bounded probe consent, not provider-write or cloud-admin proof. testProjectId is the manager-frozen application TEST-case project identifier, NOT a required OpenAI proj_ identifier. Server verifies account/task/connection revision; project label is retained verbatim in the signed source and requires case mapping, not provider lookup.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "requestId",
+        "taskId",
+        "connectionRevision",
+        "testProjectId",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "requestId": {
+          "$ref": "#/$defs/id"
+        },
+        "taskId": {
+          "$ref": "#/$defs/id"
+        },
+        "connectionRevision": {
+          "$ref": "#/$defs/positive"
+        },
+        "testProjectId": {
+          "$ref": "#/$defs/id"
+        },
+        "providerPolicyDigest": {
+          "type": "string",
+          "const": "sha256:e3020419b9841fb1e39c9dca0ff262c8761c19438263187c90b86b89976e9657"
+        }
+      }
+    },
+    "qualificationConsentV3": {
+      "description": "Immutable authenticated account probe consent. testProjectId identifies the application TEST case; its presence proves neither project registration nor provider permissions. Qualification binds the actual task/sandbox/setup/controller/native/connection tuple independently. No OpenAI project header is derived from this value.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "consentId",
+        "kind",
+        "accountId",
+        "taskId",
+        "connectionId",
+        "connectionRevision",
+        "providerId",
+        "modelId",
+        "authMode",
+        "scope",
+        "testProjectId",
+        "createdAt",
+        "expiresAt",
+        "sourceDigest",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "consentId": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "owner_authorized_qualification_probe"
+        },
+        "accountId": {
+          "$ref": "#/$defs/id"
+        },
+        "taskId": {
+          "$ref": "#/$defs/id"
+        },
+        "connectionId": {
+          "$ref": "#/$defs/id"
+        },
+        "connectionRevision": {
+          "$ref": "#/$defs/positive"
+        },
+        "providerId": {
+          "const": "deepseek"
+        },
+        "modelId": {
+          "const": "deepseek-flash"
+        },
+        "authMode": {
+          "const": "api_key"
+        },
+        "scope": {
+          "const": "qualification:responses_probe"
+        },
+        "testProjectId": {
+          "$ref": "#/$defs/id"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        },
+        "sourceDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerPolicyDigest": {
+          "type": "string",
+          "const": "sha256:e3020419b9841fb1e39c9dca0ff262c8761c19438263187c90b86b89976e9657"
+        }
+      }
+    },
+    "qualificationPolicySelectionOpenAI1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "taskId",
+        "connectionId",
+        "connectionRevision",
+        "providerId",
+        "modelId",
+        "authMode",
+        "consentFormatVersion",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "taskId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "providerId": {
+          "const": "openai"
+        },
+        "modelId": {
+          "const": "gpt-4.1-mini-2025-04-14"
+        },
+        "authMode": {
+          "const": "api_key"
+        },
+        "consentFormatVersion": {
+          "const": 1
+        },
+        "providerPolicyDigest": {
+          "const": null
+        }
+      },
+      "$comment": "Owner-authorized current task+connection revision readout only. No consent, signing, reservation or provider call; pending/mixed scope refuses without default."
+    },
+    "qualificationPolicySelectionFlash19": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "taskId",
+        "connectionId",
+        "connectionRevision",
+        "providerId",
+        "modelId",
+        "authMode",
+        "consentFormatVersion",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "taskId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "providerId": {
+          "const": "deepseek"
+        },
+        "modelId": {
+          "const": "deepseek-flash"
+        },
+        "authMode": {
+          "const": "api_key"
+        },
+        "consentFormatVersion": {
+          "const": 2
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        }
+      },
+      "$comment": "Owner-authorized current task+connection revision readout only. No consent, signing, reservation or provider call; pending/mixed scope refuses without default."
+    },
+    "qualificationPolicySelectionFlash21": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "taskId",
+        "connectionId",
+        "connectionRevision",
+        "providerId",
+        "modelId",
+        "authMode",
+        "consentFormatVersion",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "taskId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "providerId": {
+          "const": "deepseek"
+        },
+        "modelId": {
+          "const": "deepseek-flash"
+        },
+        "authMode": {
+          "const": "api_key"
+        },
+        "consentFormatVersion": {
+          "const": 2
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:e3020419b9841fb1e39c9dca0ff262c8761c19438263187c90b86b89976e9657"
+        }
+      },
+      "$comment": "Owner-authorized current task+connection revision readout only. No consent, signing, reservation or provider call; pending/mixed scope refuses without default."
+    },
+    "qualificationPolicySelection1": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/qualificationPolicySelectionOpenAI1"
+        },
+        {
+          "$ref": "#/$defs/qualificationPolicySelectionFlash19"
+        },
+        {
+          "$ref": "#/$defs/qualificationPolicySelectionFlash21"
+        }
+      ]
+    },
+    "qualificationPolicyQuery1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskId",
+        "connectionRevision"
+      ],
+      "properties": {
+        "taskId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/id"
+        },
+        "connectionRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    }
+  }
+}

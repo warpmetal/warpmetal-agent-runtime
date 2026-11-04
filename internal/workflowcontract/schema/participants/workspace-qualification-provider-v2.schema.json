@@ -1,0 +1,691 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-qualification-provider-v2.schema.json",
+  "title": "Additive closed provider qualification bootstrap3/policy4/activation2",
+  "$defs": {
+    "id": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+    },
+    "digest": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+    },
+    "time": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+    },
+    "signature": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/signature"
+    },
+    "innerCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "caseManifestDigest",
+        "ledgerId",
+        "requests",
+        "preparations",
+        "usdMicros"
+      ],
+      "properties": {
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "caseManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "requests": {
+          "type": "integer",
+          "const": 2
+        },
+        "preparations": {
+          "type": "integer",
+          "const": 1
+        },
+        "usdMicros": {
+          "type": "integer",
+          "const": 842000
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requests",
+        "turns",
+        "inputTokens",
+        "outputTokens",
+        "usdMicros",
+        "sdkRetries",
+        "applicationRetries",
+        "requestBytes",
+        "responseBytes",
+        "deadlineSeconds",
+        "pricingDigest"
+      ],
+      "properties": {
+        "requests": {
+          "type": "integer",
+          "const": 2
+        },
+        "turns": {
+          "type": "integer",
+          "const": 2
+        },
+        "inputTokens": {
+          "type": "integer",
+          "const": 2095152
+        },
+        "outputTokens": {
+          "type": "integer",
+          "const": 2000
+        },
+        "usdMicros": {
+          "type": "integer",
+          "const": 842000
+        },
+        "sdkRetries": {
+          "type": "integer",
+          "const": 0
+        },
+        "applicationRetries": {
+          "type": "integer",
+          "const": 0
+        },
+        "requestBytes": {
+          "type": "integer",
+          "const": 32768
+        },
+        "responseBytes": {
+          "type": "integer",
+          "const": 262144
+        },
+        "deadlineSeconds": {
+          "type": "integer",
+          "const": 120
+        },
+        "pricingDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "promptDigest",
+        "artifactRelativePath",
+        "expectedArtifactSHA256",
+        "expectedTerminalJSONDigest",
+        "tool",
+        "commandDigest",
+        "timeoutSeconds"
+      ],
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "const": 1
+        },
+        "promptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "artifactRelativePath": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,100}\\.txt$"
+        },
+        "expectedArtifactSHA256": {
+          "$ref": "#/$defs/digest"
+        },
+        "expectedTerminalJSONDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "tool": {
+          "const": "shell"
+        },
+        "commandDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "const": 120
+        }
+      }
+    },
+    "bootstrap3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "campaignId",
+        "sandboxId",
+        "sandboxGeneration",
+        "imageDigest",
+        "nativeVersion",
+        "binaryDigest",
+        "runtimeVersion",
+        "profileId",
+        "profileRevision",
+        "profileDigest",
+        "bundleDigest",
+        "issuedAt",
+        "expiresAt",
+        "mode",
+        "purpose",
+        "allowedProviderIds",
+        "allowedModels",
+        "allowedAuthModes",
+        "preparationsBudget",
+        "requestsPerPreparation",
+        "outputTokensPerRequest",
+        "requestBodyBytes",
+        "responseBodyBytes",
+        "sdkRetries",
+        "applicationRetries",
+        "providerPolicyDigest",
+        "accountingVersion",
+        "formatVersion",
+        "case"
+      ],
+      "properties": {
+        "campaignId": {
+          "$ref": "#/$defs/id"
+        },
+        "sandboxId": {
+          "$ref": "#/$defs/id"
+        },
+        "sandboxGeneration": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "imageDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "nativeVersion": {
+          "$ref": "#/$defs/id"
+        },
+        "binaryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "runtimeVersion": {
+          "$ref": "#/$defs/id"
+        },
+        "profileId": {
+          "$ref": "#/$defs/id"
+        },
+        "profileRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "profileDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "bundleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        },
+        "mode": {
+          "const": "real_provider"
+        },
+        "purpose": {
+          "const": "model_qualification_bootstrap"
+        },
+        "allowedProviderIds": {
+          "const": [
+            "deepseek"
+          ]
+        },
+        "allowedModels": {
+          "const": [
+            "deepseek-flash"
+          ]
+        },
+        "allowedAuthModes": {
+          "const": [
+            "api_key"
+          ]
+        },
+        "preparationsBudget": {
+          "type": "integer",
+          "const": 2
+        },
+        "requestsPerPreparation": {
+          "type": "integer",
+          "const": 2
+        },
+        "outputTokensPerRequest": {
+          "type": "integer",
+          "const": 1000
+        },
+        "requestBodyBytes": {
+          "type": "integer",
+          "const": 32768
+        },
+        "responseBodyBytes": {
+          "type": "integer",
+          "const": 262144
+        },
+        "sdkRetries": {
+          "type": "integer",
+          "const": 0
+        },
+        "applicationRetries": {
+          "type": "integer",
+          "const": 0
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "formatVersion": {
+          "type": "integer",
+          "const": 3
+        },
+        "case": {
+          "$ref": "#/$defs/innerCase"
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualificationId",
+        "reservationId",
+        "caseId",
+        "caseManifestDigest",
+        "tupleDigest",
+        "permitDigest",
+        "providerEndpoint",
+        "budget",
+        "workload"
+      ],
+      "properties": {
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        },
+        "reservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "caseManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "tupleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "permitDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerEndpoint": {
+          "const": "https://api.deepseek.com/responses"
+        },
+        "budget": {
+          "$ref": "#/$defs/budget"
+        },
+        "workload": {
+          "$ref": "#/$defs/workload"
+        }
+      }
+    },
+    "policy4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "campaignId",
+        "sandboxId",
+        "sandboxGeneration",
+        "imageDigest",
+        "nativeVersion",
+        "binaryDigest",
+        "runtimeVersion",
+        "profileId",
+        "profileRevision",
+        "profileDigest",
+        "bundleDigest",
+        "issuedAt",
+        "expiresAt",
+        "mode",
+        "purpose",
+        "allowedProviderIds",
+        "allowedModels",
+        "allowedAuthModes",
+        "preparationsBudget",
+        "requestsPerPreparation",
+        "outputTokensPerRequest",
+        "requestBodyBytes",
+        "responseBodyBytes",
+        "sdkRetries",
+        "applicationRetries",
+        "providerPolicyDigest",
+        "accountingVersion",
+        "formatVersion",
+        "preparations",
+        "run"
+      ],
+      "properties": {
+        "campaignId": {
+          "$ref": "#/$defs/id"
+        },
+        "sandboxId": {
+          "$ref": "#/$defs/id"
+        },
+        "sandboxGeneration": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "imageDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "nativeVersion": {
+          "$ref": "#/$defs/id"
+        },
+        "binaryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "runtimeVersion": {
+          "$ref": "#/$defs/id"
+        },
+        "profileId": {
+          "$ref": "#/$defs/id"
+        },
+        "profileRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "profileDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "bundleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        },
+        "mode": {
+          "const": "real_provider"
+        },
+        "purpose": {
+          "const": "model_qualification_bootstrap"
+        },
+        "allowedProviderIds": {
+          "const": [
+            "deepseek"
+          ]
+        },
+        "allowedModels": {
+          "const": [
+            "deepseek-flash"
+          ]
+        },
+        "allowedAuthModes": {
+          "const": [
+            "api_key"
+          ]
+        },
+        "preparationsBudget": {
+          "type": "integer",
+          "const": 2
+        },
+        "requestsPerPreparation": {
+          "type": "integer",
+          "const": 2
+        },
+        "outputTokensPerRequest": {
+          "type": "integer",
+          "const": 1000
+        },
+        "requestBodyBytes": {
+          "type": "integer",
+          "const": 32768
+        },
+        "responseBodyBytes": {
+          "type": "integer",
+          "const": 262144
+        },
+        "sdkRetries": {
+          "type": "integer",
+          "const": 0
+        },
+        "applicationRetries": {
+          "type": "integer",
+          "const": 0
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "formatVersion": {
+          "type": "integer",
+          "const": 4
+        },
+        "preparations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "preparationId",
+              "sessionId",
+              "inputId",
+              "workspace"
+            ],
+            "properties": {
+              "preparationId": {
+                "$ref": "#/$defs/id"
+              },
+              "sessionId": {
+                "$ref": "#/$defs/id"
+              },
+              "inputId": {
+                "$ref": "#/$defs/id"
+              },
+              "workspace": {
+                "type": "string",
+                "maxLength": 1024,
+                "pattern": "^/home/agent/workspaces/[A-Za-z0-9._/-]+$"
+              }
+            }
+          }
+        },
+        "run": {
+          "$ref": "#/$defs/run"
+        }
+      }
+    },
+    "activation2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualificationId",
+        "reservationId",
+        "caseId",
+        "caseManifestDigest",
+        "tupleDigest",
+        "preparationId",
+        "preparedTupleDigest",
+        "preparedReceiptDigest",
+        "policyDigest",
+        "grantId",
+        "grantDigest",
+        "executionId",
+        "permitDigest",
+        "accessEvidenceDigest",
+        "budgetDigest",
+        "issuedAt",
+        "expiresAt",
+        "formatVersion",
+        "mode",
+        "purpose",
+        "dispatchStart",
+        "preparationIndex",
+        "providerPolicyDigest",
+        "accountingVersion"
+      ],
+      "properties": {
+        "qualificationId": {
+          "$ref": "#/$defs/id"
+        },
+        "reservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "caseManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "tupleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "preparationId": {
+          "$ref": "#/$defs/id"
+        },
+        "preparedTupleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "preparedReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "policyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "grantId": {
+          "$ref": "#/$defs/id"
+        },
+        "grantDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "executionId": {
+          "$ref": "#/$defs/id"
+        },
+        "permitDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "accessEvidenceDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "budgetDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        },
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "mode": {
+          "const": "real_provider"
+        },
+        "purpose": {
+          "const": "model_qualification_bootstrap"
+        },
+        "dispatchStart": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 17
+        },
+        "preparationIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 13
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        }
+      }
+    },
+    "bootstrap3Envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/bootstrap3"
+        },
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "signature": {
+          "$ref": "#/$defs/signature"
+        }
+      }
+    },
+    "policy4Envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/policy4"
+        },
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "signature": {
+          "$ref": "#/$defs/signature"
+        }
+      }
+    },
+    "activation2Envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/activation2"
+        },
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "signature": {
+          "$ref": "#/$defs/signature"
+        }
+      }
+    }
+  }
+}

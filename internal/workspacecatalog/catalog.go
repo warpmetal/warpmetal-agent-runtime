@@ -88,6 +88,27 @@ type DefaultProjectRequest struct {
 	RebindSelectionID string
 }
 
+// CellDefaultProjectRequest names the backend-authorized DESIRED ordinary-directory
+// workspace intent for a cell (no Team/Member, no git). The root attestation is
+// absent from the intent: EnsureCellDefault materializes the directory and
+// attests the ACTUAL root via attest().
+type CellDefaultProjectRequest struct {
+	Anchor                string
+	ServerID              string
+	SandboxID             string
+	SandboxGeneration     int64
+	ServiceRegistrationID string
+	AllocationDigest      string
+	ConfigDigest          string
+	OwnerCellID           string
+	OwnerRole             string
+	OwnerGeneration       int64
+	SelectionID           string
+	ProjectID             string
+	WorkspaceEpoch        string
+	ScopeRevision         int64
+}
+
 type ResolveProjectRequest struct {
 	SelectionID           string
 	ProjectID             string
@@ -150,15 +171,53 @@ func (c Catalog) Reports(ctx context.Context) ([]model.ProjectCatalogReportV1, e
 	}
 	reports := make([]model.ProjectCatalogReportV1, 0, len(projects))
 	for _, project := range projects {
-		// A persisted allocation intent without an attested root is host-private
-		// until materialization completes; publishing it would hand the control
-		// plane a root it cannot authenticate and reject the whole report.
-		if project.Phase == "handoff_allocating" || project.Phase == "restore_allocating" {
+		if !publishableManagedProject(project) {
 			continue
 		}
 		reports = append(reports, project.Report)
 	}
 	return reports, nil
+}
+
+// publishableManagedProject is the fail-closed publication filter for durable
+// catalog rows. A record that has not completed materialization (the
+// `allocated` intent written before its root exists) or whose live attestation
+// no longer matches its published authority is host-private and is never sent
+// to the control plane: the backend admits only the fixed availability/reason
+// vocabulary, so publishing an internal `initializing` row would reject the
+// entire runtime report and suppress every healthy selection with it. Attested
+// continuity materialization provenance remains publishable with its exact
+// pending reason, and an observed-but-unusable root remains visible with the
+// allowed no_git/unborn/unsafe_root/catalog_limit reasons.
+func publishableManagedProject(project state.LocalManagedProject) bool {
+	if project.Report.RootAttestation == "" || attest(project) != project.Report.RootAttestation {
+		return false
+	}
+	switch project.Phase {
+	case "ready":
+		return project.Report.Availability == "available" && project.Report.Reason == nil
+	case "observed":
+		if project.Report.Designation != "team_project" || project.Report.Availability != "unavailable" {
+			return false
+		}
+		return allowedUnavailableProjectReason(pointerValue(project.Report.Reason))
+	case "restore_allocated", "handoff_allocated":
+		return (project.Report.Designation == "continuity-materialization" ||
+			project.Report.Designation == "continuity-handoff") &&
+			project.Report.Availability == "unavailable" &&
+			pointerValue(project.Report.Reason) == "materialization_pending"
+	default:
+		return false
+	}
+}
+
+func allowedUnavailableProjectReason(reason string) bool {
+	switch reason {
+	case "no_git", "unborn", "unsafe_root", "catalog_limit":
+		return true
+	default:
+		return false
+	}
 }
 
 // ReobserveRemountedRoots reopens every ready team-project record that a
@@ -623,6 +682,199 @@ func (c Catalog) EnsureDefault(ctx context.Context, request DefaultProjectReques
 		return RegisteredProject{}, err
 	}
 	return registered(record), nil
+}
+
+// EnsureCellDefault creates (or resumes) the cell's ordinary-directory workspace
+// selection from the backend-authorized intent. It is the cell mirror of
+// EnsureDefault with NO Team/Member identity and NO git repository: the
+// directory is created empty under the trusted anchor, the ACTUAL root is
+// attested via attest() (never a caller-supplied hash), and the record is
+// published available so the backend report can ratify it BEFORE launch.
+func (c Catalog) EnsureCellDefault(ctx context.Context, request CellDefaultProjectRequest) (RegisteredProject, error) {
+	if request.Anchor == "" || !safeComponent.MatchString(request.ServerID) ||
+		!safeComponent.MatchString(request.SandboxID) || request.SandboxGeneration < 1 ||
+		!safeComponent.MatchString(request.ServiceRegistrationID) ||
+		!safeComponent.MatchString(request.OwnerCellID) || !safeComponent.MatchString(request.OwnerRole) ||
+		request.OwnerGeneration < 1 || !safeComponent.MatchString(request.SelectionID) ||
+		!safeComponent.MatchString(request.ProjectID) || !safeComponent.MatchString(request.WorkspaceEpoch) ||
+		request.ScopeRevision < 1 {
+		return RegisteredProject{}, ErrUnsafeProjectRoot
+	}
+	existing, err := c.State.ManagedProject(ctx, request.SelectionID)
+	if err != nil {
+		return RegisteredProject{}, err
+	}
+	if existing != nil {
+		// The cell workspace intent and the admitted cell launch are two
+		// callers of the SAME registered ordinary-directory selection: the
+		// intent carries the backend workspace allocation digest, while the
+		// launch entry carries the service config digest. A differing digest
+		// is therefore not by itself a project change; only two different
+		// nonempty allocation digests are.
+		if existing.Report.SandboxID != request.SandboxID ||
+			existing.Report.SandboxGeneration != request.SandboxGeneration ||
+			existing.Report.ProjectID != request.ProjectID ||
+			existing.Report.WorkspaceEpoch != request.WorkspaceEpoch ||
+			existing.ScopeRevision != request.ScopeRevision ||
+			(request.AllocationDigest != "" && existing.AllocationDigest != "" &&
+				existing.AllocationDigest != request.AllocationDigest) {
+			return RegisteredProject{}, ErrProjectChanged
+		}
+		switch {
+		case existing.Phase == "ready":
+			return c.resolveCellRecord(ctx, existing)
+		case existing.Phase == "allocated" && existing.RootInode == 0:
+			// A crash after the durable pre-materialization intent leaves the
+			// row allocated with no root. Resume the exact same allocation
+			// (including any empty root directory it managed to create) instead
+			// of failing every later pass with a project change.
+			return c.finishCellAllocation(ctx, existing)
+		default:
+			return RegisteredProject{}, ErrProjectChanged
+		}
+	}
+
+	anchor, anchorIdentity, err := openDirectoryNoFollow(request.Anchor)
+	if err != nil {
+		return RegisteredProject{}, fmt.Errorf("%w: anchor: %v", ErrUnsafeProjectRoot, err)
+	}
+	defer anchor.Close()
+	projects, err := ensureProjectsDirectory(anchor)
+	if err != nil {
+		return RegisteredProject{}, fmt.Errorf("%w: projects: %v", ErrUnsafeProjectRoot, err)
+	}
+	defer projects.Close()
+	projectsIdentity, err := identityForFile(projects)
+	if err != nil || !sameMount(anchorIdentity, projectsIdentity) {
+		return RegisteredProject{}, ErrUnsafeProjectRoot
+	}
+	if err := c.ensureProjectsOwner(ctx, anchor, projects, anchorIdentity, request.Anchor); err != nil {
+		return RegisteredProject{}, err
+	}
+
+	now := c.now()
+	record := state.LocalManagedProject{
+		Report: model.ProjectCatalogReportV1{
+			FormatVersion: 1, SelectionID: request.SelectionID, ProjectID: request.ProjectID,
+			WorkspaceEpoch: request.WorkspaceEpoch, SandboxID: request.SandboxID,
+			SandboxGeneration: request.SandboxGeneration, ServiceRegistrationID: nil,
+			Designation: "team_project", Label: request.OwnerCellID, Availability: "unavailable",
+			Reason: stringPointer("initializing"), LastObservedAt: now,
+		},
+		ServerID: request.ServerID, AllocationDigest: request.AllocationDigest,
+		ConfigDigest: request.ConfigDigest, Anchor: filepath.Clean(request.Anchor),
+		ScopeRevision: request.ScopeRevision,
+		HostRoot:      filepath.Join(filepath.Clean(request.Anchor), "projects", request.ProjectID),
+		ContainerRoot: "/home/agent/projects/" + request.ProjectID, Phase: "allocated",
+		AnchorDevice: anchorIdentity.Device, AnchorInode: anchorIdentity.Inode, AnchorMount: anchorIdentity.Mount,
+	}
+	c.bindWorkspaceImageIdentity(&record)
+	if err := c.State.PutManagedProject(ctx, record); err != nil {
+		return RegisteredProject{}, err
+	}
+	// Ordinary directory only: no git init, no bootstrap, no repo metadata.
+	return c.finishCellAllocation(ctx, &record)
+}
+
+// finishCellAllocation materializes (or adopts) the exact ordinary-directory
+// root of a cell workspace and publishes it ready. It is idempotent for a
+// durable `allocated` intent left behind by a crash: an already-created empty
+// root is adopted only after proving it is still an ordinary directory on the
+// anchor's mount and is either host-root- or runtime-owned, then it is
+// transferred to the workspace anchor's runtime/agent identity with the
+// non-shared 0700 mode. That ownership is the same identity Podman's
+// keep-id:uid=1000 mapping presents to the native agent, so a root-owned
+// Runtime-created directory can never make the agent's first `write` fail.
+func (c Catalog) finishCellAllocation(ctx context.Context, record *state.LocalManagedProject) (RegisteredProject, error) {
+	anchor, anchorIdentity, err := openDirectoryNoFollow(record.Anchor)
+	if err != nil {
+		return RegisteredProject{}, fmt.Errorf("%w: anchor: %v", ErrUnsafeProjectRoot, err)
+	}
+	defer anchor.Close()
+	if !sameDurableObject(record.AnchorDevice, record.AnchorInode, anchorIdentity) {
+		return RegisteredProject{}, ErrProjectChanged
+	}
+	projects, err := ensureProjectsDirectory(anchor)
+	if err != nil {
+		return RegisteredProject{}, fmt.Errorf("%w: projects: %v", ErrUnsafeProjectRoot, err)
+	}
+	defer projects.Close()
+	projectsIdentity, err := identityForFile(projects)
+	if err != nil || !sameMount(anchorIdentity, projectsIdentity) {
+		return RegisteredProject{}, ErrUnsafeProjectRoot
+	}
+	if err := c.ensureProjectsOwner(ctx, anchor, projects, anchorIdentity, record.Anchor); err != nil {
+		return RegisteredProject{}, err
+	}
+	target, _, err := ownerOf(anchor)
+	if err != nil {
+		return RegisteredProject{}, ErrUnsafeProjectRoot
+	}
+	leaf := record.Report.ProjectID
+	if !safeComponent.MatchString(leaf) ||
+		filepath.Clean(record.HostRoot) != filepath.Join(filepath.Clean(record.Anchor), "projects", leaf) {
+		return RegisteredProject{}, ErrProjectChanged
+	}
+	root, rootIdentity, err := c.materializeCellRoot(projects, leaf, anchorIdentity, target, record.RootInode == 0)
+	if err != nil {
+		return RegisteredProject{}, err
+	}
+	defer root.Close()
+	if record.RootInode != 0 && !sameDurableObject(record.RootDevice, record.RootInode, rootIdentity) {
+		return RegisteredProject{}, ErrProjectChanged
+	}
+	record.RootDevice, record.RootInode, record.RootMount = rootIdentity.Device, rootIdentity.Inode, rootIdentity.Mount
+	record.Phase = "ready"
+	record.Report.Availability = "available"
+	record.Report.Reason = nil
+	record.Report.LastObservedAt = c.now()
+	record.Report.RootAttestation = attest(*record)
+	if err := c.State.PutManagedProject(ctx, *record); err != nil {
+		return RegisteredProject{}, err
+	}
+	return registered(*record), nil
+}
+
+// materializeCellRoot creates the cell project root or adopts the empty root a
+// previously interrupted allocation left behind. A newly created root is
+// transferred to the anchor owner and 0700 through the already-open directory
+// descriptor, so a concurrent path replacement cannot redirect the ownership
+// change. Adoption is deliberately narrow: ordinary directory, same mount,
+// empty, and owned by host root or the workspace runtime identity only.
+func (c Catalog) materializeCellRoot(projects *os.File, leaf string, mount fileIdentity, target workspaceOwner, adopt bool) (*os.File, fileIdentity, error) {
+	rootFD, err := unix.Openat(int(projects.Fd()), leaf, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if errors.Is(err, unix.ENOENT) {
+		if err := unix.Mkdirat(int(projects.Fd()), leaf, 0700); err != nil {
+			return nil, fileIdentity{}, fmt.Errorf("%w: exclusive project creation: %v", ErrUnsafeProjectRoot, err)
+		}
+		rootFD, err = unix.Openat(int(projects.Fd()), leaf, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	}
+	if err != nil {
+		return nil, fileIdentity{}, fmt.Errorf("%w: open project root: %v", ErrUnsafeProjectRoot, err)
+	}
+	root := os.NewFile(uintptr(rootFD), leaf)
+	rootIdentity, err := identityForFile(root)
+	if err != nil || !sameMount(mount, rootIdentity) {
+		root.Close()
+		return nil, fileIdentity{}, ErrUnsafeProjectRoot
+	}
+	if adopt {
+		owner, stat, err := ownerOf(root)
+		if err != nil || stat.Mode&unix.S_IFMT != unix.S_IFDIR ||
+			(owner.uid != 0 && owner.uid != target.uid) {
+			root.Close()
+			return nil, fileIdentity{}, ErrUnsafeProjectRoot
+		}
+		if err := ensureEmpty(root); err != nil {
+			root.Close()
+			return nil, fileIdentity{}, fmt.Errorf("%w: %v", ErrUnsafeProjectRoot, err)
+		}
+	}
+	if err := ownCellRoot(root, target); err != nil {
+		root.Close()
+		return nil, fileIdentity{}, err
+	}
+	return root, rootIdentity, nil
 }
 
 // AllocateRestore exclusively creates and durably records a new empty project
@@ -1112,16 +1364,63 @@ func (c Catalog) resumeCreated(ctx context.Context, record *state.LocalManagedPr
 }
 
 func (c Catalog) Resolve(ctx context.Context, request ResolveProjectRequest) (RegisteredProject, error) {
-	record, err := c.State.ManagedProject(ctx, request.SelectionID)
+	record, err := c.registeredRecord(ctx, request)
 	if err != nil {
 		return RegisteredProject{}, err
+	}
+	return c.resolveRecord(record)
+}
+
+// ResolveCell resumes the cell's own ordinary-directory workspace selection.
+// It is the cell-aware counterpart of Resolve and the only resolver a
+// controller-parent application may use for the cell workspace that
+// EnsureCellDefault created: that selection is deliberately an ordinary
+// directory with no Git repository, so the member publication checks in
+// verifyRoot would reject its own attested root with ErrProjectChanged on every
+// resolve (R-WP94-2).
+//
+// The exact identity tuple check is shared with Resolve, and the durable record
+// must additionally be exactly a cell workspace owned by ownerCellID: a
+// team_project with no service registration and no Team/Member identity whose
+// label is that owner cell. A member, restore, handoff, relabelled or otherwise
+// unknown record fails closed here, before any filesystem traversal, and never
+// borrows the cell path.
+func (c Catalog) ResolveCell(ctx context.Context, request ResolveProjectRequest, ownerCellID string) (RegisteredProject, error) {
+	record, err := c.registeredRecord(ctx, request)
+	if err != nil {
+		return RegisteredProject{}, err
+	}
+	if !cellWorkspaceRecord(record, ownerCellID) {
+		return RegisteredProject{}, ErrProjectChanged
+	}
+	return c.resolveCellRecord(ctx, record)
+}
+
+// registeredRecord loads the durable record named by the exact resolve tuple.
+// Every lineage (member, cell, restore, handoff) shares this identity check: a
+// different project, epoch, sandbox generation, service binding or config is
+// never the same workspace.
+func (c Catalog) registeredRecord(ctx context.Context, request ResolveProjectRequest) (*state.LocalManagedProject, error) {
+	record, err := c.State.ManagedProject(ctx, request.SelectionID)
+	if err != nil {
+		return nil, err
 	}
 	if record == nil || record.Report.ProjectID != request.ProjectID || record.Report.WorkspaceEpoch != request.WorkspaceEpoch ||
 		record.Report.SandboxID != request.SandboxID || record.Report.SandboxGeneration != request.SandboxGeneration ||
 		pointerValue(record.Report.ServiceRegistrationID) != request.ServiceRegistrationID || record.ConfigDigest != request.ConfigDigest {
-		return RegisteredProject{}, ErrProjectChanged
+		return nil, ErrProjectChanged
 	}
-	return c.resolveRecord(record)
+	return record, nil
+}
+
+// cellWorkspaceRecord reports whether the durable record is exactly the cell
+// ordinary-directory workspace selection EnsureCellDefault creates, owned by
+// ownerCellID. It is a structural layout check on the host-private record, not
+// a path or caller claim.
+func cellWorkspaceRecord(record *state.LocalManagedProject, ownerCellID string) bool {
+	return record != nil && ownerCellID != "" && record.Report.Designation == "team_project" &&
+		record.Report.ServiceRegistrationID == nil && record.TeamID == "" && record.MemberID == "" &&
+		record.Report.Label == ownerCellID
 }
 
 func (c Catalog) resolveRecord(record *state.LocalManagedProject) (RegisteredProject, error) {
@@ -1137,6 +1436,31 @@ func (c Catalog) resolveRecord(record *state.LocalManagedProject) (RegisteredPro
 		return RegisteredProject{}, err
 	}
 	if err := verifyRoot(*record); err != nil {
+		return RegisteredProject{}, err
+	}
+	return registered(*record), nil
+}
+
+// resolveCellRecord resumes the cell's ordinary-directory workspace. It proves
+// the same durable-object authority as resolveRecord — the record is still the
+// exact attested anchor/projects/root on one mount — but it never applies the
+// member project's Git publication checks: a cell workspace is deliberately an
+// ordinary directory with no repository, so verifyRoot's "no_git" classification
+// would reject the cell's own materialized root (WP-20's `managed project
+// changed` on every resume). It publishes no new availability and admits no
+// service by itself; the caller still re-checks the manifest's exact root
+// attestation against the record. A record whose root still carries the
+// pre-fix host-root/process-group ownership is repaired in place through the
+// exact recorded inode (never a re-resolved path), so an upgraded Runtime
+// heals the I-WP55-4 cell without changing its durable identity.
+func (c Catalog) resolveCellRecord(ctx context.Context, record *state.LocalManagedProject) (RegisteredProject, error) {
+	if record.Phase != "ready" || record.Report.Availability != "available" || attest(*record) != record.Report.RootAttestation {
+		return RegisteredProject{}, ErrProjectChanged
+	}
+	if err := verifyOwnedRoot(*record); err != nil {
+		return RegisteredProject{}, err
+	}
+	if err := c.repairCellOwner(ctx, *record); err != nil {
 		return RegisteredProject{}, err
 	}
 	return registered(*record), nil
@@ -1315,16 +1639,28 @@ func validateDefaultRequest(request DefaultProjectRequest) error {
 
 func ensureProjectsDirectory(anchor *os.File) (*os.File, error) {
 	fd, err := unix.Openat(int(anchor.Fd()), "projects", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	created := false
 	if errors.Is(err, unix.ENOENT) {
 		if err := unix.Mkdirat(int(anchor.Fd()), "projects", 0700); err != nil {
 			return nil, err
 		}
+		created = true
 		fd, err = unix.Openat(int(anchor.Fd()), "projects", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return os.NewFile(uintptr(fd), "projects"), nil
+	file := os.NewFile(uintptr(fd), "projects")
+	if created {
+		// Re-assert the exact non-shared mode through the open descriptor: the
+		// packaged service mask already yields 0700, but the project root's
+		// writability must never depend on an inherited process umask.
+		if err := unix.Fchmod(int(file.Fd()), 0700); err != nil {
+			file.Close()
+			return nil, err
+		}
+	}
+	return file, nil
 }
 
 func openDirectoryNoFollow(path string) (*os.File, fileIdentity, error) {

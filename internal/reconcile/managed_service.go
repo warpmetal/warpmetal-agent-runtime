@@ -35,6 +35,9 @@ var managedWorkerSettledPhases = map[string]bool{
 }
 
 type managedSupervisorReceipt struct {
+	NativeRoleReadback         *model.ControllerRoleReadback   `json:"nativeRoleReadback,omitempty"`
+	AppliedProfile             *model.AppliedExpertiseProfile  `json:"appliedProfile,omitempty"`
+	MaterializerDigest         string                          `json:"materializerDigest,omitempty"`
 	SchemaVersion              int                             `json:"schemaVersion"`
 	Command                    string                          `json:"command"`
 	Status                     string                          `json:"status"`
@@ -161,6 +164,20 @@ func (r *Reconciler) reconcileManagedWorkspaceRequests(ctx context.Context, mani
 		if err != nil {
 			return fmt.Errorf("resolve trusted workspace anchor: %w", err)
 		}
+		if request.TargetKind == "cell_session" {
+			_, err = r.ManagedCatalog.EnsureCellDefault(ctx, workspacecatalog.CellDefaultProjectRequest{
+				Anchor: anchor, ServerID: request.ServerID,
+				SandboxID: request.SandboxID, SandboxGeneration: request.SandboxGeneration,
+				ServiceRegistrationID: request.ServiceRegistrationID, AllocationDigest: request.AllocationDigest,
+				OwnerCellID: request.OwnerCellID, OwnerRole: request.OwnerRole, OwnerGeneration: request.OwnerGeneration,
+				SelectionID: request.SelectionID, ProjectID: request.ProjectID,
+				WorkspaceEpoch: request.WorkspaceEpoch, ScopeRevision: request.ScopeRevision,
+			})
+			if err != nil {
+				return fmt.Errorf("create cell workspace %s: %w", request.OperationID, err)
+			}
+			continue
+		}
 		_, err = r.ManagedCatalog.EnsureDefault(ctx, workspacecatalog.DefaultProjectRequest{
 			Anchor: anchor, ServerID: request.ServerID, TeamID: request.TeamID, MemberID: request.MemberID,
 			SandboxID: request.SandboxID, SandboxGeneration: request.SandboxGeneration,
@@ -173,15 +190,60 @@ func (r *Reconciler) reconcileManagedWorkspaceRequests(ctx context.Context, mani
 	return nil
 }
 
+// controllerParentFailure marks a fail-closed controller-parent failure that is
+// ISOLATED from the rest of the pass (R-WP125-2). The parent itself has already
+// been persisted as failed and is never advanced; the remaining independent
+// stages of the pass (notably the V3 execute stage and its grant window) still
+// run, and Reconcile returns this failure AFTER them so the pass still fails
+// closed and the applied revision does not advance.
+type controllerParentFailure struct{ err error }
+
+func (failure *controllerParentFailure) Error() string { return failure.err.Error() }
+func (failure *controllerParentFailure) Unwrap() error { return failure.err }
+
+// controllerParentFailureOf extracts the isolated parent failure, if any.
+func controllerParentFailureOf(err error) error {
+	var failure *controllerParentFailure
+	if errors.As(err, &failure) {
+		return failure.err
+	}
+	return nil
+}
+
 // reconcileManagedServices reconciles every managed service of the manifest. It
-// returns the bounded, retryable workspace-remount reasons it deferred and, in
-// a separate error, the first fatal failure: a deferred service never hides the
-// failure of another service, and a fatal failure never turns a deferred reason
-// into a silent skip of the whole pass. A fatal failure is retained while the
-// remaining independently owned services still reconcile (isolation, not
-// suppression), and it is returned after the pass so Reconcile cannot advance
-// the global applied revision.
+// returns the bounded, retryable reasons it deferred and, in a separate error,
+// the first fatal failure: a deferred service never hides the failure of another
+// service, and a fatal failure never turns a deferred reason into a silent skip
+// of the whole pass. A fatal failure is retained while the remaining
+// independently owned services still reconcile (isolation, not suppression), and
+// it is returned after the pass so Reconcile cannot advance the global applied
+// revision.
+//
+// A controller parent whose approved-application control-plane read was bounded
+// out (R-WP122-2) is such a retryable deferral: the parent stays fail-closed,
+// unadvanced and durably named, but it no longer starves the independent V3
+// execute stage of the same pass while the execution grant TTL drains.
 func (r *Reconciler) reconcileManagedServices(ctx context.Context, manifest model.Manifest) (deferred, fatal error) {
+	// Separate durable parent metadata, never Team enrollment or a child execution.
+	for _, parent := range manifest.ParentServices {
+		if err := r.reconcileControllerParent(ctx, manifest, parent); err != nil {
+			// A bounded read block is named and retryable; every other parent
+			// failure has already persisted the parent as FAILED (fail-closed,
+			// never ready, never advanced). Neither may abort the pass: a parent
+			// flap used to return a fatal error here, which skipped the
+			// independent V3 execute stage in the same pass and, after a restart,
+			// did so on every pass - permanently removing the grant gate while
+			// the execution stayed pending and its grant drained (R-WP125-2).
+			// Isolation, not suppression: the failure is retained as a deferral,
+			// the other parent and every independent service still reconcile, and
+			// the node report still describes the failed parent honestly.
+			if code, blocked := controllerApplicationReadBlockedCode(err); blocked {
+				deferred = errors.Join(deferred, fmt.Errorf("controller parent %s: %s", parent.ServiceRegistrationID, code))
+				continue
+			}
+			deferred = errors.Join(deferred, &controllerParentFailure{fmt.Errorf("controller parent %s: %w", parent.ServiceRegistrationID, err)})
+		}
+	}
 	// Authenticated inactive intents (stopped/retired/paused) are processed
 	// before active services so an earlier fallible active service cannot
 	// starve an independent Stop/retire/pause intent. Order is preserved
@@ -831,6 +893,194 @@ func normalizedManagedModelID(providerID, modelID string) string {
 	return strings.TrimPrefix(modelID, providerID+"/")
 }
 
+// managedManagerBinding is the exact non-secret authority tuple a cell's
+// manager session is bound to before it starts. It is never credential
+// material and never persisted by the Runtime.
+type managedManagerBinding struct {
+	ProviderID string
+	ModelID    string
+	AuthMode   string
+}
+
+// bindCellManagerAuthority records the cell manifest's exact
+// provider/model/auth-mode authority in the supervisor's binding store BEFORE
+// any native start. The retained 0.1.52 supervisor has no binding field on
+// start/restart (unknown request fields are rejected), so the Runtime carries
+// the binding in the launch sequence as a product-issued rebind; the following
+// start builds OPENCODE_CONFIG_CONTENT and the manager route from that exact
+// tuple. This is the product path: no venue/harness rebind is needed. Absence
+// or an invalid/incomplete tuple fails closed before any native effect, because
+// an unbound manager silently falls back to the default provider route and
+// cannot read or accept a product wake.
+// managedSupervisorActionFailure is the bounded, non-secret description of a
+// managed supervisor command that exited non-zero. The in-cell supervisor
+// writes a safe receipt even when it refuses a command, but the process
+// transport reports a non-zero exit as a bare "exit status N", so the receipt's
+// own closed status/error fields are the only place that names WHICH
+// precondition rejected the command. This value carries those closed fields plus
+// a bounded single-line diagnostic; it never carries a prompt, credential or
+// free-text payload.
+type managedSupervisorActionFailure struct {
+	Action     string
+	Status     string
+	Reason     string
+	Diagnostic string
+	Err        error
+}
+
+// supervisorActionFailure classifies a failed managed supervisor call. The
+// receipt and diagnostic bytes are only ever reduced to closed, bounded tokens,
+// so the resulting error can safely reach the Runtime report and the durable
+// preparation row.
+func supervisorActionFailure(action containers.ManagedSupervisorAction, receipt, diagnostic []byte, cause error) error {
+	if cause == nil {
+		return nil
+	}
+	failure := &managedSupervisorActionFailure{Action: string(action), Err: cause}
+	var decoded struct {
+		Status    string `json:"status"`
+		Error     string `json:"error"`
+		ErrorCode string `json:"errorCode"`
+	}
+	if len(receipt) != 0 && json.Unmarshal(receipt, &decoded) == nil {
+		failure.Status = managedSupervisorToken(decoded.Status)
+		failure.Reason = managedSupervisorToken(decoded.Error)
+		if failure.Reason == "" {
+			failure.Reason = managedSupervisorToken(decoded.ErrorCode)
+		}
+	}
+	if failure.Reason == "" && len(diagnostic) != 0 {
+		failure.Diagnostic = managedSupervisorDiagnostic(diagnostic)
+	}
+	return failure
+}
+
+// managedSupervisorToken keeps only the bounded closed-vocabulary shape of a
+// supervisor receipt field; anything else is dropped rather than reported.
+func managedSupervisorToken(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if len(value) > 48 {
+		value = value[:48]
+	}
+	for _, character := range value {
+		if (character < 'a' || character > 'z') && (character < '0' || character > '9') &&
+			character != '_' && character != '.' && character != '-' {
+			return ""
+		}
+	}
+	return value
+}
+
+// managedSupervisorDiagnostic reduces arbitrary supervisor stderr to one bounded
+// printable line. It is only used when no receipt explains the failure (a crash
+// or a launcher refusal), and it never carries a request payload.
+func managedSupervisorDiagnostic(diagnostic []byte) string {
+	const maximum = 160
+	text := strings.TrimSpace(string(diagnostic))
+	if index := strings.IndexAny(text, "\r\n"); index >= 0 {
+		text = text[:index]
+	}
+	printable := strings.Map(func(character rune) rune {
+		if character == '\t' {
+			return ' '
+		}
+		if character < 0x20 || character > 0x7e {
+			return -1
+		}
+		return character
+	}, text)
+	printable = strings.Join(strings.Fields(printable), " ")
+	if len(printable) > maximum {
+		printable = printable[:maximum]
+	}
+	return printable
+}
+
+func (f *managedSupervisorActionFailure) reasonToken() string {
+	if f == nil {
+		return ""
+	}
+	return f.Reason
+}
+
+func (f *managedSupervisorActionFailure) Error() string {
+	message := fmt.Sprintf("managed supervisor %s failed: %v", f.Action, f.Err)
+	if f.Status != "" || f.Reason != "" {
+		message += fmt.Sprintf(" (receipt status=%s", f.Status)
+		if f.Reason != "" {
+			message += " error=" + f.Reason
+		}
+		message += ")"
+	}
+	if f.Diagnostic != "" {
+		message += " (diagnostic: " + f.Diagnostic + ")"
+	}
+	return message
+}
+
+func (f *managedSupervisorActionFailure) Unwrap() error { return f.Err }
+
+func (r *Reconciler) bindCellManagerAuthority(ctx context.Context, entry model.ManagedServiceV2) (managedManagerBinding, error) {
+	providerID, modelID, authMode, err := entry.Authority.ManagerLaunchBinding()
+	if err != nil {
+		return managedManagerBinding{}, err
+	}
+	binding := managedManagerBinding{ProviderID: providerID, ModelID: modelID, AuthMode: authMode}
+	request := map[string]any{
+		"schemaVersion": 1, "sandboxId": entry.SandboxID, "instance": entry.Instance,
+		"profileId": entry.Profile.ProfileID, "profileDigest": entry.Profile.ProfileDigest,
+		"provider": providerID, "model": modelID, "authMode": authMode,
+		"restart": false,
+	}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return managedManagerBinding{}, err
+	}
+	receiptJSON, diagnosticJSON, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, entry.SandboxID, containers.ManagedSupervisorRebind, payload)
+	if err != nil {
+		// A lost response may still have durably written the tuple. The replay is
+		// safe: the supervisor only drains when the tuple changes, and an
+		// identical tuple is rewritten without restarting or admitting work.
+		receiptJSON, diagnosticJSON, err = r.ManagedRuntime.ExecManagedSupervisor(ctx, entry.SandboxID, containers.ManagedSupervisorRebind, payload)
+	}
+	if err != nil {
+		return managedManagerBinding{}, fmt.Errorf("bind cell manager authority: %w", supervisorActionFailure(containers.ManagedSupervisorRebind, receiptJSON, diagnosticJSON, err))
+	}
+	var receipt managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(receiptJSON, &receipt); err != nil {
+		return managedManagerBinding{}, fmt.Errorf("invalid cell manager binding receipt: %w", err)
+	}
+	if receipt.SchemaVersion != 1 || receipt.Command != "rebind" || receipt.Status != "applied" ||
+		!receipt.Applied || receipt.Restarted || receipt.BindingRevision < 1 ||
+		receipt.SandboxID != entry.SandboxID || receipt.Instance != entry.Instance ||
+		receipt.ProfileID != entry.Profile.ProfileID || receipt.ProfileDigest != entry.Profile.ProfileDigest {
+		return managedManagerBinding{}, errors.New("cell manager binding receipt did not prove the applied binding")
+	}
+	var stored struct {
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+		AuthMode string `json:"authMode"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(receipt.Binding))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&stored); err != nil || decoder.Decode(&struct{}{}) != io.EOF ||
+		stored.Provider != providerID || stored.Model != modelID || stored.AuthMode != authMode {
+		return managedManagerBinding{}, errors.New("cell manager binding receipt changed the authority tuple")
+	}
+	return binding, nil
+}
+
+// verifyCellManagerRoute proves the start/status receipt was produced with the
+// exact bound tuple. The supervisor derives these fields from the binding store
+// while building the managed configuration, so a manager that started unbound
+// (or with a substituted model) cannot masquerade as bound.
+func verifyCellManagerRoute(observed managedSupervisorReceipt, binding managedManagerBinding) error {
+	if observed.ManagerProviderID != binding.ProviderID || observed.ManagerModelID != binding.ModelID {
+		return errors.New("cell native server manager route did not bind the manifest authority")
+	}
+	return nil
+}
+
 func (r *Reconciler) registerManagedSource(ctx context.Context, desired model.ManagedServiceV1, registeredSourceID string, native managedSupervisorReceipt, instruction model.ManagedServiceInstructionV1) ([]byte, error) {
 	request := map[string]any{
 		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
@@ -1461,6 +1711,7 @@ func decodeManagedSupervisorReceipt(payload []byte, target any) error {
 
 var managedSupervisorReceiptFields = func() map[string]bool {
 	fields := []string{
+		"nativeRoleReadback", "appliedProfile", "materializerDigest", "nativeSessionId",
 		"schemaVersion", "command", "status", "phase", "instance", "sandboxId", "profileId", "profileDigest",
 		"profileRevision", "version", "hostname", "port", "pid", "ready", "error", "upgradeError", "restored",
 		"snapshotId", "writerVersion", "sweptProcesses", "activeSessions", "startCount", "state", "reason",
@@ -1588,4 +1839,878 @@ func managedSourceID(serviceID string) string {
 	}
 	digest := sha256.Sum256([]byte(serviceID))
 	return fmt.Sprintf("source_%x", digest[:12])
+}
+
+// CellExecutionEnabled reports whether a supervisor runtime contract version
+// advertises cell execution. 0.1.46 and every other contract are refused; only
+// the explicit 0.1.47 capability constant enables the cell path.
+func CellExecutionEnabled(contractVersion string) bool {
+	return model.SupportsCellExecution(contractVersion)
+}
+
+// cellAdapterPath is the trusted SA4 cell adapter installed in the sandbox. It
+// runs OUTSIDE the bwrap jail with credentials and network; it is never the
+// jailed, credential-less tool entrypoint.
+const cellAdapterPath = "/usr/local/libexec/warpmetal-agent-cells/warpmetal_cell_adapter.py"
+
+// managedCellCallV1 is the JSON call document handed to the trusted cell
+// adapter. Only identity, workspace, model and the first step text cross this
+// boundary; the adapter owns create_child -> bind_workspace -> admit_first_step.
+type managedCellCallV1 struct {
+	SchemaVersion          int    `json:"schemaVersion"`
+	Action                 string `json:"action"`
+	RuntimeContractVersion string `json:"runtimeContractVersion"`
+	OperationID            string `json:"operationId"`
+	ServiceRegistrationID  string `json:"serviceRegistrationId"`
+	OwnerCellID            string `json:"ownerCellId"`
+	OwnerRole              string `json:"ownerRole"`
+	OwnerGeneration        int64  `json:"ownerGeneration"`
+	SandboxID              string `json:"sandboxId"`
+	SandboxGeneration      int64  `json:"sandboxGeneration"`
+	Instance               string `json:"instance"`
+	Role                   string `json:"role"`
+	NativeSessionID        string `json:"nativeSessionId"`
+	NativeProjectID        string `json:"nativeProjectId"`
+	WorkspaceEpoch         string `json:"workspaceEpoch"`
+	ProfileID              string `json:"profileId"`
+	ProfileRevision        int64  `json:"profileRevision"`
+	ProfileDigest          string `json:"profileDigest"`
+	ParentSessionID        string `json:"parentSessionId"`
+	Agent                  string `json:"agent"`
+	Model                  struct {
+		ProviderID string `json:"providerID"`
+		ID         string `json:"id"`
+	} `json:"model"`
+	WorktreeDir string `json:"worktreeDir"`
+	FirstText   string `json:"firstText"`
+	Attempt     int64  `json:"attempt"`
+}
+
+// managedCellResultV1 is the adapter result. It is decoded strictly so a
+// malformed or drifted result can never be mistaken for a completion.
+type managedCellResultV1 struct {
+	SchemaVersion          int     `json:"schemaVersion"`
+	Status                 string  `json:"status"`
+	RuntimeContractVersion string  `json:"runtimeContractVersion"`
+	OperationID            string  `json:"operationId"`
+	SessionID              string  `json:"sessionId"`
+	MessageID              string  `json:"messageId"`
+	State                  string  `json:"state"`
+	Attempt                int64   `json:"attempt"`
+	Outcome                *string `json:"outcome"`
+	Exhausted              bool    `json:"exhausted"`
+	Interrupted            bool    `json:"interrupted"`
+	ReceiptDigest          string  `json:"receiptDigest"`
+	Error                  string  `json:"error"`
+}
+
+// reconcileCellServices reconciles every formatVersion 2 cell-owned service of
+// the manifest. It is separate from the member path: a cell entry has no
+// member/team identity and never runs through the member enrollment/source
+// registration machinery. A deferred remount reason is isolated from a fatal
+// failure of another cell service exactly like the member path.
+func (r *Reconciler) reconcileCellServices(ctx context.Context, manifest model.Manifest) (deferred, fatal error) {
+	for _, entry := range manifest.CellEntries {
+		if err := r.reconcileCellService(ctx, entry); err != nil {
+			wrapped := fmt.Errorf("cell service %s: %w", entry.ServiceRegistrationID, err)
+			if errors.Is(err, workspacecatalog.ErrManagedProjectRemountAttestation) {
+				deferred = errors.Join(deferred, wrapped)
+				continue
+			}
+			if fatal == nil {
+				fatal = wrapped
+			}
+			continue
+		}
+	}
+	return deferred, fatal
+}
+
+// reconcileCellService persists the durable cell operation BEFORE any effect,
+// invokes the trusted cell adapter (create -> bind -> admit) with the scoped
+// identity/workspace/profile/fence, and reports the exact child/attempt receipt
+// with completion, exhaustion or unknown. Exhausted and unknown effects are
+// never reported as ordinary terminal completion, and the durable exhaustion
+// marker survives restart.
+func (r *Reconciler) reconcileCellService(ctx context.Context, entry model.ManagedServiceV2) error {
+	// Version gate: cell handling is enabled only by the explicit 0.1.47
+	// capability. The adapter call advertises it and the result must echo it.
+	if !CellExecutionEnabled(model.CellExecutionContractVersion) {
+		return errors.New("cell execution is not enabled by the current supervisor contract")
+	}
+	if entry.DesiredState == "stopped" {
+		// An already-stopped intent needs no cancel (the child never ran).
+		return nil
+	}
+	if entry.DesiredState == "paused" {
+		// A held (paused) service must NOT admit a new launch, and it was never
+		// revoked, so there is no cancellation obligation either. No effect.
+		return nil
+	}
+	if entry.DesiredState == "retired" {
+		// A retired (revoked) service still carries the cancellation obligation:
+		// send the cancel action and observe quiescence, reporting cancelled only
+		// on the exact correlated ack. Exhausted/unknown effects stay non-terminal.
+		return r.reconcileCellCancel(ctx, entry)
+	}
+	sandbox, err := r.Store.Sandbox(ctx, entry.SandboxID)
+	if err != nil {
+		return err
+	}
+	if sandbox == nil || sandbox.ObservedState != "running" || sandbox.ObservedGeneration != entry.SandboxGeneration {
+		return errors.New("cell service sandbox generation is not running")
+	}
+	worktreeDir, err := r.resolveCellWorktree(ctx, entry)
+	if err != nil {
+		return err
+	}
+	instruction, err := r.fetchCellFirstText(ctx, entry)
+	if err != nil {
+		return err
+	}
+	// Durable intent BEFORE any adapter effect. The operation id is the durable
+	// identity, so a lost response is recovered by re-reading the same row.
+	if err := r.Store.PutCellOperation(ctx, state.LocalCellOperation{Entry: entry, Phase: "pending"}); err != nil {
+		return err
+	}
+	local, err := r.Store.CellOperation(ctx, entry.OperationID)
+	if err != nil || local == nil {
+		return errors.Join(err, errors.New("cell operation intent disappeared"))
+	}
+	// The authoritative execution attempt is immutable per launch and comes
+	// from the manifest; it is echoed verbatim in the report and in the adapter
+	// call. The local retry counter is separate: it tracks transport
+	// reconciliation only and must never advance or replace the authoritative
+	// attempt.
+	retry := local.Attempt + 1
+	previous := local
+	// Provision the protected native opencode server instance BEFORE the trusted
+	// cell adapter runs, so the adapter's instance control-metadata read succeeds.
+	// A missing/failed server is a bounded pending hold (cell_native_server_not_ready),
+	// never an unbounded adapter retry against absent metadata.
+	// The manager/controller session (the supervisor's own session) is the child's
+	// parent; entry.NativeSessionID is the DETERMINISTIC CHILD session. Never pass
+	// the child as its own parent.
+	parentSessionID, err := r.ensureCellNativeServer(ctx, entry, worktreeDir, instruction)
+	if err != nil {
+		return errors.Join(err, r.storeCellUnknown(ctx, entry, previous, retry, "cell_native_server_not_ready"))
+	}
+	modelID := ""
+	if entry.Authority != nil && entry.Authority.ModelID != nil {
+		modelID = *entry.Authority.ModelID
+	}
+	call := managedCellCallV1{
+		SchemaVersion: 1, Action: "launch", RuntimeContractVersion: model.CellExecutionContractVersion,
+		OperationID: entry.LaunchOperationID, ServiceRegistrationID: entry.ServiceRegistrationID,
+		OwnerCellID: entry.OwnerCellID, OwnerRole: entry.OwnerRole, OwnerGeneration: entry.OwnerGeneration,
+		SandboxID: entry.SandboxID, SandboxGeneration: entry.SandboxGeneration,
+		Instance: entry.Instance, Role: entry.Role,
+		NativeSessionID: entry.NativeSessionID, NativeProjectID: entry.NativeProjectID,
+		WorkspaceEpoch: entry.WorkspaceEpoch, ProfileID: entry.Profile.ProfileID,
+		ProfileRevision: entry.Profile.ProfileRevision, ProfileDigest: entry.Profile.ProfileDigest,
+		ParentSessionID: parentSessionID, Agent: "warpmetal-managed", WorktreeDir: worktreeDir,
+		FirstText: instruction, Attempt: entry.Attempt,
+	}
+	if entry.Authority != nil {
+		call.Model.ProviderID = entry.Authority.ProviderID
+		call.Model.ID = modelID
+	}
+	payload, err := json.Marshal(call)
+	if err != nil {
+		return err
+	}
+	receiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, entry.SandboxID, containers.ManagedSupervisorCell, payload)
+	if err != nil {
+		// A lost/unknown adapter effect must never be an ordinary completion and
+		// must survive restart as unknown rather than terminal.
+		return errors.Join(err, r.storeCellUnknown(ctx, entry, previous, retry, "cell_outcome_unknown"))
+	}
+	var receipt managedCellResultV1
+	if err := decodeManagedReceipt(receiptJSON, &receipt, true); err != nil {
+		return errors.Join(err, r.storeCellUnknown(ctx, entry, previous, retry, "invalid_cell_receipt"))
+	}
+	if receipt.SchemaVersion != 1 || receipt.OperationID != entry.LaunchOperationID ||
+		!CellExecutionEnabled(receipt.RuntimeContractVersion) {
+		// A contract that does not advertise cell execution (for example
+		// 0.1.46) must never be reported as a cell result.
+		return r.storeCellUnknown(ctx, entry, previous, retry, "cell_contract_unsupported")
+	}
+	if !model.ValidCellAdapterState(receipt.State) {
+		return r.storeCellUnknown(ctx, entry, previous, retry, "invalid_cell_state")
+	}
+	child := &model.ManagedCellChildV1{
+		OperationID: receipt.OperationID, SessionID: receipt.SessionID, MessageID: receipt.MessageID,
+		State: receipt.State, Attempt: receipt.Attempt, Outcome: receipt.Outcome, Exhausted: receipt.Exhausted,
+	}
+	exhausted := previous.Exhausted || receipt.Exhausted || receipt.State == "exhausted"
+	phase := "unknown"
+	observed := "unknown"
+	switch {
+	case exhausted:
+		phase, observed = "exhausted", "exhausted"
+	case receipt.State == "terminal" && receipt.Outcome != nil && model.ValidCellTerminalOutcome(*receipt.Outcome):
+		// Only an ordinary terminal idle is a completion.
+		phase, observed = "terminal", "ready"
+	case receipt.Status == "failed":
+		phase, observed = "failed", "failed"
+	default:
+		phase, observed = "unknown", "unknown"
+	}
+	report := model.CellServiceReportV1{
+		FormatVersion: 2, OperationID: entry.OperationID, ActionRevision: entry.ActionRevision,
+		ObservedDesiredRevision: entry.DesiredRevision, ServiceRegistrationID: entry.ServiceRegistrationID,
+		ObservedState: observed, DesiredState: entry.DesiredState,
+		OwnerCellID: entry.OwnerCellID, OwnerRole: entry.OwnerRole, OwnerGeneration: entry.OwnerGeneration,
+		SandboxID: entry.SandboxID, SandboxGeneration: entry.SandboxGeneration,
+		ServiceGeneration: entry.ServiceGeneration, Fence: entry.Fence,
+		Instance: entry.Instance, Role: entry.Role,
+		NativeSessionID: entry.NativeSessionID, NativeProjectID: entry.NativeProjectID,
+		WorkspaceEpoch: entry.WorkspaceEpoch, Attempt: entry.Attempt, Child: child, Exhausted: exhausted,
+		ReceiptDigest: fmt.Sprintf("sha256:%x", sha256.Sum256(receiptJSON)),
+	}
+	if observed == "failed" {
+		code := "cell_failed"
+		if receipt.Error != "" {
+			code = bounded(receipt.Error, 80)
+		}
+		report.LastError = &model.ManagedServiceErrorV1{Code: code}
+	}
+	errorCode := ""
+	if report.LastError != nil {
+		errorCode = report.LastError.Code
+	}
+	stored := state.LocalCellOperation{
+		Entry: entry, Phase: phase, Attempt: retry, Child: child, Exhausted: exhausted,
+		Report: report, ErrorCode: errorCode,
+	}
+	return r.Store.UpdateCellOperation(ctx, stored)
+}
+
+// cancelledReport builds the current-authority cell report for a retired
+// (revoked) service. observed is "cancelled" (exact quiescence ack), "exhausted"
+// (unknown effects remain), "failed" or "unknown".
+func (r *Reconciler) cancelledReport(entry model.ManagedServiceV2, attempt int64, observed, receiptDigest string) model.CellServiceReportV1 {
+	return model.CellServiceReportV1{
+		FormatVersion: 2, OperationID: entry.OperationID, ActionRevision: entry.ActionRevision,
+		ObservedDesiredRevision: entry.DesiredRevision, ServiceRegistrationID: entry.ServiceRegistrationID,
+		ObservedState: observed, DesiredState: entry.DesiredState,
+		OwnerCellID: entry.OwnerCellID, OwnerRole: entry.OwnerRole, OwnerGeneration: entry.OwnerGeneration,
+		SandboxID: entry.SandboxID, SandboxGeneration: entry.SandboxGeneration,
+		ServiceGeneration: entry.ServiceGeneration, Fence: entry.Fence,
+		Instance: entry.Instance, Role: entry.Role,
+		NativeSessionID: entry.NativeSessionID, NativeProjectID: entry.NativeProjectID,
+		WorkspaceEpoch: entry.WorkspaceEpoch, Attempt: attempt, Exhausted: observed == "exhausted",
+		ReceiptDigest: receiptDigest,
+	}
+}
+
+// reconcileCellCancel sends the cancel action for a retired (revoked) cell
+// service and reports the observed quiescence. "cancelled" is reported only when
+// the receipt is a terminal/interrupted outcome and NOT exhausted/unknown; an
+// exhausted or uncertain effect remains non-terminal (backend apply_cancellation
+// enforces the same fence).
+func (r *Reconciler) reconcileCellCancel(ctx context.Context, entry model.ManagedServiceV2) error {
+	if !CellExecutionEnabled(model.CellExecutionContractVersion) {
+		return errors.New("cell execution is not enabled by the current supervisor contract")
+	}
+	local, err := r.Store.CellOperation(ctx, entry.OperationID)
+	if err != nil {
+		return err
+	}
+	missingLocal := local == nil
+	if missingLocal {
+		// No durable local launch record. Reconcile against the persisted
+		// backend/native binding (operation + native session) WITHOUT
+		// relaunching: persist an explicit non-terminal hold first, then send
+		// the adapter cancel/observe for the manifest's authoritative identity.
+		// If the adapter cannot prove identity or absence the hold stays
+		// explicitly unknown; this is never an invisible deferral and never a
+		// fabricated "cancelled".
+		if err := r.Store.PutCellOperation(ctx, state.LocalCellOperation{Entry: entry, Phase: "pending"}); err != nil {
+			return err
+		}
+		local, err = r.Store.CellOperation(ctx, entry.OperationID)
+		if err != nil || local == nil {
+			return errors.Join(err, errors.New("cell hold intent disappeared"))
+		}
+	}
+	// The authoritative execution attempt is immutable and comes from the
+	// manifest; the local retry counter (local.Attempt) is never sent.
+	attempt := entry.Attempt
+	retry := local.Attempt
+	// Resolve the manager/supervisor session BEFORE any adapter effect. The
+	// trusted adapter verifies the deterministic child's native parentID
+	// against this exact identity, while the manifest carries only the child
+	// session. The manager session is the one recorded by the launch/bind
+	// sequence in the supervisor's durable state. If it cannot be resolved,
+	// fail closed with a precise reason instead of sending the child as its own
+	// parent (the 0.1.52 defect that made every cancel exit 1 and left the
+	// execution revoked without a quiescence ack).
+	managerSessionID, err := r.resolveCellManagerSession(ctx, entry)
+	if err != nil {
+		code := "cell_manager_identity_unavailable"
+		var identityErr *cellManagerIdentityError
+		if errors.As(err, &identityErr) {
+			code = identityErr.code
+		}
+		return errors.Join(err, r.storeCellUnknown(ctx, entry, local, retry, code))
+	}
+	// Resolve the exact persisted launch identity (worktree + model) so the
+	// adapter's classify_child can verify it: an empty model or worktree makes
+	// every real cancellation fail classification after the interrupt is sent.
+	worktreeDir, err := r.resolveCellWorktree(ctx, entry)
+	if err != nil {
+		if missingLocal {
+			// The binding cannot even be resolved locally, so identity/absence
+			// is unprovable: record the explicit non-terminal hold instead of
+			// deferring invisibly.
+			return errors.Join(err, r.storeCellUnknown(ctx, entry, local, retry, "cell_local_state_missing"))
+		}
+		return err
+	}
+	modelID := ""
+	if entry.Authority != nil && entry.Authority.ModelID != nil {
+		modelID = *entry.Authority.ModelID
+	}
+	call := managedCellCallV1{
+		SchemaVersion: 1, Action: "cancel", RuntimeContractVersion: model.CellExecutionContractVersion,
+		OperationID: entry.LaunchOperationID, ServiceRegistrationID: entry.ServiceRegistrationID,
+		OwnerCellID: entry.OwnerCellID, OwnerRole: entry.OwnerRole, OwnerGeneration: entry.OwnerGeneration,
+		SandboxID: entry.SandboxID, SandboxGeneration: entry.SandboxGeneration,
+		Instance: entry.Instance, Role: entry.Role,
+		NativeSessionID: entry.NativeSessionID, NativeProjectID: entry.NativeProjectID,
+		WorkspaceEpoch: entry.WorkspaceEpoch, ProfileID: entry.Profile.ProfileID,
+		ProfileRevision: entry.Profile.ProfileRevision, ProfileDigest: entry.Profile.ProfileDigest,
+		ParentSessionID: managerSessionID, Agent: "warpmetal-managed", Attempt: attempt,
+		WorktreeDir: worktreeDir,
+	}
+	if entry.Authority != nil {
+		call.Model.ProviderID = entry.Authority.ProviderID
+		call.Model.ID = modelID
+	}
+	payload, err := json.Marshal(call)
+	if err != nil {
+		return err
+	}
+	receiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, entry.SandboxID, containers.ManagedSupervisorCell, payload)
+	if err != nil {
+		// A lost cancel effect must never be reported as cancelled.
+		return errors.Join(err, r.storeCellUnknown(ctx, entry, local, retry, "cell_cancel_unknown"))
+	}
+	var receipt managedCellResultV1
+	if err := decodeManagedReceipt(receiptJSON, &receipt, true); err != nil {
+		return errors.Join(err, r.storeCellUnknown(ctx, entry, local, retry, "invalid_cell_cancel_receipt"))
+	}
+	// Validate the receipt identity before it can terminalize anything: schema,
+	// contract, operation, session and attempt must all match. A receipt that
+	// does not advertise cell execution, names a different operation/session, or
+	// echoes a different attempt must remain unknown.
+	if receipt.SchemaVersion != 1 || receipt.OperationID != entry.LaunchOperationID ||
+		!CellExecutionEnabled(receipt.RuntimeContractVersion) ||
+		receipt.SessionID != entry.NativeSessionID ||
+		receipt.Attempt != entry.Attempt {
+		return r.storeCellUnknown(ctx, entry, local, retry, "cell_cancel_contract_unsupported")
+	}
+	observed := "unknown"
+	switch {
+	case receipt.Exhausted || receipt.State == "exhausted":
+		observed = "exhausted"
+	case receipt.Status == "failed":
+		// A failed cancellation attempt is NOT terminal: the child may still be
+		// running or its effects unresolved. Report unknown until a stopped
+		// observation is independently established.
+		observed = "unknown"
+	case receipt.State == "terminal" && receipt.Outcome != nil && model.ValidCellTerminalOutcome(*receipt.Outcome):
+		observed = "cancelled"
+	}
+	report := r.cancelledReport(entry, attempt, observed, fmt.Sprintf("sha256:%x", sha256.Sum256(receiptJSON)))
+	// Phase is the durable operation phase (pending/admitted/terminal/exhausted/
+	// unknown/failed); "cancelled" is an observed state, not a phase. A resolved
+	// stop is terminal; exhausted/unknown effects stay non-terminal.
+	phase := "terminal"
+	if observed == "exhausted" {
+		phase = "exhausted"
+	} else if observed == "unknown" {
+		phase = "unknown"
+	} else if observed == "failed" {
+		phase = "failed"
+	}
+	errorCode := ""
+	if missingLocal && observed != "cancelled" {
+		// The execution has no durable local launch record, so identity/absence
+		// could not be locally proven: stamp the non-terminal hold explicitly.
+		errorCode = "cell_local_state_missing"
+		report.LastError = &model.ManagedServiceErrorV1{Code: errorCode}
+	}
+	stored := state.LocalCellOperation{
+		Entry: entry, Phase: phase, Attempt: retry, ErrorCode: errorCode,
+		Exhausted: observed == "exhausted", Report: report,
+	}
+	return r.Store.UpdateCellOperation(ctx, stored)
+}
+
+// cellManagerIdentityError carries the stable non-terminal hold reason for a
+// manager/supervisor session that cannot be proven. The message is diagnostic;
+// the code is what the durable cell report and the operator surface.
+type cellManagerIdentityError struct {
+	code string
+	err  error
+}
+
+func (e *cellManagerIdentityError) Error() string { return e.err.Error() }
+func (e *cellManagerIdentityError) Unwrap() error { return e.err }
+
+func errCellManagerIdentity(code, message string) error {
+	return &cellManagerIdentityError{code: code, err: errors.New(message)}
+}
+
+// resolveCellManagerSession resolves the manager/supervisor session recorded
+// for this cell instance by the launch/bind sequence, using the supervisor's
+// lookup-only status receipt. The trusted cell adapter requires the
+// deterministic child's native parentID to be exactly this identity; the
+// formatVersion 2 manifest carries only the child NativeSessionID, so the
+// Runtime must read the recorded manager identity instead of guessing.
+//
+// The probe is read-only: probe=false makes the supervisor return its durable
+// saved conversation without a native readiness request, a credential write, a
+// start, or any other effect. A missing, malformed, child-equal or foreign
+// identity fails closed before any adapter call, so a wrong id is never sent.
+func (r *Reconciler) resolveCellManagerSession(ctx context.Context, entry model.ManagedServiceV2) (string, error) {
+	request := map[string]any{
+		"schemaVersion": 1, "sandboxId": entry.SandboxID, "instance": entry.Instance,
+		"profileId": entry.Profile.ProfileID, "profileDigest": entry.Profile.ProfileDigest,
+		"probe": false,
+	}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return "", err
+	}
+	receiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, entry.SandboxID, containers.ManagedSupervisorStatus, payload)
+	if err != nil {
+		return "", &cellManagerIdentityError{
+			code: "cell_manager_status_unavailable",
+			err:  fmt.Errorf("resolve cell manager session: %w", err),
+		}
+	}
+	var receipt managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(receiptJSON, &receipt); err != nil {
+		return "", &cellManagerIdentityError{
+			code: "cell_manager_status_unavailable",
+			err:  fmt.Errorf("invalid cell manager status receipt: %w", err),
+		}
+	}
+	if receipt.SchemaVersion != 1 || receipt.Command != "status" {
+		return "", errCellManagerIdentity("cell_manager_identity_mismatch",
+			"cell manager status receipt is not a status response")
+	}
+	if receipt.SessionID == "" {
+		return "", errCellManagerIdentity("cell_manager_identity_missing",
+			"cell manager session identity is missing")
+	}
+	if !model.ValidCellNativeSessionID(receipt.SessionID) {
+		return "", errCellManagerIdentity("cell_manager_identity_invalid",
+			"cell manager session identity is malformed")
+	}
+	if receipt.SessionID == entry.NativeSessionID {
+		return "", errCellManagerIdentity("cell_manager_identity_invalid",
+			"cell manager session identity equals the deterministic child session")
+	}
+	// The recorded session must belong to this exact sandbox and instance. The
+	// supervisor's instance root is scoped by those two values, so anything else
+	// is a foreign registration and must never become the child's parent. The
+	// profile digest is deliberately NOT compared: the manager state carries the
+	// profile the child was actually launched under, and a later manifest profile
+	// revision must not block cancellation of that older child.
+	if receipt.SandboxID != entry.SandboxID || receipt.Instance != entry.Instance ||
+		receipt.ProfileID != entry.Profile.ProfileID {
+		return "", errCellManagerIdentity("cell_manager_identity_mismatch",
+			"cell manager session identity does not describe this service instance")
+	}
+	return receipt.SessionID, nil
+}
+
+// storeCellUnknown records the durable non-terminal hold for a lost or
+// unprovable adapter outcome. The report echoes the manifest's authoritative
+// execution attempt; retry is the separate local transport counter persisted on
+// the row. The two must never be conflated.
+func (r *Reconciler) storeCellUnknown(ctx context.Context, entry model.ManagedServiceV2, previous *state.LocalCellOperation, retry int64, code string) error {
+	exhausted := previous.Exhausted
+	phase := "unknown"
+	if exhausted {
+		phase = "exhausted"
+	}
+	observed := "unknown"
+	if exhausted {
+		observed = "exhausted"
+	}
+	// Preserve the prior receipt digest when the operation is exhausted: the
+	// backend's apply_completion(exhausted=True) requires a valid sha256: digest,
+	// and an empty one would replace a valid exhausted report with one that can
+	// never be ingested.
+	receiptDigest := ""
+	if exhausted && previous.Report.ReceiptDigest != "" {
+		receiptDigest = previous.Report.ReceiptDigest
+	}
+	report := model.CellServiceReportV1{
+		FormatVersion: 2, OperationID: entry.OperationID, ActionRevision: entry.ActionRevision,
+		ObservedDesiredRevision: entry.DesiredRevision, ServiceRegistrationID: entry.ServiceRegistrationID,
+		ObservedState: observed, DesiredState: entry.DesiredState,
+		OwnerCellID: entry.OwnerCellID, OwnerRole: entry.OwnerRole, OwnerGeneration: entry.OwnerGeneration,
+		SandboxID: entry.SandboxID, SandboxGeneration: entry.SandboxGeneration,
+		ServiceGeneration: entry.ServiceGeneration, Fence: entry.Fence,
+		Instance: entry.Instance, Role: entry.Role,
+		NativeSessionID: entry.NativeSessionID, NativeProjectID: entry.NativeProjectID,
+		WorkspaceEpoch: entry.WorkspaceEpoch, Attempt: entry.Attempt, Exhausted: exhausted,
+		ReceiptDigest: receiptDigest,
+		LastError:     &model.ManagedServiceErrorV1{Code: code},
+	}
+	return r.Store.UpdateCellOperation(ctx, state.LocalCellOperation{
+		Entry: entry, Phase: phase, Attempt: retry, Exhausted: exhausted, Report: report, ErrorCode: code,
+	})
+}
+
+// ensureCellNativeServer provisions (or reuses) the protected native opencode
+// server instance for a cell-owned service and confirms readiness BEFORE the
+// trusted cell adapter runs, as an explicit state machine:
+//
+//	profile attested -> status/lookup -> authorized single create/start if absent -> ready verification.
+//
+// A live server + bound session is proven by the supervisor's own lookup-only
+// status probe (running + ready + sessionId), never by coercing a failed receipt;
+// only a stopped or session-less server is created with create_initial. A stale
+// or mismatched status/start fails closed to a bounded pending hold, never an
+// unbounded adapter retry.
+// ensureCellNativeServer ensures the protected native opencode server instance
+// is running and delivers the cell-owner credential via the supervisor. It
+// returns the manager/controller (parent) session. The formatVersion 3 prepare
+// path calls ensureCellNativeServerRunning directly and NEVER the V2 credential
+// provisioning: the trusted adapter adopts the credential itself.
+func (r *Reconciler) ensureCellNativeServer(ctx context.Context, entry model.ManagedServiceV2, projectRoot, instruction string) (string, error) {
+	sessionID, err := r.ensureCellNativeServerRunning(ctx, entry, projectRoot, instruction)
+	if err != nil {
+		return "", err
+	}
+	return r.provisionCellCredential(ctx, entry, sessionID)
+}
+
+func (r *Reconciler) ensureCellNativeServerRunning(ctx context.Context, entry model.ManagedServiceV2, projectRoot, instruction string) (string, error) {
+	setup, err := r.Store.SetupOperation(ctx, entry.Profile.SetupOperationID)
+	if err != nil {
+		return "", fmt.Errorf("cell setup operation unavailable: %w", err)
+	}
+	if setup == nil {
+		return "", errors.New("cell setup operation missing")
+	}
+	var setupManifest model.SetupOperation
+	if err := json.Unmarshal(setup.RequestJSON, &setupManifest); err != nil {
+		return "", fmt.Errorf("cell setup manifest invalid: %w", err)
+	}
+	version := ""
+	if entry.Profile.ProfileID == "opencode" && setupManifest.Materializer.Bin != nil {
+		version = setupManifest.Materializer.Bin.Version
+	}
+
+	// 0. Bind the manager BEFORE the probe/start. The retained 0.1.52 launch
+	// request has no binding field, so the product launch sequence carries the
+	// manifest's exact authority tuple as an explicit rebind. Doing it first also
+	// recovers a running-but-unbound manager (the venue-rebind case): a changed
+	// tuple drains the server, the probe then sees a stopped/drained instance,
+	// and the start below reuses the saved session with the requested model.
+	// Absent/invalid authority fails closed here, before any native start or
+	// adapter effect.
+	binding, err := r.bindCellManagerAuthority(ctx, entry)
+	if err != nil {
+		return "", fmt.Errorf("cell manager authority binding: %w", err)
+	}
+
+	// 1. Status/lookup: the supervisor's lookup-only readiness probe. It never
+	// creates a session, so a live server + bound session is proven by a real
+	// status receipt, and a stale/foreign instance fails closed.
+	statusRequest := map[string]any{
+		"schemaVersion": 1, "sandboxId": entry.SandboxID, "instance": entry.Instance,
+		"profileId": entry.Profile.ProfileID, "profileDigest": entry.Profile.ProfileDigest,
+		"probe": true, "requestTimeoutSeconds": 30,
+	}
+	statusPayload, err := json.Marshal(statusRequest)
+	if err != nil {
+		return "", err
+	}
+	statusReceiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, entry.SandboxID, containers.ManagedSupervisorStatus, statusPayload)
+	if err != nil {
+		return "", err
+	}
+	var statusReceipt managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(statusReceiptJSON, &statusReceipt); err != nil {
+		return "", err
+	}
+	switch statusReceipt.Status {
+	case "running":
+		if statusReceipt.Ready && statusReceipt.SessionID != "" {
+			if statusReceipt.Instance != entry.Instance || statusReceipt.SandboxID != entry.SandboxID ||
+				statusReceipt.ProfileID != entry.Profile.ProfileID || statusReceipt.ProfileDigest != entry.Profile.ProfileDigest {
+				return "", errors.New("cell native server identity mismatch")
+			}
+			if err := verifyCellManagerRoute(statusReceipt, binding); err != nil {
+				return "", err
+			}
+			return statusReceipt.SessionID, nil
+		}
+		// A running server without a bound session needs the single create below.
+	case "stopped", "drained":
+		// No live server. "drained" is a stopped instance whose binding the
+		// rebind above just changed; the saved session below decides whether the
+		// follow-up start may reuse it (lookup_only) or must create the first one.
+	default:
+		return "", errors.New("cell native server status did not prove readiness")
+	}
+
+	// A manager that already owns a native session must never be re-created: a
+	// changed authority drains the running server and the follow-up start looks
+	// up the same session with the new binding. Only a genuinely session-less
+	// instance creates its first session.
+	sessionMode := "create_initial"
+	if statusReceipt.SessionID != "" {
+		sessionMode = "lookup_only"
+	}
+
+	// 2. Authorized single create/start for the absent server/session. The
+	// credential is provisioned afterward by provisionCellCredential (protected
+	// native HTTP store), never in the start environment.
+	startRequest := managedLaunchComposition{
+		SandboxID:              entry.SandboxID,
+		Instance:               entry.Instance,
+		ProfileID:              entry.Profile.ProfileID,
+		ProfileDigest:          entry.Profile.ProfileDigest,
+		Version:                version,
+		Port:                   managedServicePort,
+		ProjectRoot:            projectRoot,
+		SessionMode:            sessionMode,
+		InstructionText:        instruction,
+		InstructionDigest:      entry.Instructions.InstructionDigest,
+		InstructionRevision:    entry.Instructions.InstructionRevision,
+		RuntimeContractVersion: "",
+		Monitor:                managedMonitorIntent{},
+	}.request()
+	startPayload, err := json.Marshal(startRequest)
+	if err != nil {
+		return "", err
+	}
+	startReceiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, entry.SandboxID, containers.ManagedSupervisorStart, startPayload)
+	if err != nil {
+		return "", err
+	}
+	var startReceipt managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(startReceiptJSON, &startReceipt); err != nil {
+		return "", err
+	}
+	// Only a genuine ready/already_running start is accepted; a failed receipt is
+	// never coerced into success.
+	if (startReceipt.Status != "ready" && startReceipt.Status != "already_running") || !startReceipt.Ready ||
+		startReceipt.SessionID == "" || startReceipt.Instance != entry.Instance || startReceipt.SandboxID != entry.SandboxID {
+		return "", errors.New("cell native server start did not prove readiness")
+	}
+	if err := verifyCellManagerRoute(startReceipt, binding); err != nil {
+		return "", err
+	}
+	return startReceipt.SessionID, nil
+}
+
+// provisionCellCredential delivers the cell-owner provider key into the managed
+// server's protected credential store over the authenticated native HTTP route
+// (POST /api/integration/:id/connect/key), so the key is in the store — never
+// the server/tool environment. It works on an already-running server (no
+// restart) and returns the parent session only once the credential is applied.
+func (r *Reconciler) provisionCellCredential(ctx context.Context, entry model.ManagedServiceV2, sessionID string) (string, error) {
+	if entry.Authority == nil || entry.Authority.AuthMode == nil || *entry.Authority.AuthMode != "api_key" {
+		return sessionID, nil
+	}
+	// API Client exposes the retained V2 envelope separately. Test/custom control
+	// implementations that already implement the original seam remain compatible.
+	fetch := r.ManagedControl.CellCredential
+	if legacy, ok := r.ManagedControl.(legacyCellCredentialControl); ok {
+		fetch = legacy.LegacyCellCredential
+	}
+	cred, err := fetch(ctx, entry.ServiceRegistrationID)
+	if err != nil {
+		return "", fmt.Errorf("cell credential fetch failed: %w", err)
+	}
+	// The connection label is the IMMUTABLE lease identity (credentialId), not
+	// the serviceRegistrationId: a rotated/expired lease is a distinct
+	// credential and must replace only its own connection, never reuse the old
+	// one under the same service label.
+	credentialRequest := map[string]any{
+		"schemaVersion": 1, "sandboxId": entry.SandboxID, "instance": entry.Instance,
+		"profileId": entry.Profile.ProfileID, "profileDigest": entry.Profile.ProfileDigest,
+		"provider": entry.Authority.ProviderID, "providerApiKey": cred.APIKey,
+		"credentialId": cred.CredentialID,
+	}
+	payload, err := json.Marshal(credentialRequest)
+	if err != nil {
+		return "", err
+	}
+	receiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, entry.SandboxID, containers.ManagedSupervisorCredential, payload)
+	if err != nil {
+		return "", err
+	}
+	var receipt managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(receiptJSON, &receipt); err != nil {
+		return "", err
+	}
+	if !receipt.Ready || receipt.Status != "applied" {
+		return "", errors.New("cell credential provisioning did not prove readiness")
+	}
+	return sessionID, nil
+}
+
+// resolveCellWorktree resolves (and, when the exact binding is not yet
+// registered, materializes) the cell service's ordinary-directory project
+// binding from the manifest's exact workspace contract, with the exact sandbox
+// generation. A project already registered for this exact
+// (selection, project, epoch, generation, service) tuple is reused. An
+// unregistered tuple is created under the trusted workspace anchor as an
+// ordinary directory and recorded from the manifest's contract: the Runtime
+// never invents repo/Git metadata and never falls back to the legacy Team
+// workspace path. The binding is established BEFORE any prompt is fetched or
+// admitted.
+func (r *Reconciler) resolveCellWorktree(ctx context.Context, entry model.ManagedServiceV2) (string, error) {
+	match, err := r.lookupCellProject(ctx, entry)
+	if err != nil {
+		return "", err
+	}
+	if match != nil {
+		return match.ContainerRoot, nil
+	}
+	return r.materializeCellProject(ctx, entry)
+}
+
+// lookupCellProject resolves existing authority without materialization. V3
+// execution/cancellation cannot recreate a workspace accepted during prepare.
+func (r *Reconciler) lookupCellProject(ctx context.Context, entry model.ManagedServiceV2) (*state.LocalManagedProject, error) {
+	projects, err := r.Store.ManagedProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var match *state.LocalManagedProject
+	for index := range projects {
+		project := &projects[index]
+		if project.Report.SelectionID != entry.Workspace.SelectionID ||
+			project.Report.ProjectID != entry.Workspace.ProjectID ||
+			project.Report.WorkspaceEpoch != entry.Workspace.WorkspaceEpoch ||
+			project.Report.SandboxID != entry.SandboxID ||
+			project.Report.SandboxGeneration != entry.SandboxGeneration ||
+			!cellProjectServiceMatch(project, entry) {
+			continue
+		}
+		if match != nil {
+			return nil, errors.New("cell service project authority is ambiguous")
+		}
+		match = project
+	}
+	if match != nil {
+		if match.Report.RootAttestation != entry.Workspace.RootAttestation {
+			return nil, workspacecatalog.ErrProjectChanged
+		}
+		if match.Phase != "ready" || match.ContainerRoot == "" {
+			return nil, errors.New("cell service project authority is not ready")
+		}
+	}
+	return match, nil
+}
+
+// cellProjectServiceMatch binds a registered cell project to the cell service
+// entry. A project registered by a cell service itself carries that exact
+// service registration id. A project registered by the manifest's cell
+// workspace intent (managedWorkspaceRequests, targetKind=cell_session) is
+// created BEFORE any service exists and is bound to the CELL OWNER, not to a
+// service instance: its report carries serviceRegistrationId=null and its
+// label is the owner cell id. Requiring a service id on that record made the
+// admitted launch re-materialize an already-attested ordinary directory and
+// fail closed with `managed project changed` (WP-20, fixed in WP-23).
+func cellProjectServiceMatch(project *state.LocalManagedProject, entry model.ManagedServiceV2) bool {
+	if project.Report.ServiceRegistrationID != nil {
+		return *project.Report.ServiceRegistrationID == entry.ServiceRegistrationID
+	}
+	return entry.OwnerCellID != "" && project.Report.Label == entry.OwnerCellID
+}
+
+// materializeCellProject registers the exact cell workspace binding as an
+// ordinary directory under the trusted workspace anchor, derived from the
+// manifest's native project id. It creates no repository, no commit and no
+// legacy Team path: the backend-attested selection/project/epoch/scope/root are
+// copied verbatim into the local binding.
+func (r *Reconciler) materializeCellProject(ctx context.Context, entry model.ManagedServiceV2) (string, error) {
+	if r.Workspaces == nil {
+		return "", errors.New("cell service has no trusted workspace provider")
+	}
+	if r.ManagedCatalog == nil {
+		return "", errors.New("cell service has no trusted workspace catalog")
+	}
+	sandbox, err := r.Store.Sandbox(ctx, entry.SandboxID)
+	if err != nil {
+		return "", err
+	}
+	diskGiB := 0
+	if sandbox != nil {
+		diskGiB = sandbox.Resources.WorkspaceDiskGiB
+	}
+	if diskGiB < 1 {
+		return "", errors.New("cell service workspace has no current sandbox disk authority")
+	}
+	anchor, err := r.Workspaces.Ensure(ctx, entry.SandboxID, diskGiB)
+	if err != nil {
+		return "", fmt.Errorf("resolve trusted cell workspace anchor: %w", err)
+	}
+	// Delegate to the catalog's cell materializer so the ACTUAL root is attested
+	// (attest() hashes filesystem device/inode/mount) — never the manifest's
+	// caller-supplied RootAttestation, which the Runtime cannot pre-know.
+	project, err := r.ManagedCatalog.EnsureCellDefault(ctx, workspacecatalog.CellDefaultProjectRequest{
+		Anchor: anchor, ServerID: r.ServerID,
+		SandboxID: entry.SandboxID, SandboxGeneration: entry.SandboxGeneration,
+		ServiceRegistrationID: entry.ServiceRegistrationID,
+		AllocationDigest:      entry.ConfigDigest,
+		ConfigDigest:          entry.ConfigDigest,
+		OwnerCellID:           entry.OwnerCellID,
+		OwnerRole:             entry.OwnerRole,
+		OwnerGeneration:       entry.OwnerGeneration,
+		SelectionID:           entry.Workspace.SelectionID,
+		ProjectID:             entry.Workspace.ProjectID,
+		WorkspaceEpoch:        entry.Workspace.WorkspaceEpoch,
+		ScopeRevision:         entry.Workspace.ScopeRevision,
+	})
+	if err != nil {
+		return "", err
+	}
+	return project.ContainerRoot, nil
+}
+
+// fetchCellFirstText resolves the first admitted step text from the same
+// authenticated instruction authority the member path uses; it never invents a
+// prompt locally. The fetch carries the ACTUAL cell service tuple: the canonical
+// service registration, the cell entry's pinned instruction/config digest, the
+// service generation and the derived nonempty process instance. It must never
+// substitute the profile digest, the owner generation or an empty process
+// instance.
+func (r *Reconciler) fetchCellFirstText(ctx context.Context, entry model.ManagedServiceV2) (string, error) {
+	if r.ManagedControl == nil {
+		return "", errors.New("cell service has no trusted instruction authority")
+	}
+	processInstance := model.ManagedServiceProcessInstance(entry.Instance, entry.ServiceGeneration)
+	fetch := model.ManagedServiceFetchRequestV1{
+		FormatVersion: 1, OperationID: entry.OperationID, ActionRevision: entry.ActionRevision,
+		DesiredRevision: entry.DesiredRevision, ConfigDigest: entry.ConfigDigest,
+		ServiceRegistrationID: entry.ServiceRegistrationID, ServiceGeneration: entry.ServiceGeneration,
+		SandboxID: entry.SandboxID, SandboxGeneration: entry.SandboxGeneration,
+		ProcessInstance: processInstance,
+	}
+	instruction, err := r.ManagedControl.ManagedServiceInstructions(ctx, entry.ServiceRegistrationID, fetch)
+	if err != nil {
+		return "", err
+	}
+	if instruction.InstructionRevision != entry.Instructions.InstructionRevision ||
+		instruction.InstructionDigest != entry.Instructions.InstructionDigest ||
+		!instruction.ExpiresAt.After(r.now()) ||
+		!validateManagedInstruction(instruction.Content, instruction.InstructionDigest) {
+		return "", errors.New("cell service instruction tuple is invalid")
+	}
+	return instruction.Content, nil
 }

@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.warpmetal.com/contracts/agent-workspace-configuration-v1.schema.json",
+  "title": "Agent workspace declarative configuration v1",
+  "description": "Manager-frozen authoring schema under agent-workspaces-v1.md section 17.33. See docs/F1_AGENT_WORKSPACE_CONFIGURATION_PROPOSAL.md for freeze history and owner API. No execution, secrets, placement, payment or readiness authority. Strict UTF-8/duplicate-key validation and 262144-byte whole-envelope limit precede this structural schema; owner/reference/dependency checks follow it. No implicit active-worker or profile roster cap.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["formatVersion", "workspaceName", "purpose", "profiles", "roles", "lanes", "limits"],
+  "properties": {
+    "formatVersion": {"const": 1},
+    "workspaceName": {"type": "string", "minLength": 1, "maxLength": 120},
+    "purpose": {"type": "string", "minLength": 1, "maxLength": 8192},
+    "profiles": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/profile"}},
+    "roles": {
+      "type": "object", "additionalProperties": false,
+      "required": ["managerProfileId", "advisorProfileId"],
+      "properties": {
+        "managerProfileId": {"$ref": "#/$defs/safeId"},
+        "advisorProfileId": {"$ref": "#/$defs/safeId"}
+      }
+    },
+    "lanes": {"type": "array", "items": {"$ref": "#/$defs/lane"}},
+    "limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["maxActiveChildren", "modelRequests", "modelTurns", "inputTokens", "outputTokens", "usdMicros", "wallClockSeconds"],
+      "properties": {
+        "maxActiveChildren": {"oneOf": [{"type": "integer", "minimum": 1, "maximum": 9007199254740991}, {"type": "null"}]},
+        "modelRequests": {"$ref": "#/$defs/optionalCeiling"},
+        "modelTurns": {"$ref": "#/$defs/optionalCeiling"},
+        "inputTokens": {"$ref": "#/$defs/optionalCeiling"},
+        "outputTokens": {"$ref": "#/$defs/optionalCeiling"},
+        "usdMicros": {"$ref": "#/$defs/optionalCeiling"},
+        "wallClockSeconds": {"oneOf": [{"type": "integer", "minimum": 1, "maximum": 9007199254740991}, {"type": "null"}]}
+      }
+    }
+  },
+  "$defs": {
+    "capacityQuery": {
+      "$comment": "Owner capacity GET preview only: absent means null/current selection; at most one decoded selectedPairId query value. No body, duplicate key or extra query. Exact choice is included in existing pure capacity inputsDigest; this query grants no sizing/execute/order authority.",
+      "type": "object", "additionalProperties": false,
+      "properties": {"selectedPairId": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\u0000]*$"}}
+    },
+    "capacityProvenance": {
+      "$comment": "Existing capacity public issues/assumptions projection; sourceRef is retained source provenance, never an executable/caller-fetch URL, sizing approval or proof of measured host headroom.",
+      "type": "object", "additionalProperties": false, "required": ["code"],
+      "properties": {"code": {"type": "string"}, "sourceRef": {"type": "string"}}
+    },
+    "safeId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "optionalCeiling": {"oneOf": [{"type": "integer", "minimum": 0, "maximum": 9007199254740991}, {"type": "null"}]},
+    "approvedProfile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profileId", "profileRevision", "profileDigest", "bundleDigest"],
+      "properties": {
+        "profileId": {"$ref": "#/$defs/safeId"},
+        "profileRevision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "profileDigest": {"$ref": "#/$defs/digest"},
+        "bundleDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "tool": {
+      "type": "object", "additionalProperties": false,
+      "required": ["toolId", "revision", "digest"],
+      "properties": {
+        "toolId": {"$ref": "#/$defs/safeId"},
+        "revision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "modelSelection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["authority", "credentialBinding"],
+      "properties": {
+        "authority": {
+          "type": "object", "additionalProperties": false,
+          "required": ["providerId", "modelId", "authMode"],
+          "properties": {
+            "providerId": {"$ref": "cell-lifecycle-v3.schema.json#/$defs/providerId"},
+            "modelId": {"type": "string", "minLength": 1, "maxLength": 128},
+            "authMode": {"$ref": "cell-lifecycle-v3.schema.json#/$defs/authMode"}
+          }
+        },
+        "credentialBinding": {"oneOf": [{"$ref": "cell-lifecycle-v3.schema.json#/$defs/credentialBinding"}, {"type": "null"}]}
+      }
+    },
+    "profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profileId", "name", "description", "approvedProfile", "tools", "modelSelection"],
+      "properties": {
+        "profileId": {"$ref": "#/$defs/safeId"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 120},
+        "description": {"type": "string", "maxLength": 4096},
+        "approvedProfile": {"oneOf": [{"$ref": "#/$defs/approvedProfile"}, {"type": "null"}]},
+        "tools": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/tool"}},
+        "modelSelection": {"oneOf": [{"$ref": "#/$defs/modelSelection"}, {"type": "null"}]}
+      }
+    },
+    "lane": {
+      "type": "object", "additionalProperties": false,
+      "required": ["laneId", "name", "objective", "profileIds", "dependencies", "acceptance"],
+      "properties": {
+        "laneId": {"$ref": "#/$defs/safeId"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 120},
+        "objective": {"type": "string", "minLength": 1, "maxLength": 8192},
+        "profileIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/safeId"}},
+        "dependencies": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/safeId"}},
+        "acceptance": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "maxLength": 4096}}
+      }
+    }
+  }
+}

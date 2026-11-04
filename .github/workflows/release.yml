@@ -85,6 +85,8 @@ jobs:
           install -m 0644 packaging/systemd/warpmetal-podman.service "$stage/warpmetal-podman.service"
           install -m 0644 packaging/systemd/warpmetald.service "$stage/warpmetald.service"
           install -m 0644 packaging/sshd/warpmetal-sandbox.conf "$stage/warpmetal-sandbox.conf"
+          install -m 0644 packaging/sa9/sa9-precreate-hook.py "$stage/sa9-precreate-hook.py"
+          install -m 0644 packaging/sa9/sa9-precreate-hook.json "$stage/sa9-precreate-hook.json"
           tar -C dist -czf "dist/${archive}" "$(basename "$stage")"
           (cd dist && sha256sum "$archive" > "${archive}.sha256")
           cosign sign-blob --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false --output-signature "dist/${archive}.sig" "dist/${archive}"

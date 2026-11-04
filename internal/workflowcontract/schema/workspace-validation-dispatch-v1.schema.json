@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-validation-dispatch-v1.schema.json",
+  "title": "Manager-owned current-window integrated dispatch receipt v1",
+  "$defs": {
+    "dispatchReceipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["formatVersion", "purpose", "validationWindow", "attemptId", "candidateInventoryDigest", "scope", "integratedOrdinal", "integratedLimit", "integratedBaselineConsumed", "liveLimit", "liveBaselineConsumed", "correctionAllocated", "correctionLimit", "baselineEnvelopeDigest", "claimedAt"],
+      "properties": {
+        "formatVersion": {"type": "integer", "const": 1}, "purpose": {"const": "workspace_validation_dispatch"},
+        "validationWindow": {"$ref": "workspace-workflow-budget-live-window-v1.schema.json#/$defs/validationWindow"},
+        "attemptId": {"$ref": "workspace-workflow-v1.schema.json#/$defs/id"},
+        "candidateInventoryDigest": {"$ref": "workspace-workflow-v1.schema.json#/$defs/digest"},
+        "scope": {"$ref": "workspace-workflow-producer-v1.schema.json#/$defs/controllerOwner"},
+        "integratedOrdinal": {"type": "integer", "enum": [2, 3]},
+        "integratedLimit": {"type": "integer", "const": 3}, "integratedBaselineConsumed": {"type": "integer", "const": 1},
+        "liveLimit": {"type": "integer", "const": 2}, "liveBaselineConsumed": {"type": "integer", "const": 0},
+        "correctionAllocated": {"type": "integer", "const": 1}, "correctionLimit": {"type": "integer", "const": 1},
+        "baselineEnvelopeDigest": {"$ref": "workspace-workflow-v1.schema.json#/$defs/digest"},
+        "claimedAt": {"$ref": "workspace-workflow-v1.schema.json#/$defs/time"}
+      }
+    },
+    "dispatchReceiptEnvelope": {
+      "type": "object", "additionalProperties": false, "required": ["payload", "keyId", "signature"],
+      "properties": {
+        "payload": {"$ref": "#/$defs/dispatchReceipt"},
+        "keyId": {"$ref": "workspace-workflow-v1.schema.json#/$defs/id"},
+        "signature": {"$ref": "workspace-workflow-budget-v2.schema.json#/$defs/signature"}
+      }
+    }
+  }
+}

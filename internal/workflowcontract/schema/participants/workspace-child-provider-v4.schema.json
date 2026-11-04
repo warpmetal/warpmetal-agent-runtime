@@ -1,0 +1,1015 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-child-provider-v4.schema.json",
+  "title": "Additive policy-bound child publication; existing role authority and native tuples unchanged",
+  "$defs": {
+    "preparationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "targetKind",
+        "mode",
+        "stage",
+        "purpose",
+        "case",
+        "handle",
+        "intent",
+        "scope",
+        "root",
+        "applicability",
+        "qualification",
+        "preparation",
+        "instructions",
+        "reservation",
+        "budget",
+        "workload",
+        "toolRequirements",
+        "issuedAt",
+        "expiresAt",
+        "providerPolicyDigest",
+        "accountingVersion"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "targetKind": {
+          "const": "cell_session"
+        },
+        "mode": {
+          "const": "real_provider"
+        },
+        "stage": {
+          "const": "prepare"
+        },
+        "purpose": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/purpose"
+        },
+        "case": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/typedCase"
+        },
+        "handle": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/intentHandle"
+        },
+        "intent": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/approvedWorkIntent"
+        },
+        "scope": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/workScope"
+        },
+        "root": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/rootScope"
+        },
+        "applicability": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/artifactApplicability2"
+        },
+        "qualification": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/qualificationPin"
+        },
+        "preparation": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/preparationSelection"
+        },
+        "instructions": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/instructionPin"
+        },
+        "reservation": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/reservation"
+        },
+        "budget": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/budget"
+        },
+        "workload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/workload"
+        },
+        "toolRequirements": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/toolRequirement"
+          }
+        },
+        "issuedAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:e3020419b9841fb1e39c9dca0ff262c8761c19438263187c90b86b89976e9657"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/preparationPolicy/allOf/0"
+        },
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/preparationPolicy/allOf/1"
+        },
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/preparationPolicy/allOf/2"
+        },
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/preparationPolicy/allOf/3"
+        },
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/preparationPolicy/allOf/4"
+        }
+      ]
+    },
+    "preparationPolicyEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/preparationPolicy"
+        },
+        "keyId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "signature": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/signature"
+        }
+      }
+    },
+    "productPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "targetKind",
+        "mode",
+        "stage",
+        "purpose",
+        "preparationPolicyDigest",
+        "case",
+        "intent",
+        "scope",
+        "root",
+        "applicability",
+        "qualification",
+        "reservation",
+        "budget",
+        "workload",
+        "instructions",
+        "preparedReceipt",
+        "binding",
+        "assignment",
+        "sourceReads",
+        "tools",
+        "reviewDelivery",
+        "issuedAt",
+        "expiresAt",
+        "providerPolicyDigest",
+        "accountingVersion"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "targetKind": {
+          "const": "cell_session"
+        },
+        "mode": {
+          "const": "real_provider"
+        },
+        "stage": {
+          "const": "product"
+        },
+        "purpose": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/purpose"
+        },
+        "preparationPolicyDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "case": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/typedCase"
+        },
+        "intent": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/intentRef"
+        },
+        "scope": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/workScope"
+        },
+        "root": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/rootScope"
+        },
+        "applicability": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/artifactApplicability2"
+        },
+        "qualification": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/qualificationPin"
+        },
+        "reservation": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/reservation"
+        },
+        "budget": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/budget"
+        },
+        "workload": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/workload"
+        },
+        "instructions": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/instructionPin"
+        },
+        "preparedReceipt": {
+          "$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/preparedReceipt"
+        },
+        "binding": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/binding"
+        },
+        "assignment": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/assignmentReceipt"
+        },
+        "sourceReads": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/sourceReadScope"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/toolScope"
+          }
+        },
+        "reviewDelivery": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/reviewDeliveryPlan"
+            }
+          ]
+        },
+        "issuedAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:e3020419b9841fb1e39c9dca0ff262c8761c19438263187c90b86b89976e9657"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/productPolicy/allOf/0"
+        },
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/productPolicy/allOf/1"
+        }
+      ]
+    },
+    "productPolicyEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/productPolicy"
+        },
+        "keyId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "signature": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/signature"
+        }
+      }
+    },
+    "productPolicyBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "purpose",
+        "case",
+        "allocationId",
+        "intent",
+        "policyDigest",
+        "preparedReceiptDigest",
+        "assignmentDigest",
+        "modelRequests",
+        "usdMicros",
+        "expiresAt",
+        "providerPolicyDigest",
+        "accountingVersion"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "purpose": {
+          "enum": [
+            "coding_worker",
+            "business_worker",
+            "integrator",
+            "reviewer"
+          ]
+        },
+        "case": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/typedCase"
+        },
+        "allocationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "intent": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/intentRef"
+        },
+        "policyDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "preparedReceiptDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "assignmentDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "modelRequests": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "usdMicros": {
+          "type": "integer",
+          "minimum": 421000,
+          "maximum": 1263000
+        },
+        "expiresAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:e3020419b9841fb1e39c9dca0ff262c8761c19438263187c90b86b89976e9657"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "const": "business_worker"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "modelRequests": {
+                "const": 3
+              },
+              "usdMicros": {
+                "const": 1263000
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "enum": [
+                  "coding_worker",
+                  "integrator"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "modelRequests": {
+                "const": 2
+              },
+              "usdMicros": {
+                "const": 842000
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "const": "reviewer"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "modelRequests": {
+                "const": 1
+              },
+              "usdMicros": {
+                "const": 421000
+              }
+            }
+          }
+        }
+      ]
+    },
+    "bindingEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/productPolicyBinding"
+        },
+        "keyId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "signature": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/signature"
+        }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "targetKind",
+        "mode",
+        "purpose",
+        "caseId",
+        "caseManifestDigest",
+        "demandManifestDigest",
+        "allocationId",
+        "intent",
+        "preparationId",
+        "preparationPolicyDigest",
+        "preparedTupleDigest",
+        "preparedReceiptDigest",
+        "assignmentDigest",
+        "policyDigest",
+        "policyBindingDigest",
+        "reservation",
+        "grant",
+        "grantDigest",
+        "authorizationObservationDigest",
+        "authorizationSha256",
+        "issuedAt",
+        "expiresAt",
+        "providerPolicyDigest",
+        "accountingVersion"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "targetKind": {
+          "const": "cell_session"
+        },
+        "mode": {
+          "const": "real_provider"
+        },
+        "purpose": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/purpose"
+        },
+        "caseId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "caseManifestDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "allocationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "intent": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/intentRef"
+        },
+        "preparationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "preparationPolicyDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "preparedTupleDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "preparedReceiptDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "assignmentDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "policyDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "policyBindingDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "reservation": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/reservation"
+        },
+        "grant": {
+          "$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/executionGrant"
+        },
+        "grantDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "authorizationObservationDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "authorizationSha256": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "issuedAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:e3020419b9841fb1e39c9dca0ff262c8761c19438263187c90b86b89976e9657"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        }
+      }
+    },
+    "activationEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/activation"
+        },
+        "keyId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "signature": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/signature"
+        }
+      }
+    },
+    "controlGeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "targetKind",
+        "phase",
+        "preparationId",
+        "demand",
+        "preparationPolicy",
+        "policy",
+        "policyBinding",
+        "activation",
+        "authorizationObservation",
+        "providerPolicyDigest",
+        "accountingVersion"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 3
+        },
+        "targetKind": {
+          "const": "cell_session"
+        },
+        "phase": {
+          "enum": [
+            "prepare",
+            "execute"
+          ]
+        },
+        "preparationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "demand": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/demandManifestEnvelope"
+        },
+        "preparationPolicy": {
+          "$ref": "#/$defs/preparationPolicyEnvelope"
+        },
+        "policy": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/productPolicyEnvelope"
+            }
+          ]
+        },
+        "policyBinding": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/bindingEnvelope"
+            }
+          ]
+        },
+        "activation": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/activationEnvelope"
+            }
+          ]
+        },
+        "authorizationObservation": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/authorizationEnvelope"
+            }
+          ]
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:e3020419b9841fb1e39c9dca0ff262c8761c19438263187c90b86b89976e9657"
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "prepare"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "policy": {
+                "const": null
+              },
+              "policyBinding": {
+                "const": null
+              },
+              "activation": {
+                "const": null
+              },
+              "authorizationObservation": {
+                "const": null
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "policy": {
+                "$ref": "#/$defs/productPolicyEnvelope"
+              },
+              "policyBinding": {
+                "$ref": "#/$defs/bindingEnvelope"
+              },
+              "activation": {
+                "$ref": "#/$defs/activationEnvelope"
+              },
+              "authorizationObservation": {
+                "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/authorizationEnvelope"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "controlDelivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "descriptor",
+        "generation"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 3
+        },
+        "descriptor": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/controlDescriptor"
+        },
+        "generation": {
+          "$ref": "#/$defs/controlGeneration"
+        }
+      }
+    },
+    "policySigningIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "handleId",
+        "stage",
+        "payload",
+        "policyBinding",
+        "notBefore"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "handleId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "stage": {
+          "enum": [
+            "prepare",
+            "product"
+          ]
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/preparationPolicy"
+            },
+            {
+              "$ref": "#/$defs/productPolicy"
+            }
+          ]
+        },
+        "policyBinding": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/productPolicyBinding"
+            }
+          ]
+        },
+        "notBefore": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "stage": {
+                "const": "prepare"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/preparationPolicy"
+              },
+              "policyBinding": {
+                "const": null
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/productPolicy"
+              },
+              "policyBinding": {
+                "$ref": "#/$defs/productPolicyBinding"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "policyAcceptRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "requestId",
+        "stage",
+        "preparationPolicy",
+        "policy",
+        "policyBinding"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "requestId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "stage": {
+          "enum": [
+            "prepare",
+            "product"
+          ]
+        },
+        "preparationPolicy": {
+          "$ref": "#/$defs/preparationPolicyEnvelope"
+        },
+        "policy": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/productPolicyEnvelope"
+            }
+          ]
+        },
+        "policyBinding": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/bindingEnvelope"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "stage": {
+                "const": "prepare"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "policy": {
+                "const": null
+              },
+              "policyBinding": {
+                "const": null
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "policy": {
+                "$ref": "#/$defs/productPolicyEnvelope"
+              },
+              "policyBinding": {
+                "$ref": "#/$defs/bindingEnvelope"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "grantIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "handleId",
+        "preparationAssociationDigest",
+        "policyDigest",
+        "policyBindingDigest",
+        "assignment",
+        "reservation",
+        "grant",
+        "grantDigest",
+        "notBefore",
+        "expiresAt",
+        "state"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "handleId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "preparationAssociationDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "policyDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "policyBindingDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "assignment": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/assignmentReceipt"
+        },
+        "reservation": {
+          "$ref": "https://api.warpmetal.com/contracts/workspace-workflow-budget-v5.schema.json#/$defs/reservation"
+        },
+        "grant": {
+          "$ref": "https://api.warpmetal.com/contracts/cell-lifecycle-v3.schema.json#/$defs/executionGrant"
+        },
+        "grantDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "notBefore": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "state": {
+          "const": "committed_activation_pending"
+        }
+      }
+    },
+    "activationSigningIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "handleId",
+        "payload",
+        "authorizationObservation",
+        "notBefore"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "handleId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "payload": {
+          "$ref": "#/$defs/activation"
+        },
+        "authorizationObservation": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/authorizationEnvelope"
+        },
+        "notBefore": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        }
+      }
+    },
+    "activationAcceptRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "requestId",
+        "activation",
+        "authorizationObservation"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "requestId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "activation": {
+          "$ref": "#/$defs/activationEnvelope"
+        },
+        "authorizationObservation": {
+          "$ref": "https://warpmetal.com/contracts/workspace-child-product-v1.schema.json#/$defs/authorizationEnvelope"
+        }
+      }
+    }
+  }
+}

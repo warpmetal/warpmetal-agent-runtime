@@ -1,0 +1,617 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.warpmetal.com/contracts/workspace-provider-accounting-v2.schema.json",
+  "title": "Fresh initial provider accounting v2; same durable ledger, immutable physical identities",
+  "$defs": {
+    "id": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+    },
+    "digest": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+    },
+    "time": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+    },
+    "signature": {
+      "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/signature"
+    },
+    "policyDigest": {
+      "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+    },
+    "ledgerSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "physicalRequests",
+        "modelRequests",
+        "turns",
+        "preparations",
+        "reservedUsdMicros",
+        "actualUsdMicros"
+      ],
+      "properties": {
+        "physicalRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "modelRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "turns": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "preparations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reservedUsdMicros": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "actualUsdMicros": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "emptyLedgerSnapshot": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ledgerSnapshot"
+        },
+        {
+          "const": {
+            "physicalRequests": 0,
+            "modelRequests": 0,
+            "turns": 0,
+            "preparations": 0,
+            "reservedUsdMicros": 0,
+            "actualUsdMicros": 0
+          }
+        }
+      ]
+    },
+    "opening": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "accountingVersion",
+        "ledgerId",
+        "providerPolicyDigest",
+        "authorityDigest",
+        "demandManifestDigest",
+        "surface",
+        "caseId",
+        "candidateInventoryDigest",
+        "accountScopeDigest",
+        "ownerConsentDigest",
+        "snapshot",
+        "historyDigest",
+        "observedAt",
+        "notAfter"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/policyDigest"
+        },
+        "authorityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "surface": {
+          "enum": [
+            "backend",
+            "runtime"
+          ]
+        },
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "candidateInventoryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "accountScopeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "ownerConsentDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/emptyLedgerSnapshot"
+        },
+        "historyDigest": {
+          "const": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "notAfter": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "description": "Operator signs the backend readback; the independently enrolled Runtime producer signs its own readback. Both original empty histories must be observed, never inferred from absence of a caller-supplied balance."
+    },
+    "openingEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/opening"
+        },
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "signature": {
+          "$ref": "#/$defs/signature"
+        }
+      }
+    },
+    "openingHandshake": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "backend",
+        "runtime"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "backend": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/openingEnvelope"
+            },
+            {
+              "properties": {
+                "payload": {
+                  "properties": {
+                    "surface": {
+                      "const": "backend"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "runtime": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/openingEnvelope"
+            },
+            {
+              "properties": {
+                "payload": {
+                  "properties": {
+                    "surface": {
+                      "const": "runtime"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "reservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "accountingVersion",
+        "ledgerId",
+        "providerPolicyDigest",
+        "authorityDigest",
+        "demandManifestDigest",
+        "openingDigest",
+        "physicalId",
+        "allocationId",
+        "reservationId",
+        "subjectId",
+        "scopeDigest",
+        "physicalIndex",
+        "modelRequestIndex",
+        "preparationOrdinal",
+        "kind",
+        "reservedUsdMicros",
+        "nativeSessionId",
+        "nativeInputId"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/policyDigest"
+        },
+        "authorityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "openingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "physicalId": {
+          "$ref": "#/$defs/digest"
+        },
+        "allocationId": {
+          "$ref": "#/$defs/id"
+        },
+        "reservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "subjectId": {
+          "$ref": "#/$defs/id"
+        },
+        "scopeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "physicalIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 19
+        },
+        "modelRequestIndex": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 17
+            }
+          ]
+        },
+        "preparationOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 13
+        },
+        "kind": {
+          "enum": [
+            "access",
+            "qualification",
+            "parent",
+            "coding_worker",
+            "business_worker",
+            "reviewer",
+            "integrator"
+          ]
+        },
+        "reservedUsdMicros": {
+          "type": "integer",
+          "const": 421000
+        },
+        "nativeSessionId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "nativeInputId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        }
+      },
+      "description": "Each committed physical slot is immutable and never refunded. The physicalId is the canonical digest of ledgerId and absolute physicalIndex. A fresh account, policy, case or process cannot create another opening.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "access"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "nativeSessionId": {
+                "const": null
+              },
+              "nativeInputId": {
+                "const": null
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "nativeSessionId": {
+                "$ref": "#/$defs/id"
+              },
+              "nativeInputId": {
+                "$ref": "#/$defs/id"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "transportOriginal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "url",
+        "bodyDigest"
+      ],
+      "properties": {
+        "method": {
+          "enum": [
+            "GET",
+            "POST"
+          ]
+        },
+        "url": {
+          "enum": [
+            "https://api.deepseek.com/models",
+            "https://api.deepseek.com/responses"
+          ]
+        },
+        "bodyDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "settlement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "accountingVersion",
+        "ledgerId",
+        "providerPolicyDigest",
+        "authorityDigest",
+        "demandManifestDigest",
+        "openingDigest",
+        "physicalId",
+        "reservationDigest",
+        "transportOriginalDigest",
+        "requestDigest",
+        "wireResponseDigest",
+        "providerRequestId",
+        "nativeSessionId",
+        "httpStatus",
+        "actualUsdMicros",
+        "startedAt",
+        "completedAt",
+        "nativeInputId"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/policyDigest"
+        },
+        "authorityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "openingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "physicalId": {
+          "$ref": "#/$defs/digest"
+        },
+        "reservationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "transportOriginalDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "requestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "wireResponseDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerRequestId": {
+          "$ref": "#/$defs/id"
+        },
+        "nativeSessionId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "httpStatus": {
+          "type": "integer",
+          "const": 200
+        },
+        "actualUsdMicros": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 421000
+        },
+        "startedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "nativeInputId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        }
+      },
+      "description": "Only a terminal original response and its exact original request release a hold. The backend verifies transport, body, strict SSE and usage, then derives conservative cost. The producer-reported actualUsdMicros is checked, never trusted as a refund."
+    },
+    "settlementEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/settlement"
+        },
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "signature": {
+          "$ref": "#/$defs/signature"
+        }
+      }
+    },
+    "runtimeReadback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "accountingVersion",
+        "ledgerId",
+        "providerPolicyDigest",
+        "authorityDigest",
+        "demandManifestDigest",
+        "openingDigest",
+        "snapshot",
+        "reservations",
+        "settlements",
+        "observedAt"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "accountingVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "ledgerId": {
+          "const": "model-qualification-and-product"
+        },
+        "providerPolicyDigest": {
+          "$ref": "#/$defs/policyDigest"
+        },
+        "authorityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "openingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/ledgerSnapshot"
+        },
+        "reservations": {
+          "type": "array",
+          "maxItems": 19,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/reservation"
+          }
+        },
+        "settlements": {
+          "type": "array",
+          "maxItems": 19,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/settlementEnvelope"
+          }
+        },
+        "observedAt": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "description": "Complete retained prefix of immutable reservations and at-most-once settlements. A missing, failed, unknown, incomplete or ambiguous outcome leaves its full421000 held; no separate unknown balance can be subtracted twice."
+    },
+    "runtimeReadbackEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "keyId",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/runtimeReadback"
+        },
+        "keyId": {
+          "$ref": "#/$defs/id"
+        },
+        "signature": {
+          "$ref": "#/$defs/signature"
+        }
+      }
+    }
+  }
+}

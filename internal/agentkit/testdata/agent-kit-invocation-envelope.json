@@ -1,0 +1,309 @@
+{
+ "action": null,
+ "activeSessions": null,
+ "admission": null,
+ "adoptionId": "WP211A-MAT-ADOPT-1",
+ "applied": null,
+ "binding": null,
+ "bindingRevision": null,
+ "checkedAt": null,
+ "cleared": null,
+ "clockSkewSeconds": null,
+ "closure": {
+  "byteCount": 1788358,
+  "closureDigest": "sha256:e201054ea5cf80d6bbc8d3b68ea5bc7e9ed0fc7a0301689ae20837b30d7da965",
+  "closureVersion": "warpmetal-agent-kit-content-v1",
+  "fileCount": 220,
+  "materializerDigest": "sha256:98393bbf735f67052cccfea2321953e09240431e3e30b5d819020ead4d39e87a",
+  "measurer": "source",
+  "snapshotManifestDigest": "sha256:387d0ca5212174d1ddcb488c55a2f811ae98377f201aece46251fb6847f4a8aa"
+ },
+ "command": "materialize-agent-kit",
+ "conversationCount": null,
+ "drained": null,
+ "endpointHost": null,
+ "enrolledAt": null,
+ "error": null,
+ "freshUntil": null,
+ "generation": null,
+ "hostname": null,
+ "install": null,
+ "instance": "agent-kit",
+ "instructionApplied": null,
+ "instructionDigest": null,
+ "instructionRevision": null,
+ "leaseExpired": null,
+ "leaseExpiresAt": null,
+ "leaseId": null,
+ "leaseOperations": null,
+ "leaseRole": null,
+ "leaseTokenPresent": null,
+ "managerCapabilityReason": null,
+ "managerModelId": null,
+ "managerNativeProtocol": null,
+ "managerPluginDigest": null,
+ "managerPluginLoaded": null,
+ "managerProfile": null,
+ "managerProviderId": null,
+ "managerProviderRouteDigest": null,
+ "managerRecipeIds": null,
+ "managerRecommendAvailable": null,
+ "mappingId": null,
+ "materialization": {
+  "actions": {
+   "created": 13,
+   "unchanged": 0
+  },
+  "configuration": {
+   "configurationDigest": "sha256:2ab215b4500158de886a4cfea5bd1904c099c70647aeab5e20682c48feaf1412",
+   "configurationId": "cfg_wp211a",
+   "configurationRevision": 1
+  },
+  "declaredOnly": {
+   "capacityHint": true,
+   "firstTask": true,
+   "mcp": true,
+   "packages": true,
+   "providers": true,
+   "repo": true,
+   "runtime": true,
+   "tools": true
+  },
+  "files": [
+   {
+    "byteCount": 163,
+    "path": ".warpmetal/agent-kit/capacity-hint.json",
+    "sha256": "sha256:cb214402c4bb0e106adbf94841bf11582e16ccf571cd5941e5e70c2da856433f",
+    "status": "created"
+   },
+   {
+    "byteCount": 693,
+    "path": ".warpmetal/agent-kit/first-task.json",
+    "sha256": "sha256:3ffa5a8f7775d66a9f4f6898672c093349ae8c63711a2fcc85ff7be479e9e589",
+    "status": "created"
+   },
+   {
+    "byteCount": 2733,
+    "path": ".warpmetal/agent-kit/manifest.json",
+    "sha256": "sha256:916054ab9541856132fae2d2ee47e2b0f920d8e991fdb438192cacf9a615048f",
+    "status": "created"
+   },
+   {
+    "byteCount": 851,
+    "path": ".warpmetal/agent-kit/models.json",
+    "sha256": "sha256:00531a0df56c1e791391b24124ccda591ee55fca035cfae4c4e086fd3d31ee80",
+    "status": "created"
+   },
+   {
+    "byteCount": 232,
+    "path": ".warpmetal/agent-kit/repo.json",
+    "sha256": "sha256:e17ae18cbd932deac9c8154035b6aa6945633c9689c0f8b8f4056336719cd3c0",
+    "status": "created"
+   },
+   {
+    "byteCount": 228,
+    "path": ".warpmetal/agent-kit/runtime.json",
+    "sha256": "sha256:3a9f6372cd440af955caeae7a6cbfdce9ac9b60ae27b348a7f89d8f1e47c00a9",
+    "status": "created"
+   },
+   {
+    "byteCount": 457,
+    "path": ".warpmetal/agent-kit/tools.json",
+    "sha256": "sha256:296006938c00d45b44cac3337b706cfce3995efe4a9c9bdbcdfa4ec80d57c5b8",
+    "status": "created"
+   },
+   {
+    "byteCount": 9727,
+    "path": "projects/ws/.opencode/skills/warpmetal-agent-sandbox/SKILL.md",
+    "sha256": "sha256:a3844834d0f94f855f1645f9808e318ce6092bcd639b2b1fc614fbcf895619b5",
+    "status": "created"
+   },
+   {
+    "byteCount": 3448,
+    "path": "projects/ws/.opencode/skills/warpmetal-agent-sandbox/references/agents.md",
+    "sha256": "sha256:df63e0ef43a991ef55baf848eea1c46f1e70413dca83f9599b1913e937bd01da",
+    "status": "created"
+   },
+   {
+    "byteCount": 1421,
+    "path": "projects/ws/.opencode/skills/warpmetal-agent-sandbox/references/github.md",
+    "sha256": "sha256:865ea86b24a1ea201d82558199f03bbc2d7b8d4fde9d71677a794408ed93a0fc",
+    "status": "created"
+   },
+   {
+    "byteCount": 2689,
+    "path": "projects/ws/.opencode/skills/warpmetal-agent-sandbox/references/multi-agent.md",
+    "sha256": "sha256:cba3b4319419e6b55f64a9c3da4b2de84391a0c6320ccc42ea52bfe8980b0c9b",
+    "status": "created"
+   },
+   {
+    "byteCount": 1697,
+    "path": "projects/ws/.opencode/skills/warpmetal-agent-sandbox/references/verification.md",
+    "sha256": "sha256:aa7ed7529acc8484d7475ea502fa3479cffbd7a822d1b629beffdb4e472f33fa",
+    "status": "created"
+   },
+   {
+    "byteCount": 887,
+    "path": "projects/ws/AGENTS.md",
+    "sha256": "sha256:d793c8b45a9e6bb0ddcc272366ae27df9eb2bc9e99c903e20185c06a63e17e28",
+    "status": "created"
+   }
+  ],
+  "formatVersion": 1,
+  "instruction": {
+   "byteCount": 887,
+   "path": "AGENTS.md",
+   "sha256": "sha256:d793c8b45a9e6bb0ddcc272366ae27df9eb2bc9e99c903e20185c06a63e17e28"
+  },
+  "kind": "agent_kit_materialization_receipt",
+  "kitDigest": "sha256:808e50374237c506400bb25ac083632ec4d472dd44130f1e92efd4dce3962227",
+  "materializationId": "akm_44edc1f2599f4e55047448f7d47f2479",
+  "materializer": "warpmetal-agent-kit-v1",
+  "networkUsed": false,
+  "projections": [
+   {
+    "byteCount": 163,
+    "kind": "capacity-hint",
+    "path": ".warpmetal/agent-kit/capacity-hint.json",
+    "sha256": "sha256:cb214402c4bb0e106adbf94841bf11582e16ccf571cd5941e5e70c2da856433f"
+   },
+   {
+    "byteCount": 693,
+    "kind": "first-task",
+    "path": ".warpmetal/agent-kit/first-task.json",
+    "sha256": "sha256:3ffa5a8f7775d66a9f4f6898672c093349ae8c63711a2fcc85ff7be479e9e589"
+   },
+   {
+    "byteCount": 851,
+    "kind": "models",
+    "path": ".warpmetal/agent-kit/models.json",
+    "sha256": "sha256:00531a0df56c1e791391b24124ccda591ee55fca035cfae4c4e086fd3d31ee80"
+   },
+   {
+    "byteCount": 232,
+    "kind": "repo",
+    "path": ".warpmetal/agent-kit/repo.json",
+    "sha256": "sha256:e17ae18cbd932deac9c8154035b6aa6945633c9689c0f8b8f4056336719cd3c0"
+   },
+   {
+    "byteCount": 228,
+    "kind": "runtime",
+    "path": ".warpmetal/agent-kit/runtime.json",
+    "sha256": "sha256:3a9f6372cd440af955caeae7a6cbfdce9ac9b60ae27b348a7f89d8f1e47c00a9"
+   },
+   {
+    "byteCount": 457,
+    "kind": "tools",
+    "path": ".warpmetal/agent-kit/tools.json",
+    "sha256": "sha256:296006938c00d45b44cac3337b706cfce3995efe4a9c9bdbcdfa4ec80d57c5b8"
+   }
+  ],
+  "receiptDigest": "sha256:4e6f03268fcc249d24d64d80723b699b82e9a932b70e0b966d157a4c86382a09",
+  "secretsPresent": false,
+  "skills": [
+   {
+    "byteCount": 18982,
+    "contentDigest": "sha256:ce3d030c6526114581d4c57d10272134f2d5f90ca108761682253ffa9acda19a",
+    "fileCount": 5,
+    "files": [
+     {
+      "byteCount": 9727,
+      "path": "SKILL.md",
+      "sha256": "sha256:a3844834d0f94f855f1645f9808e318ce6092bcd639b2b1fc614fbcf895619b5"
+     },
+     {
+      "byteCount": 3448,
+      "path": "references/agents.md",
+      "sha256": "sha256:df63e0ef43a991ef55baf848eea1c46f1e70413dca83f9599b1913e937bd01da"
+     },
+     {
+      "byteCount": 1421,
+      "path": "references/github.md",
+      "sha256": "sha256:865ea86b24a1ea201d82558199f03bbc2d7b8d4fde9d71677a794408ed93a0fc"
+     },
+     {
+      "byteCount": 2689,
+      "path": "references/multi-agent.md",
+      "sha256": "sha256:cba3b4319419e6b55f64a9c3da4b2de84391a0c6320ccc42ea52bfe8980b0c9b"
+     },
+     {
+      "byteCount": 1697,
+      "path": "references/verification.md",
+      "sha256": "sha256:aa7ed7529acc8484d7475ea502fa3479cffbd7a822d1b629beffdb4e472f33fa"
+     }
+    ],
+    "id": "warpmetal-agent-sandbox",
+    "name": "WarpMetal Agent Sandbox",
+    "pinnedRef": "23b16ad85d492ac0eec87e93d24b2c3d6f3b2fd9",
+    "sourceRepo": "warpmetal/skills",
+    "version": "0.1.0"
+   }
+  ],
+  "skillsSnapshot": {
+   "catalogId": "warpmetal-skills",
+   "contentDigest": "sha256:4c37a13d03e98022054fee13f7c2931d26cad5a457c1d0431e6c1179e54a3fc9",
+   "resolvedCommit": "23b16ad85d492ac0eec87e93d24b2c3d6f3b2fd9",
+   "sourceRepo": "warpmetal/skills"
+  },
+  "status": "ready",
+  "target": {
+   "projectRoot": "/private/var/folders/ln/3pk8bkxd7f72yhhjwpwpb56m0000gn/T/wp211a-fixture-0or55m06/projects/ws",
+   "sandboxGeneration": 1,
+   "sandboxId": "sbx_WP211Afixture00000000001",
+   "sandboxRoot": "/private/var/folders/ln/3pk8bkxd7f72yhhjwpwpb56m0000gn/T/wp211a-fixture-0or55m06",
+   "workspace": {
+    "projectId": "proj_wp211a",
+    "rootAttestation": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "selectionId": "sel_wp211a",
+    "workspaceEpoch": "wpe_wp211a"
+   }
+  },
+  "venue": "TEST-wp211-kit-materialization"
+ },
+ "nativeLocationDigest": null,
+ "nativeProjectId": null,
+ "observation": null,
+ "observed": null,
+ "operationId": null,
+ "phase": null,
+ "pid": null,
+ "port": null,
+ "previousBindingRevision": null,
+ "profileDigest": null,
+ "profileId": "opencode",
+ "profileRevision": null,
+ "projection": null,
+ "ready": true,
+ "reason": null,
+ "receiptDigest": "sha256:bd6d9d2d1770fadc5b89c880db6eaa4890bec59d3d898fb1a3e538adeb42ed38",
+ "registeredSourceId": null,
+ "restarted": null,
+ "restored": null,
+ "sandboxId": "sbx_WP211Afixture00000000001",
+ "schemaVersion": 1,
+ "secondsRemaining": null,
+ "serverRunning": null,
+ "serviceGeneration": null,
+ "serviceRegistrationId": null,
+ "sessionCreated": null,
+ "sessionCreatedCount": null,
+ "sessionId": null,
+ "sessionMode": null,
+ "sessionReused": null,
+ "settingRevision": null,
+ "sharingEnabled": null,
+ "snapshotId": null,
+ "startCount": null,
+ "state": null,
+ "status": "ready",
+ "stored": null,
+ "sweptProcesses": null,
+ "targetWorkId": null,
+ "targetWorkspace": null,
+ "ttlSeconds": null,
+ "upgradeError": null,
+ "venue": "TEST-wp211a-installed-a",
+ "version": null,
+ "workspaceEpoch": null,
+ "writerVersion": null
+}

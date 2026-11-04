@@ -1,0 +1,565 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warpmetal.com/contracts/workspace-workflow-manager-single-v1.schema.json",
+  "title": "Single-result manager decisions on the retained workflow authority; legacy pairs unchanged",
+  "$defs": {
+    "managerWorkIntentTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "role",
+        "resourceId",
+        "advice",
+        "intent"
+      ],
+      "properties": {
+        "kind": {
+          "const": "manager_work_intent"
+        },
+        "role": {
+          "const": "manager"
+        },
+        "resourceId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+        },
+        "advice": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/adviceReceipt"
+        },
+        "intent": {
+          "allOf": [
+            {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/approvedWorkIntent"
+            },
+            {
+              "properties": {
+                "purpose": {
+                  "const": "implement"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "managerIntentTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "role",
+        "resourceId",
+        "purpose",
+        "intent"
+      ],
+      "properties": {
+        "kind": {
+          "const": "manager_intent"
+        },
+        "role": {
+          "const": "manager"
+        },
+        "resourceId": {
+          "const": null
+        },
+        "purpose": {
+          "enum": [
+            "integrate",
+            "review"
+          ]
+        },
+        "intent": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/approvedWorkIntent"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "const": "integrate"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "intent": {
+                "properties": {
+                  "purpose": {
+                    "const": "integrate"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "intent": {
+                "properties": {
+                  "purpose": {
+                    "const": "review"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "continuationTarget": {
+      "allOf": [
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/controllerWorkflowTarget"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "advice_decision"
+            }
+          }
+        }
+      ]
+    },
+    "controllerTarget3": {
+      "oneOf": [
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/controllerTarget2"
+        },
+        {
+          "$ref": "#/$defs/managerWorkIntentTarget"
+        },
+        {
+          "$ref": "#/$defs/managerIntentTarget"
+        },
+        {
+          "$ref": "#/$defs/continuationTarget"
+        }
+      ]
+    },
+    "managerIntentRequest2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "requestId",
+        "plan",
+        "purpose",
+        "member"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "requestId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+        },
+        "plan": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/planPin"
+        },
+        "purpose": {
+          "enum": [
+            "integrate",
+            "review"
+          ]
+        },
+        "member": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/memberDecision"
+        }
+      }
+    },
+    "controllerProposal3": {
+      "oneOf": [
+        {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/controllerProposal2"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target",
+            "body"
+          ],
+          "properties": {
+            "target": {
+              "$ref": "#/$defs/managerWorkIntentTarget"
+            },
+            "body": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/adviceDecisionRequest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target",
+            "body"
+          ],
+          "properties": {
+            "target": {
+              "$ref": "#/$defs/managerIntentTarget"
+            },
+            "body": {
+              "$ref": "#/$defs/managerIntentRequest2"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target",
+            "body"
+          ],
+          "properties": {
+            "target": {
+              "$ref": "#/$defs/continuationTarget"
+            },
+            "body": {
+              "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/adviceDecisionRequest"
+            }
+          }
+        }
+      ]
+    },
+    "intentReceipt2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "contextId",
+        "operationId",
+        "associationDigest",
+        "member"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 2
+        },
+        "contextId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+        },
+        "operationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+        },
+        "associationDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/digest"
+        },
+        "member": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/intentAcceptance"
+        }
+      }
+    },
+    "approvedInputItem3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serviceRegistrationId",
+        "inputId",
+        "inputText",
+        "policyDigest",
+        "workflowRequestId",
+        "plan",
+        "target",
+        "allocationId",
+        "preparationOrdinal",
+        "physicalIndex"
+      ],
+      "properties": {
+        "serviceRegistrationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "inputId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "inputText": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/inputText"
+        },
+        "policyDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "workflowRequestId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "plan": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/planPin"
+        },
+        "target": {
+          "$ref": "#/$defs/controllerTarget3"
+        },
+        "allocationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "preparationOrdinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 13
+        },
+        "physicalIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 19
+        }
+      }
+    },
+    "inputDeclarationPayload4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "caseId",
+        "caseManifestDigest",
+        "demandManifestDigest",
+        "declaredAt",
+        "notAfter",
+        "inputs"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 4
+        },
+        "caseId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "caseManifestDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "declaredAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "notAfter": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 9,
+          "items": {
+            "$ref": "#/$defs/approvedInputItem3"
+          }
+        }
+      }
+    },
+    "approvedContext4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "contextId",
+        "contextDigest",
+        "preparationId",
+        "caseId",
+        "caseManifestDigest",
+        "demandManifestDigest",
+        "declarationItemDigest",
+        "policyDigest",
+        "inputId",
+        "inputDigest",
+        "workflowRequestId",
+        "plan",
+        "target",
+        "allocationId",
+        "preparationOrdinal",
+        "physicalIndex",
+        "identityAssociationDigest",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 4
+        },
+        "contextId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "contextDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "preparationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "caseId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "caseManifestDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "demandManifestDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "declarationItemDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "policyDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "inputId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "inputDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "workflowRequestId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "plan": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/planPin"
+        },
+        "target": {
+          "$ref": "#/$defs/controllerTarget3"
+        },
+        "allocationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "preparationOrdinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 13
+        },
+        "physicalIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 19
+        },
+        "identityAssociationDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-controller-provider-v2.schema.json#/$defs/digest"
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        }
+      }
+    },
+    "controllerOutputOperation4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "kind",
+        "operationId",
+        "operationDigest",
+        "requestId",
+        "context",
+        "roleBindingId",
+        "roleBindingRevision",
+        "subject",
+        "workspace",
+        "configurationDigest",
+        "managedServiceReceiptDigest",
+        "producer",
+        "lineage",
+        "proposal",
+        "expiresAt",
+        "applicationRoleAgentDigest",
+        "applicationConfigDigest",
+        "nativeRoleAgentDigest",
+        "nativeConfigDigest",
+        "identityAssociationDigest",
+        "providerPolicyDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 4
+        },
+        "kind": {
+          "const": "controller_output"
+        },
+        "operationId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "operationDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "requestId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "context": {
+          "$ref": "#/$defs/approvedContext4"
+        },
+        "roleBindingId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/id"
+        },
+        "roleBindingRevision": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-v1.schema.json#/$defs/positive"
+        },
+        "subject": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/controllerOutputOperation/properties/subject"
+        },
+        "workspace": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/workspace"
+        },
+        "configurationDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "managedServiceReceiptDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/digest"
+        },
+        "producer": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/registeredProducer"
+        },
+        "lineage": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/controllerOutputLineage"
+        },
+        "proposal": {
+          "$ref": "#/$defs/controllerProposal3"
+        },
+        "expiresAt": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-budget-v2.schema.json#/$defs/time"
+        },
+        "applicationRoleAgentDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-controller-provider-v2.schema.json#/$defs/digest"
+        },
+        "applicationConfigDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-controller-provider-v2.schema.json#/$defs/digest"
+        },
+        "nativeRoleAgentDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-controller-provider-v2.schema.json#/$defs/digest"
+        },
+        "nativeConfigDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-controller-provider-v2.schema.json#/$defs/digest"
+        },
+        "identityAssociationDigest": {
+          "$ref": "https://warpmetal.com/contracts/workspace-controller-provider-v2.schema.json#/$defs/digest"
+        },
+        "providerPolicyDigest": {
+          "const": "sha256:3082b57ec287f3b32451a970104bd0b170c2b5873f9efbe91380bc3b4212281f"
+        }
+      }
+    },
+    "controllerOutputOperationRequest4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "requestId",
+        "contextId",
+        "lineage",
+        "proposal"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 4
+        },
+        "requestId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+        },
+        "contextId": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-manager-v1.proposal.schema.json#/$defs/id"
+        },
+        "lineage": {
+          "$ref": "https://warpmetal.com/contracts/workspace-workflow-producer-v1.schema.json#/$defs/controllerOutputLineage"
+        },
+        "proposal": {
+          "$ref": "#/$defs/controllerProposal3"
+        }
+      }
+    }
+  }
+}

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/api"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
@@ -444,6 +445,14 @@ func (control *bridgeFailingControl) ManagedServiceInstructions(_ context.Contex
 		return model.ManagedServiceInstructionV1{}, errors.New("instruction fixture unavailable for service")
 	}
 	return control.fixture.InstructionResponse, nil
+}
+
+func (control *bridgeFailingControl) CellCredential(context.Context, string) (api.CellCredentialResult, error) {
+	return api.CellCredentialResult{}, nil
+}
+
+func (control *bridgeFailingControl) ReportCellPreparation(context.Context, model.CellPreparationReport) (model.CellPreparationView, error) {
+	return model.CellPreparationView{}, nil
 }
 
 func requireJSONEOF(decoder *json.Decoder) error {
