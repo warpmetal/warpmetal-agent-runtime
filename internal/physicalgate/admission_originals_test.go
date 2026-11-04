@@ -27,7 +27,7 @@ func (a *originalAdmissionAuthority) VerifyAdmissionOriginals(context.Context, C
 // process/authority supplier. No provider/native process or manager helper.
 func TestAdmissionOriginalFailureDeniesACKAndOwnerCommit(t *testing.T) {
 	ctx := context.Background()
-	root, err := os.MkdirTemp("/private/var/folders/ln/3pk8bkxd7f72yhhjwpwpb56m0000gn/T/opencode", "g-")
+	root, err := os.MkdirTemp("", "g-")
 	if err != nil {
 		t.Fatal(err)
 	}
