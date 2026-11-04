@@ -63,7 +63,7 @@ func TestAdmissionOriginalFailureDeniesACKAndOwnerCommit(t *testing.T) {
 }
 
 func TestAccessAdmissionOriginalIsCredentialedGETNotContext(t *testing.T) {
-	input := model.QualificationAccessContext{}
+	input := model.QualificationAccessContext{FormatVersion: 1}
 	input.Request.Method, input.Request.URL = "GET", accessURL
 	r, err := http.NewRequest(http.MethodGet, accessURL, nil)
 	if err != nil {
