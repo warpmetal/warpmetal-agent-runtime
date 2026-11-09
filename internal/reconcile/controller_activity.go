@@ -13,7 +13,6 @@ import (
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/api"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
-	"github.com/warpmetal/warpmetal-agent-runtime/internal/providerpolicy"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/qualification"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 )
@@ -103,28 +102,28 @@ func (r *Reconciler) controllerActivityCurrentWitness(ctx context.Context, servi
 		return w, ErrControllerActivityPending
 	}
 	n := local.Report.NativeRegistration
-	i := model.ControllerIdentity{Intent: *parent, Projection: *projection}
-	i.Source.FormatVersion = 2
-	ownerRaw, _ := json.Marshal(parent.Owner)
-	var sourceIdentity map[string]any
-	_ = json.Unmarshal(ownerRaw, &sourceIdentity)
-	for k, v := range map[string]any{"serviceRegistrationId": serviceID, "serviceGeneration": parent.ServiceGeneration, "instance": parent.Instance, "role": parent.Role, "projectId": parent.Workspace.ProjectID, "workspaceEpoch": parent.Workspace.WorkspaceEpoch, "profileId": parent.Profile.ProfileID, "profileRevision": parent.Profile.ProfileRevision, "profileDigest": parent.Profile.ProfileDigest, "instructionRevision": parent.Instructions.InstructionRevision, "instructionDigest": parent.Instructions.InstructionDigest} {
-		sourceIdentity[k] = v
-	}
-	identityRaw, _ := json.Marshal(sourceIdentity)
-	if json.Unmarshal(identityRaw, &i.Source.Identity) != nil {
+	if n == nil {
 		return w, ErrControllerActivityPending
 	}
-	i.Source.Source.RegisteredSourceID = n.RegisteredSourceID
-	i.Source.Source.NativeSessionID = n.NativeSessionID
-	i.Source.Source.NativeProjectID = n.NativeProjectID
-	i.Source.Source.NativeLocationDigest = n.NativeLocationDigest
+	i, e := controllerApplicationIdentity(*parent, *projection, *n)
+	if e != nil {
+		return w, ErrControllerActivityPending
+	}
 	// Read-only history retains the acknowledged application-time observation.
 	// Effect callers replace it with the independently checked current probe.
 	workspaceMaterializer := envelope.Payload.NativeReceipt.Readback.MaterializerDigest
 	if probe {
 		request := parentRequest(*parent)
 		request["probe"] = true
+		expectedNative, err := controllerExpectedNativeIdentity(i)
+		if err != nil {
+			return w, state.ErrControllerActivityConflict
+		}
+		// The DeepSeek controller persists and echoes this exact identity; the
+		// existing OpenCode supervisor is never handed the extra field.
+		if parent.Profile.ProfileID == "deepseek" {
+			request["controllerIdentity"] = expectedNative
+		}
 		observed, err := r.controllerHelper(ctx, *parent, containers.ManagedSupervisorStatus, request)
 		if err != nil {
 			return w, err
@@ -137,21 +136,7 @@ func (r *Reconciler) controllerActivityCurrentWitness(ctx context.Context, servi
 			return w, state.ErrControllerActivityConflict
 		}
 		workspaceMaterializer = observed.MaterializerDigest
-		var binding struct {
-			Identity        model.ControllerIdentity         `json:"identity"`
-			State           string                           `json:"state"`
-			PreparedReceipt *model.ControllerPreparedReceipt `json:"preparedReceipt"`
-		}
-		var fields map[string]json.RawMessage
-		expectedNative := i
-		if i.Projection.ModelSelection.Authority == (model.CellPreparedAuthorityV3{ProviderID: providerpolicy.Flash().ProviderID, ModelID: providerpolicy.Flash().ModelID, AuthMode: providerpolicy.Flash().AuthMode}) {
-			var err error
-			expectedNative, err = i.DeriveWM8NativeIdentity()
-			if err != nil {
-				return w, state.ErrControllerActivityConflict
-			}
-		}
-		if model.DecodePhysicalClosed(observed.Binding, &binding) != nil || json.Unmarshal(observed.Binding, &fields) != nil || len(fields) != 3 || fields["preparedReceipt"] == nil || !reflect.DeepEqual(binding.Identity, expectedNative) || (binding.State != "registered" && binding.State != "bound") || binding.State == "registered" && binding.PreparedReceipt != nil || binding.State == "bound" && (binding.PreparedReceipt == nil || binding.PreparedReceipt.PreparedTuple.ValidateControllerPolicyIdentity(expectedNative) != nil) {
+		if err := controllerStatusBinding(observed.Binding, expectedNative); err != nil {
 			return w, state.ErrControllerActivityConflict
 		}
 	}

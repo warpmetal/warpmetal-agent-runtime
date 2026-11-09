@@ -162,7 +162,7 @@ func controllerParentReadyReport(parent model.ControllerParentIntent, receipt *m
 // exact source (idempotently), re-reads the current status and only then emits
 // the ready report. The same path serves a first start and a later upgrade, so
 // the authority semantics are identical and no row is fabricated.
-func (r *Reconciler) finalizeControllerParent(ctx context.Context, parent model.ControllerParentIntent, previous *model.ManagedNativeRegistrationV1, receipt *managedSupervisorReceipt, materializer string, project workspacecatalog.RegisteredProject) error {
+func (r *Reconciler) finalizeControllerParent(ctx context.Context, parent model.ControllerParentIntent, projection model.ControllerRoleProjection, previous *model.ManagedNativeRegistrationV1, receipt *managedSupervisorReceipt, materializer string, project workspacecatalog.RegisteredProject) error {
 	log.Printf("controller parent %s finalize: %s", parent.ServiceRegistrationID, controllerParentNativeDiag(project, parent, receipt, materializer))
 	if err := validateParentNativeReceipt(parent, receipt, materializer); err != nil {
 		log.Printf("controller parent %s receipt refused: %v", parent.ServiceRegistrationID, err)
@@ -177,9 +177,10 @@ func (r *Reconciler) finalizeControllerParent(ctx context.Context, parent model.
 		return fmt.Errorf("%w: parent native identity changed", errControllerParentIdentityMismatch)
 	}
 	native := model.ManagedNativeRegistrationV1{RegisteredSourceID: managedSourceID(parent.ServiceRegistrationID), WorkspaceEpoch: parent.Workspace.WorkspaceEpoch, NativeSessionID: receipt.SessionID, NativeProjectID: receipt.NativeProjectID, NativeLocationDigest: receipt.NativeLocationDigest}
-	identity := map[string]any{"serverId": parent.Owner.ServerID, "accountId": parent.Owner.AccountID, "taskId": parent.Owner.TaskID, "sandboxId": parent.Owner.SandboxID, "sandboxGeneration": parent.Owner.SandboxGeneration, "cellId": parent.Owner.CellID, "controllerId": parent.Owner.ControllerID, "controllerRevision": parent.Owner.ControllerRevision, "authorityRevision": parent.Owner.AuthorityRevision, "serviceRegistrationId": parent.ServiceRegistrationID, "serviceGeneration": parent.ServiceGeneration, "instance": parent.Instance, "role": parent.Role, "projectId": parent.Workspace.ProjectID, "workspaceEpoch": parent.Workspace.WorkspaceEpoch, "profileId": parent.Profile.ProfileID, "profileRevision": parent.Profile.ProfileRevision, "profileDigest": parent.Profile.ProfileDigest, "instructionRevision": parent.Instructions.InstructionRevision, "instructionDigest": parent.Instructions.InstructionDigest}
-	register := parentRequest(parent)
-	register["registration"] = map[string]any{"formatVersion": 2, "identity": identity, "source": map[string]any{"registeredSourceId": native.RegisteredSourceID, "nativeSessionId": native.NativeSessionID, "nativeProjectId": native.NativeProjectID, "nativeLocationDigest": native.NativeLocationDigest}}
+	register, registerErr := controllerSourceRegistrationRequest(parent, projection, native)
+	if registerErr != nil {
+		return fmt.Errorf("%w: %v", errControllerParentIdentityMismatch, registerErr)
+	}
 	payload, _ := json.Marshal(register)
 	raw, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, parent.Owner.SandboxID, containers.ManagedSupervisorRegisterSource, payload)
 	if err != nil {
@@ -195,7 +196,7 @@ func (r *Reconciler) finalizeControllerParent(ctx context.Context, parent model.
 		log.Printf("controller parent %s register-source readback conflict: status=%q registeredSourceId=%q nativeSessionId=%q nativeProjectId=%q nativeLocationDigest=%q profileDigest=%q profileRevision=%d instructionDigest=%q instructionRevision=%d", parent.ServiceRegistrationID, source.Status, source.RegisteredSourceID, source.NativeSessionID, source.NativeProjectID, source.NativeLocationDigest, source.ProfileDigest, source.ProfileRevision, source.InstructionDigest, source.InstructionRevision)
 		return fmt.Errorf("%w: parent protected source readback conflict", errControllerParentIdentityMismatch)
 	}
-	current, err := r.controllerParentStatus(ctx, parent)
+	current, err := r.controllerParentStatus(ctx, parent, projection, &native)
 	if err != nil {
 		return fmt.Errorf("%w: %v", errControllerParentIdentityMismatch, err)
 	}
@@ -212,23 +213,28 @@ func (r *Reconciler) finalizeControllerParent(ctx context.Context, parent model.
 	return r.Store.PutControllerParentReport(ctx, parent, report)
 }
 
-func (r *Reconciler) controllerParentStatus(ctx context.Context, parent model.ControllerParentIntent) (*managedSupervisorReceipt, error) {
+func (r *Reconciler) controllerParentStatus(ctx context.Context, parent model.ControllerParentIntent, projection model.ControllerRoleProjection, native *model.ManagedNativeRegistrationV1) (*managedSupervisorReceipt, error) {
 	statusRequest := parentRequest(parent)
 	statusRequest["probe"] = true
 	statusRequest["requestTimeoutSeconds"] = controllerParentStatusProbeTimeoutSeconds
+	if native != nil {
+		if err := addDeepSeekControllerIdentity(statusRequest, parent, projection, *native); err != nil {
+			return nil, err
+		}
+	}
 	return r.controllerHelper(ctx, parent, containers.ManagedSupervisorStatus, statusRequest)
 }
 
 // awaitControllerParentReady re-reads the supervisor's durable state for at
 // most the readiness window. It returns nil only after finalizeControllerParent
 // has re-proved the exact running/instructionApplied native identity.
-func (r *Reconciler) awaitControllerParentReady(ctx context.Context, parent model.ControllerParentIntent, previous *model.ManagedNativeRegistrationV1, materializer string, project workspacecatalog.RegisteredProject, deadline time.Time) error {
+func (r *Reconciler) awaitControllerParentReady(ctx context.Context, parent model.ControllerParentIntent, projection model.ControllerRoleProjection, previous *model.ManagedNativeRegistrationV1, materializer string, project workspacecatalog.RegisteredProject, deadline time.Time) error {
 	var lastErr error
 	for {
-		current, err := r.controllerParentStatus(ctx, parent)
+		current, err := r.controllerParentStatus(ctx, parent, projection, previous)
 		if err == nil && current != nil {
 			if verifyErr := validateParentNativeReceipt(parent, current, materializer); verifyErr == nil {
-				if finalizeErr := r.finalizeControllerParent(ctx, parent, previous, current, materializer, project); finalizeErr == nil {
+				if finalizeErr := r.finalizeControllerParent(ctx, parent, projection, previous, current, materializer, project); finalizeErr == nil {
 					return nil
 				} else {
 					if errors.Is(finalizeErr, errControllerParentIdentityMismatch) || errors.Is(finalizeErr, errControllerParentRoleMismatch) {
@@ -273,7 +279,7 @@ func (r *Reconciler) awaitControllerParentReady(ctx context.Context, parent mode
 // on failure. A start RPC that reports "not ready yet" is not a terminal parent
 // state; it is resumed by reading the same supervisor state until the bounded
 // readiness window closes.
-func (r *Reconciler) startControllerParent(ctx context.Context, parent model.ControllerParentIntent, previous *model.ManagedNativeRegistrationV1, materializer string, project workspacecatalog.RegisteredProject, request map[string]any) error {
+func (r *Reconciler) startControllerParent(ctx context.Context, parent model.ControllerParentIntent, projection model.ControllerRoleProjection, previous *model.ManagedNativeRegistrationV1, materializer string, project workspacecatalog.RegisteredProject, request map[string]any) error {
 	deadline := time.Now().Add(controllerParentReadinessWindow)
 	started, startErr := r.controllerHelper(ctx, parent, containers.ManagedSupervisorStart, request)
 	if started != nil {
@@ -282,7 +288,7 @@ func (r *Reconciler) startControllerParent(ctx context.Context, parent model.Con
 		log.Printf("controller parent %s start failed without receipt: %v", parent.ServiceRegistrationID, startErr)
 	}
 	if startErr == nil && started != nil && (started.Status == "ready" || started.Status == "already_running") {
-		return r.finalizeControllerParent(ctx, parent, previous, started, materializer, project)
+		return r.finalizeControllerParent(ctx, parent, projection, previous, started, materializer, project)
 	}
 	if started == nil {
 		// The launch response was lost before any typed receipt existed. The
@@ -298,7 +304,7 @@ func (r *Reconciler) startControllerParent(ctx context.Context, parent model.Con
 	if started.Status == "failed" && (started.Phase == "failed" || started.PID == 0) {
 		return fmt.Errorf("%w: parent start refused: %s", errControllerParentIdentityMismatch, started.Error)
 	}
-	return r.awaitControllerParentReady(ctx, parent, previous, materializer, project, deadline)
+	return r.awaitControllerParentReady(ctx, parent, projection, previous, materializer, project, deadline)
 }
 
 // upgradeControllerParentFromCurrent is the later-reconcile resume path. It
@@ -306,8 +312,8 @@ func (r *Reconciler) startControllerParent(ctx context.Context, parent model.Con
 // and only writes ready when the current supervisor state proves the exact
 // issued native identity. Any mismatch falls through to the ordinary start
 // path, where existing authority checks still apply.
-func (r *Reconciler) upgradeControllerParentFromCurrent(ctx context.Context, parent model.ControllerParentIntent, previous *model.ManagedNativeRegistrationV1, materializer string, project workspacecatalog.RegisteredProject) (bool, error) {
-	current, err := r.controllerParentStatus(ctx, parent)
+func (r *Reconciler) upgradeControllerParentFromCurrent(ctx context.Context, parent model.ControllerParentIntent, projection model.ControllerRoleProjection, previous *model.ManagedNativeRegistrationV1, materializer string, project workspacecatalog.RegisteredProject) (bool, error) {
+	current, err := r.controllerParentStatus(ctx, parent, projection, previous)
 	if err != nil || current == nil {
 		return false, nil
 	}
@@ -315,7 +321,7 @@ func (r *Reconciler) upgradeControllerParentFromCurrent(ctx context.Context, par
 		log.Printf("controller parent %s upgrade probe not current: %s", parent.ServiceRegistrationID, controllerParentNativeDiag(project, parent, current, materializer))
 		return false, nil
 	}
-	if err := r.finalizeControllerParent(ctx, parent, previous, current, materializer, project); err != nil {
+	if err := r.finalizeControllerParent(ctx, parent, projection, previous, current, materializer, project); err != nil {
 		if errors.Is(err, errControllerParentIdentityMismatch) || errors.Is(err, errControllerParentRoleMismatch) {
 			log.Printf("controller parent %s upgrade refused: %v", parent.ServiceRegistrationID, err)
 			return false, err
@@ -441,7 +447,7 @@ func (r *Reconciler) reconcileControllerParent(ctx context.Context, manifest mod
 	// failed/pending row is upgraded idempotently, without a second creation and
 	// without re-running the cold-start start gate.
 	if local.CreationDispatched && local.Report.ObservedState != "ready" {
-		upgraded, upgradeErr := r.upgradeControllerParentFromCurrent(ctx, parent, local.Report.NativeRegistration, materializer, project)
+		upgraded, upgradeErr := r.upgradeControllerParentFromCurrent(ctx, parent, dependency.Projection, local.Report.NativeRegistration, materializer, project)
 		if upgradeErr != nil {
 			return r.failControllerParent(ctx, parent, controllerParentFailureCode(upgradeErr), upgradeErr)
 		}
@@ -465,7 +471,14 @@ func (r *Reconciler) reconcileControllerParent(ctx context.Context, manifest mod
 	request["roleProjection"] = dependency.Projection
 	request["materializerDigest"] = materializer
 	request["readinessSeconds"] = int(controllerParentReadinessWindow / time.Second)
-	if err := r.startControllerParent(ctx, parent, local.Report.NativeRegistration, materializer, project, request); err != nil {
+	if local.Report.NativeRegistration != nil {
+		// A resumed launch binds the retained native source identity; a first
+		// launch learns it from the start receipt instead.
+		if err := addDeepSeekControllerIdentity(request, parent, dependency.Projection, *local.Report.NativeRegistration); err != nil {
+			return r.failControllerParent(ctx, parent, "authority_changed", err)
+		}
+	}
+	if err := r.startControllerParent(ctx, parent, dependency.Projection, local.Report.NativeRegistration, materializer, project, request); err != nil {
 		log.Printf("controller parent %s failed: %v", parent.ServiceRegistrationID, err)
 		return r.failControllerParent(ctx, parent, controllerParentFailureCode(err), err)
 	}
