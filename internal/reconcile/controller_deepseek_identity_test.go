@@ -19,7 +19,9 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/providerpolicy"
@@ -498,6 +500,9 @@ func TestDeepSeekControllerActualSandboxParentJourney(t *testing.T) {
 	if !deepSeekPortFree(port) {
 		t.Skip("contract manager port 18444 is busy")
 	}
+	// The fake ACP launcher persists its session ids so a new launcher process
+	// can prove the retained session-resume path.
+	t.Setenv("WM_FAKE_ACP_SESSIONS", filepath.Join(t.TempDir(), "fake-acp-sessions.log"))
 	root := t.TempDir()
 	projectRoot := filepath.Join(root, "project")
 	if err := os.MkdirAll(projectRoot, 0o700); err != nil {
@@ -786,6 +791,161 @@ func TestDeepSeekControllerActualSandboxParentJourney(t *testing.T) {
 	if again.Status != "failed" || again.Error != "controller_prompt_unknown" {
 		t.Fatalf("second controller-prompt = %s", second)
 	}
+
+	// Unexpected supervisor exit: kill the serve process, keep the durable state,
+	// then reattach with a lookup_only launch and run one more activity.
+	statePath := filepath.Join(root, ".warpmetal", "deepseek-supervisor", parent.Instance, "state.json")
+	stateRaw, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var supervisorState struct {
+		PID       int    `json:"pid"`
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(stateRaw, &supervisorState); err != nil {
+		t.Fatal(err)
+	}
+	if supervisorState.SessionID != startReceipt.SessionID || supervisorState.PID < 1 {
+		t.Fatalf("supervisor state identity = %#v", supervisorState)
+	}
+	if err := syscall.Kill(supervisorState.PID, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for !deepSeekPortFree(port) {
+		if time.Now().After(deadline) {
+			t.Fatalf("killed serve process did not release port %d", port)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	lookupPayload, err := json.Marshal(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lookup map[string]any
+	if err := json.Unmarshal(lookupPayload, &lookup); err != nil {
+		t.Fatal(err)
+	}
+	lookup["sessionMode"] = "lookup_only"
+	var resumed managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(run("start", lookup), &resumed); err != nil {
+		t.Fatal(err)
+	}
+	if resumed.Status != "ready" || !resumed.Ready || resumed.Phase != "running" ||
+		resumed.SessionID != startReceipt.SessionID || resumed.NativeProjectID != startReceipt.NativeProjectID ||
+		resumed.NativeLocationDigest != startReceipt.NativeLocationDigest {
+		t.Fatalf("deepseek resumed start receipt = %#v", resumed)
+	}
+	if err := validateParentNativeReceipt(parent, &resumed, deepSeekPin("3")); err != nil {
+		t.Fatalf("Runtime parent native readback refused the resumed deepseek start: %v", err)
+	}
+	resumedStateRaw, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resumedState struct {
+		Journal []json.RawMessage `json:"journal"`
+	}
+	if err := json.Unmarshal(resumedStateRaw, &resumedState); err != nil {
+		t.Fatal(err)
+	}
+	if len(resumedState.Journal) != len(output.NativeLog) {
+		t.Fatalf("resume lost the retained journal: %d != %d", len(resumedState.Journal), len(output.NativeLog))
+	}
+
+	text2 := "second controller input\n"
+	preparedTuple2 := preparedTuple
+	preparedTuple2.InputID = "input_2"
+	preparedTuple2.InputDigest = fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(text2)))
+	prepareRequest2 := map[string]any{
+		"schemaVersion": 1,
+		"sandboxId":     parent.Owner.SandboxID,
+		"instance":      parent.Instance,
+		"profileId":     "deepseek",
+		"preparationId": "preparation_2",
+		"preparedTuple": preparedTuple2,
+		"credential":    prepareRequest["credential"],
+		"policyDigest":  deepSeekPin("b"),
+	}
+	var prepared2 struct {
+		SchemaVersion   int                             `json:"schemaVersion"`
+		Command         string                          `json:"command"`
+		Status          string                          `json:"status"`
+		PreparedReceipt model.ControllerPreparedReceipt `json:"preparedReceipt"`
+	}
+	if err := model.DecodeControllerTransportReceipt(
+		run("controller-prepare", prepareRequest2), "controller-prepare", &prepared2); err != nil {
+		t.Fatalf("Sandbox controller-prepare receipt refused after resume: %v", err)
+	}
+	headerRequest2 := parentRequest(parent)
+	headerRequest2["preparedReceipt"] = prepared2.PreparedReceipt
+	headerRequest2["policyDigest"] = deepSeekPin("b")
+	var header2 struct {
+		SchemaVersion     int                                      `json:"schemaVersion"`
+		Command           string                                   `json:"command"`
+		Status            string                                   `json:"status"`
+		HeaderObservation model.ControllerAuthorizationObservation `json:"headerObservation"`
+	}
+	if err := model.DecodeControllerTransportReceipt(
+		run("controller-header", headerRequest2), "controller-header", &header2); err != nil {
+		t.Fatalf("Sandbox controller-header refused after resume: %v", err)
+	}
+	if header2.Status != "observed" || header2.HeaderObservation.PreparationID != "preparation_2" {
+		t.Fatalf("resumed controller-header observation = %#v", header2)
+	}
+	admission2 := model.ControllerAdmission{
+		FormatVersion:   1,
+		TargetKind:      "controller_activity",
+		PreparedReceipt: prepared2.PreparedReceipt,
+		Grant: func() model.ControllerActivityGrant {
+			grant := admission.Grant
+			grant.GrantID = "grant_2"
+			grant.PreparationID = "preparation_2"
+			grant.PreparedReceiptDigest = prepared2.PreparedReceipt.PreparedReceiptDigest
+			return grant
+		}(),
+	}
+	promptRequest2 := parentRequest(parent)
+	promptRequest2["admission"] = admission2
+	promptRequest2["text"] = text2
+	var prompt2 struct {
+		SchemaVersion   int             `json:"schemaVersion"`
+		Command         string          `json:"command"`
+		Status          string          `json:"status"`
+		NativeAdmission json.RawMessage `json:"nativeAdmission"`
+	}
+	if err := model.DecodeControllerTransportReceipt(
+		run("controller-prompt", promptRequest2), "controller-prompt", &prompt2); err != nil {
+		t.Fatalf("Sandbox controller-prompt refused after resume: %v", err)
+	}
+	if prompt2.Status != "admitted" || len(prompt2.NativeAdmission) == 0 {
+		t.Fatalf("resumed controller-prompt receipt = %#v", prompt2)
+	}
+	outputRequest2 := parentRequest(parent)
+	outputRequest2["admission"] = admission2
+	var output2 struct {
+		SchemaVersion int                                  `json:"schemaVersion"`
+		Command       string                               `json:"command"`
+		Status        string                               `json:"status"`
+		NativeOutput  model.ControllerOutputNativeReadback `json:"nativeOutput"`
+		NativeLog     []json.RawMessage                    `json:"nativeLog"`
+	}
+	if err := model.DecodeControllerTransportReceipt(
+		run("controller-output", outputRequest2), "controller-output", &output2); err != nil {
+		t.Fatalf("Sandbox controller-output refused after resume: %v", err)
+	}
+	if output2.Status != "observed" || len(output2.NativeLog) <= len(output.NativeLog) {
+		t.Fatalf("resumed controller-output = %s", output2.Status)
+	}
+	capture2 := qualification.ControllerCapture{NativeOutput: output2.NativeOutput, NativeLog: output2.NativeLog}
+	lineage2, err := capture2.Verify(text2, identityJSON, admission2)
+	if err != nil {
+		t.Fatalf("Runtime qualification refused the resumed controller output capture: %v", err)
+	}
+	if lineage2.OutputText != "controller output\n" {
+		t.Fatalf("resumed output lineage = %#v", lineage2)
+	}
 }
 
 func deepSeekPortFree(port int) bool {
@@ -843,6 +1003,23 @@ import json
 import os
 import sys
 
+sessions_path = os.environ.get("WM_FAKE_ACP_SESSIONS")
+
+
+def persisted():
+    try:
+        with open(sessions_path, encoding="utf-8") as stream:
+            return {line.strip() for line in stream if line.strip()}
+    except (OSError, TypeError):
+        return set()
+
+
+def persist(value):
+    if not sessions_path:
+        return
+    with open(sessions_path, "a", encoding="utf-8") as stream:
+        stream.write(value + "\n")
+
 
 def send(value):
     sys.stdout.write(json.dumps(value, separators=(",", ":")) + "\n")
@@ -859,11 +1036,19 @@ for line in sys.stdin:
         continue
     method = message.get("method")
     if method == "initialize":
-        send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": 1, "agentCapabilities": {}}})
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": 1, "agentCapabilities": {"sessionCapabilities": {"resume": {}}}}})
         send({"jsonrpc": "2.0", "id": "permission-1", "method": "session/request_permission", "params": {"options": ["allow", "deny"]}})
     elif method == "session/new":
         session += 1
-        send({"jsonrpc": "2.0", "id": message["id"], "result": {"sessionId": "acp-session-uuid-" + str(session)}})
+        session_id = "acp-session-uuid-" + str(session) + "-" + os.urandom(4).hex()
+        persist(session_id)
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"sessionId": session_id}})
+    elif method in ("session/resume", "session/load"):
+        requested = (message.get("params") or {}).get("sessionId")
+        if requested and requested in persisted():
+            send({"jsonrpc": "2.0", "id": message["id"], "result": {"configOptions": []}})
+        else:
+            send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32002, "message": "session not found"}})
     elif method == "session/prompt":
         os.write(2, b"session/prompt\n")
         send({"jsonrpc": "2.0", "method": "session/update", "params": {
