@@ -30,7 +30,8 @@ func TestManagedServiceExecutionUsesOnlyPackagedSupervisorAndWorker(t *testing.T
 	var literals []string
 	for _, declaration := range parsed.Decls {
 		function, ok := declaration.(*ast.FuncDecl)
-		if !ok || function.Recv == nil || (function.Name.Name != "ExecManagedSupervisor" && function.Name.Name != "ExecManagedWorker") {
+		if !ok || (function.Recv == nil && function.Name.Name != "managedSupervisorLauncher") ||
+			(function.Recv != nil && function.Name.Name != "ExecManagedSupervisor" && function.Name.Name != "ExecManagedWorker") {
 			continue
 		}
 		ast.Inspect(function.Body, func(node ast.Node) bool {
@@ -44,7 +45,7 @@ func TestManagedServiceExecutionUsesOnlyPackagedSupervisorAndWorker(t *testing.T
 		})
 	}
 	joined := " " + strings.Join(literals, " ") + " "
-	for _, required := range []string{" /usr/local/bin/warpmetal-opencode-supervisor ", " /usr/bin/python3 ", " /usr/local/libexec/warpmetal-agent-teams/warpmetal_team_worker.py "} {
+	for _, required := range []string{" /usr/local/bin/warpmetal-opencode-supervisor ", " /usr/local/bin/warpmetal-deepseek-supervisor ", " /usr/bin/python3 ", " /usr/local/libexec/warpmetal-agent-teams/warpmetal_team_worker.py "} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("managed execution is missing fixed target %q: %#v", strings.TrimSpace(required), literals)
 		}
