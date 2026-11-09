@@ -993,6 +993,29 @@ func (p Podman) ExecManager(ctx context.Context, id string, request []byte) ([]b
 	return receipt.Bytes(), diagnostic.Bytes(), err
 }
 
+const (
+	opencodeSupervisorPath = "/usr/local/bin/warpmetal-opencode-supervisor"
+	deepseekSupervisorPath = "/usr/local/bin/warpmetal-deepseek-supervisor"
+)
+
+// managedSupervisorLauncher selects the packaged supervisor for one closed
+// action. The request is bounded and already validated by the caller; only the
+// closed profileId field may select the DeepSeek/ACP supervisor. Unknown or
+// missing profiles stay on the existing OpenCode supervisor.
+func managedSupervisorLauncher(action ManagedSupervisorAction, request []byte) []string {
+	var envelope struct {
+		ProfileID string `json:"profileId"`
+	}
+	if len(request) > 0 && json.Unmarshal(request, &envelope) == nil && envelope.ProfileID == "deepseek" {
+		switch action {
+		case ManagedSupervisorEnroll, ManagedSupervisorStart, ManagedSupervisorRestart, ManagedSupervisorStatus,
+			ManagedSupervisorStop, ManagedSupervisorDrain, ManagedSupervisorCredential, ManagedSupervisorRebind:
+			return []string{deepseekSupervisorPath, string(action)}
+		}
+	}
+	return []string{opencodeSupervisorPath, string(action)}
+}
+
 func (p Podman) ExecManagedSupervisor(ctx context.Context, id string, action ManagedSupervisorAction, request []byte) ([]byte, []byte, error) {
 	switch action {
 	case ManagedSupervisorEnroll, ManagedSupervisorStart, ManagedSupervisorRestart, ManagedSupervisorRebind, ManagedSupervisorCredential,
@@ -1034,7 +1057,7 @@ func (p Podman) ExecManagedSupervisor(ctx context.Context, id string, action Man
 	// bind_workspace -> admit_first_step, and observe/recover/classify_child) as
 	// an unjailed python3 process with credentials and network. Neither runs the
 	// credential-less bwrap tool entrypoint; prepare never admits a first step.
-	launcherCommand := []string{"/usr/local/bin/warpmetal-opencode-supervisor", string(action)}
+	launcherCommand := managedSupervisorLauncher(action, request)
 	if action == ManagedSupervisorCell || action == ManagedSupervisorPrepare {
 		launcherCommand = []string{"/usr/bin/python3", ManagedCellAdapterPath}
 	}
