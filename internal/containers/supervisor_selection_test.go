@@ -7,15 +7,16 @@ import (
 
 func TestManagedSupervisorLauncherSelectsDeepSeekProfile(t *testing.T) {
 	request := []byte(`{"schemaVersion":1,"profileId":"deepseek","instance":"foreman"}`)
-	got := managedSupervisorLauncher(ManagedSupervisorStatus, request)
-	want := []string{"/usr/local/bin/warpmetal-deepseek-supervisor", "status"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("status launcher = %#v, want %#v", got, want)
-	}
-	got = managedSupervisorLauncher(ManagedSupervisorCredential, request)
-	want = []string{"/usr/local/bin/warpmetal-deepseek-supervisor", "credential"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("credential launcher = %#v, want %#v", got, want)
+	for _, action := range []ManagedSupervisorAction{
+		ManagedSupervisorEnroll, ManagedSupervisorStart, ManagedSupervisorRestart, ManagedSupervisorStatus,
+		ManagedSupervisorStop, ManagedSupervisorDrain, ManagedSupervisorCredential, ManagedSupervisorRebind,
+		ManagedSupervisorRegisterSource, ManagedSupervisorControllerPrepare, ManagedSupervisorControllerPrompt,
+	} {
+		got := managedSupervisorLauncher(action, request)
+		want := []string{"/usr/local/bin/warpmetal-deepseek-supervisor", string(action)}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s launcher = %#v, want %#v", action, got, want)
+		}
 	}
 }
 
@@ -35,9 +36,11 @@ func TestManagedSupervisorLauncherKeepsOpenCodeForOtherProfiles(t *testing.T) {
 
 func TestManagedSupervisorLauncherDeepSeekUnsupportedActionFallsBack(t *testing.T) {
 	request := []byte(`{"profileId":"deepseek"}`)
-	got := managedSupervisorLauncher(ManagedSupervisorControllerPrepare, request)
-	want := []string{"/usr/local/bin/warpmetal-opencode-supervisor", "controller-prepare"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("unsupported deepseek action = %#v, want %#v", got, want)
+	for _, action := range []ManagedSupervisorAction{ManagedSupervisorControllerOutput, ManagedSupervisorControllerHeader, ManagedSupervisorCell} {
+		got := managedSupervisorLauncher(action, request)
+		want := []string{"/usr/local/bin/warpmetal-opencode-supervisor", string(action)}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("unsupported deepseek action %s = %#v, want %#v", action, got, want)
+		}
 	}
 }

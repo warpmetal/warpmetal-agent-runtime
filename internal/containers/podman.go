@@ -1004,7 +1004,8 @@ func managedSupervisorLauncher(action ManagedSupervisorAction, request []byte) [
 	if len(request) > 0 && json.Unmarshal(request, &envelope) == nil && envelope.ProfileID == "deepseek" {
 		switch action {
 		case ManagedSupervisorEnroll, ManagedSupervisorStart, ManagedSupervisorRestart, ManagedSupervisorStatus,
-			ManagedSupervisorStop, ManagedSupervisorDrain, ManagedSupervisorCredential, ManagedSupervisorRebind:
+			ManagedSupervisorStop, ManagedSupervisorDrain, ManagedSupervisorCredential, ManagedSupervisorRebind,
+			ManagedSupervisorRegisterSource, ManagedSupervisorControllerPrepare, ManagedSupervisorControllerPrompt:
 			return []string{"/usr/local/bin/warpmetal-deepseek-supervisor", string(action)}
 		}
 	}
