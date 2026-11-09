@@ -1005,7 +1005,8 @@ func managedSupervisorLauncher(action ManagedSupervisorAction, request []byte) [
 		switch action {
 		case ManagedSupervisorEnroll, ManagedSupervisorStart, ManagedSupervisorRestart, ManagedSupervisorStatus,
 			ManagedSupervisorStop, ManagedSupervisorDrain, ManagedSupervisorCredential, ManagedSupervisorRebind,
-			ManagedSupervisorRegisterSource, ManagedSupervisorControllerPrepare, ManagedSupervisorControllerPrompt:
+			ManagedSupervisorRegisterSource, ManagedSupervisorControllerPrepare, ManagedSupervisorControllerPrompt,
+			ManagedSupervisorMaterializeProfile, ManagedSupervisorControllerHeader, ManagedSupervisorControllerOutput:
 			return []string{"/usr/local/bin/warpmetal-deepseek-supervisor", string(action)}
 		}
 	}

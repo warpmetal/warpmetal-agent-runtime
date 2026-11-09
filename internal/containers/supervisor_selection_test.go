@@ -11,6 +11,7 @@ func TestManagedSupervisorLauncherSelectsDeepSeekProfile(t *testing.T) {
 		ManagedSupervisorEnroll, ManagedSupervisorStart, ManagedSupervisorRestart, ManagedSupervisorStatus,
 		ManagedSupervisorStop, ManagedSupervisorDrain, ManagedSupervisorCredential, ManagedSupervisorRebind,
 		ManagedSupervisorRegisterSource, ManagedSupervisorControllerPrepare, ManagedSupervisorControllerPrompt,
+		ManagedSupervisorMaterializeProfile, ManagedSupervisorControllerHeader, ManagedSupervisorControllerOutput,
 	} {
 		got := managedSupervisorLauncher(action, request)
 		want := []string{"/usr/local/bin/warpmetal-deepseek-supervisor", string(action)}
@@ -36,7 +37,7 @@ func TestManagedSupervisorLauncherKeepsOpenCodeForOtherProfiles(t *testing.T) {
 
 func TestManagedSupervisorLauncherDeepSeekUnsupportedActionFallsBack(t *testing.T) {
 	request := []byte(`{"profileId":"deepseek"}`)
-	for _, action := range []ManagedSupervisorAction{ManagedSupervisorControllerOutput, ManagedSupervisorControllerHeader, ManagedSupervisorCell} {
+	for _, action := range []ManagedSupervisorAction{ManagedSupervisorChildHeader, ManagedSupervisorChildEffectCapture, ManagedSupervisorCell} {
 		got := managedSupervisorLauncher(action, request)
 		want := []string{"/usr/local/bin/warpmetal-opencode-supervisor", string(action)}
 		if !reflect.DeepEqual(got, want) {

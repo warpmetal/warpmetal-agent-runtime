@@ -132,6 +132,11 @@ func (s *parentSourceRuntime) ExecManagedSupervisor(_ context.Context, sandbox s
 	instance, _ := request["instance"].(string)
 	receipt := map[string]any{"schemaVersion": 1, "command": string(action), "status": "ready", "ready": true, "sandboxId": sandbox, "instance": instance, "profileId": "opencode", "receiptDigest": "sha256:" + strings.Repeat("a", 64)}
 	if action == containers.ManagedSupervisorMaterializeProfile {
+		// OpenCode profile staging keeps the exact retained wire: the request
+		// names the parent's harness profile and never the DeepSeek identity.
+		if request["profileId"] != s.parents[0].Profile.ProfileID || request["controllerIdentity"] != nil {
+			s.t.Fatalf("bad profile staging request: %#v", request)
+		}
 		receipt["appliedProfile"] = request["expected"]
 		receipt["materializerDigest"] = request["materializerDigest"]
 	} else {

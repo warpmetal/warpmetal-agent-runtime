@@ -8,7 +8,9 @@ package reconcile
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -21,6 +23,7 @@ import (
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/providerpolicy"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/qualification"
 )
 
 const deepSeekInstruction = "controller instruction sentinel\n"
@@ -441,6 +444,38 @@ func runSandboxDeepSeekController(t *testing.T, python, script, root, command st
 	return output
 }
 
+// deepSeekExpertiseBundle builds the exact data-only v1 bundle/manifest pair the
+// Runtime stages for a controller parent profile dependency.
+func deepSeekExpertiseBundle(t *testing.T) (map[string]any, model.AppliedExpertiseProfile) {
+	t.Helper()
+	raw := []byte("# reviewed expertise entry")
+	sha := fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
+	gitBlob := fmt.Sprintf("%x", sha1.Sum(append([]byte(fmt.Sprintf("blob %d\x00", len(raw))), raw...)))
+	manifest := map[string]any{
+		"formatVersion": 1,
+		"repository":    map[string]any{"id": 1, "owner": "warpmetal", "name": "workspace-profiles"},
+		"commitSha":     strings.Repeat("a", 40),
+		"rootTreeSha":   strings.Repeat("b", 40),
+		"approvedPaths": []any{"expert"},
+		"files": []any{map[string]any{
+			"path": "expert/README.md", "gitMode": "100644", "gitBlobSha": gitBlob,
+			"sizeBytes": len(raw), "sha256": sha,
+		}},
+	}
+	bundleDigest := model.WorkspaceDigest(manifest)
+	bundle := map[string]any{
+		"manifest":     manifest,
+		"bundleDigest": bundleDigest,
+		"blobs":        map[string]any{sha: base64.StdEncoding.EncodeToString(raw)},
+	}
+	expected := model.AppliedExpertiseProfile{
+		ApprovedProfile: model.ApprovedExpertiseProfile{ProfileID: "profile_expert", ProfileRevision: 1, ProfileDigest: deepSeekPin("1"), BundleDigest: bundleDigest},
+		EntryPath:       "expert/README.md",
+		Files:           []model.ExpertiseFile{{Path: "expert/README.md", SHA256: sha, ByteCount: int64(len(raw))}},
+	}
+	return bundle, expected
+}
+
 // TestDeepSeekControllerActualSandboxParentJourney runs the exact Runtime wire
 // against the unmodified shipped Sandbox supervisor: start -> native readiness
 // -> register-source -> status.binding -> controller-prepare -> controller-prompt
@@ -482,6 +517,7 @@ func TestDeepSeekControllerActualSandboxParentJourney(t *testing.T) {
 	if err := os.WriteFile(controllerCopy, controllerBytes, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = deepSeekMakeWritable(root) })
 	parent, projection, _, _ := deepSeekControllerFixture()
 	start := map[string]any{
 		"schemaVersion":          1,
@@ -515,6 +551,24 @@ func TestDeepSeekControllerActualSandboxParentJourney(t *testing.T) {
 			"profileId":     parent.Profile.ProfileID,
 		})
 	}()
+
+	bundle, expectedProfile := deepSeekExpertiseBundle(t)
+	stageInstance := "profile-0123456789ab"
+	materializeRequest := map[string]any{
+		"schemaVersion": 1, "sandboxId": parent.Owner.SandboxID, "instance": stageInstance,
+		"profileId": parent.Profile.ProfileID, "expected": expectedProfile, "bundle": bundle,
+		"materializerDigest": deepSeekPin("d"),
+	}
+	var materializeReceipt managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(run("materialize-profile", materializeRequest), &materializeReceipt); err != nil {
+		t.Fatal(err)
+	}
+	if materializeReceipt.SchemaVersion != 1 || materializeReceipt.Command != "materialize-profile" || materializeReceipt.Status != "ready" ||
+		!materializeReceipt.Ready || materializeReceipt.SandboxID != parent.Owner.SandboxID || materializeReceipt.Instance != stageInstance ||
+		materializeReceipt.MaterializerDigest != deepSeekPin("d") || materializeReceipt.AppliedProfile == nil ||
+		!reflect.DeepEqual(*materializeReceipt.AppliedProfile, expectedProfile) {
+		t.Fatalf("deepseek materialize-profile receipt = %#v", materializeReceipt)
+	}
 
 	var startReceipt managedSupervisorReceipt
 	if err := decodeManagedSupervisorReceipt(run("start", start), &startReceipt); err != nil {
@@ -636,6 +690,30 @@ func TestDeepSeekControllerActualSandboxParentJourney(t *testing.T) {
 	if prepared.Status != "prepared" || prepared.PreparedReceipt.Validate() != nil || !reflect.DeepEqual(prepared.PreparedReceipt.PreparedTuple, preparedTuple) {
 		t.Fatalf("Sandbox controller-prepare receipt = %#v", prepared)
 	}
+	headerRequest := parentRequest(parent)
+	headerRequest["preparedReceipt"] = prepared.PreparedReceipt
+	headerRequest["policyDigest"] = deepSeekPin("b")
+	var header struct {
+		SchemaVersion     int                                      `json:"schemaVersion"`
+		Command           string                                   `json:"command"`
+		Status            string                                   `json:"status"`
+		HeaderObservation model.ControllerAuthorizationObservation `json:"headerObservation"`
+	}
+	headerRaw := run("controller-header", headerRequest)
+	if err := model.DecodeControllerTransportReceipt(headerRaw, "controller-header", &header); err != nil {
+		t.Fatalf("Sandbox controller-header receipt refused by the Runtime decoder: %v", err)
+	}
+	if header.Status != "observed" || header.HeaderObservation.FormatVersion != 1 ||
+		header.HeaderObservation.TargetKind != "controller_authorization" ||
+		header.HeaderObservation.PreparationID != prepared.PreparedReceipt.PreparationID ||
+		header.HeaderObservation.PreparedReceiptDigest != prepared.PreparedReceipt.PreparedReceiptDigest ||
+		!strings.HasPrefix(header.HeaderObservation.AuthorizationSHA256, "sha256:") || len(header.HeaderObservation.AuthorizationSHA256) != 71 {
+		t.Fatalf("Sandbox controller-header observation = %#v", header)
+	}
+	if replay := run("controller-header", headerRequest); !bytes.Equal(replay, headerRaw) {
+		t.Fatalf("controller-header replay changed: %s vs %s", replay, headerRaw)
+	}
+
 	admission := model.ControllerAdmission{
 		FormatVersion:   1,
 		TargetKind:      "controller_activity",
@@ -663,6 +741,36 @@ func TestDeepSeekControllerActualSandboxParentJourney(t *testing.T) {
 	if prompt.Status != "admitted" || len(prompt.NativeAdmission) == 0 || bytes.Equal(bytes.TrimSpace(prompt.NativeAdmission), []byte("null")) {
 		t.Fatalf("Sandbox controller-prompt receipt = %#v", prompt)
 	}
+	outputRequest := parentRequest(parent)
+	outputRequest["admission"] = admission
+	var output struct {
+		SchemaVersion int                                  `json:"schemaVersion"`
+		Command       string                               `json:"command"`
+		Status        string                               `json:"status"`
+		NativeOutput  model.ControllerOutputNativeReadback `json:"nativeOutput"`
+		NativeLog     []json.RawMessage                    `json:"nativeLog"`
+	}
+	outputRaw := run("controller-output", outputRequest)
+	if err := model.DecodeControllerTransportReceipt(outputRaw, "controller-output", &output); err != nil {
+		t.Fatalf("Sandbox controller-output receipt refused by the Runtime decoder: %v\n%s", err, outputRaw)
+	}
+	if output.Status != "observed" {
+		t.Fatalf("Sandbox controller-output status = %q", output.Status)
+	}
+	identityJSON, _ := json.Marshal(expectedNative)
+	capture := qualification.ControllerCapture{NativeOutput: output.NativeOutput, NativeLog: output.NativeLog}
+	lineage, err := capture.Verify(text, identityJSON, admission)
+	if err != nil {
+		t.Fatalf("Runtime qualification refused the DSH controller output capture: %v", err)
+	}
+	if lineage.OutputText != "controller output\n" || lineage.TerminalOutcome != "succeeded" ||
+		lineage.AssistantModel.ProviderID != providerpolicy.Flash().ProviderID || lineage.AssistantModel.ID != providerpolicy.Flash().ModelID {
+		t.Fatalf("DSH controller output lineage = %#v", lineage)
+	}
+	if replay := run("controller-output", outputRequest); !bytes.Equal(replay, outputRaw) {
+		t.Fatalf("controller-output replay changed")
+	}
+
 	acpLog, err := os.ReadFile(filepath.Join(root, ".warpmetal", "deepseek-supervisor", parent.Instance, "acp.log"))
 	if err != nil || !bytes.Contains(acpLog, []byte("session/prompt")) {
 		t.Fatalf("deepseek prompt did not reach the ACP transport: %v", err)
@@ -758,7 +866,27 @@ for line in sys.stdin:
         send({"jsonrpc": "2.0", "id": message["id"], "result": {"sessionId": "acp-session-uuid-" + str(session)}})
     elif method == "session/prompt":
         os.write(2, b"session/prompt\n")
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {
+            "sessionId": message["params"]["sessionId"],
+            "update": {"sessionUpdate": "agent_message_chunk", "messageId": "msg_test",
+                       "content": {"type": "text", "text": "controller output\n"}}}})
         send({"jsonrpc": "2.0", "id": message["id"], "result": {"stopReason": "end_turn"}})
     else:
         send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32601, "message": "unknown method"}})
 `
+
+// deepSeekMakeWritable restores test-only permissions on the immutable expertise
+// publication so the temporary sandbox root can be removed.
+func deepSeekMakeWritable(root string) error {
+	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		mode := os.FileMode(0o600)
+		if info.IsDir() {
+			mode = 0o700
+		}
+		_ = os.Chmod(path, mode)
+		return nil
+	})
+}

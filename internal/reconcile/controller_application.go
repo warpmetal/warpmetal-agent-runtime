@@ -312,7 +312,7 @@ func (r *Reconciler) stageControllerApplicationProfiles(ctx context.Context, op 
 			return err
 		}
 		request, err := json.Marshal(map[string]any{"schemaVersion": 1, "sandboxId": op.SandboxID,
-			"instance": stageInstance, "profileId": "opencode", "expected": profile, "bundle": bundle,
+			"instance": stageInstance, "profileId": parent.Profile.ProfileID, "expected": profile, "bundle": bundle,
 			"materializerDigest": materializer})
 		if err != nil || len(request) > 2*1024*1024 {
 			return errors.Join(err, errors.New("application profile input exceeds bound"))
