@@ -128,7 +128,11 @@ func (r ControllerPreparedReceipt) Validate() error {
 	if err := r.validateWire(); err != nil {
 		return err
 	}
-	if r.PreparedTuple.Authority != (CellPreparedAuthorityV3{ProviderID: "openai", ModelID: "gpt-4.1-mini-2025-04-14", AuthMode: "api_key"}) {
+	// Controller executable authority is the owner-authored DeepSeek Flash
+	// policy (deepseek/deepseek-flash/api_key); it is pinned by the embedded
+	// provider descriptor digest, never by a caller-supplied model string.
+	p := providerpolicy.Flash()
+	if r.PreparedTuple.Authority != (CellPreparedAuthorityV3{ProviderID: p.ProviderID, ModelID: p.ModelID, AuthMode: p.AuthMode}) {
 		return errors.New("controller executable model denied")
 	}
 	return nil
