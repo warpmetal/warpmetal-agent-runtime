@@ -230,9 +230,19 @@ func (runtime *deepSeekManagedRuntime) startInvocation(t *testing.T) managedInvo
 	return managedInvocation{}
 }
 
-// runDeepSeekManagedServiceJourney seeds one ready profile/project and runs the
-// production managed-service reconciliation for the DeepSeek manager.
-func runDeepSeekManagedServiceJourney(t *testing.T, fixture producerFixture, runtime *deepSeekManagedRuntime) *state.Store {
+// deepSeekManagedJourney is one seeded production managed-service boundary.
+// The desired manifest is the exact value the reconciler consumes, so a caller
+// can drive the identical Sandbox requests and lifecycle transitions.
+type deepSeekManagedJourney struct {
+	reconciler *Reconciler
+	manifest   model.Manifest
+	desired    model.ManagedServiceV1
+	store      *state.Store
+}
+
+// newDeepSeekManagedJourney seeds one ready profile/project and builds the
+// production reconciler for the DeepSeek manager.
+func newDeepSeekManagedJourney(t *testing.T, fixture producerFixture, runtime *deepSeekManagedRuntime) *deepSeekManagedJourney {
 	t.Helper()
 	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
 	if err != nil {
@@ -264,14 +274,44 @@ func runDeepSeekManagedServiceJourney(t *testing.T, fixture producerFixture, run
 		ServerID: fixture.ServiceManifest.Identity.ServerID, DesiredRevision: fixture.ServiceManifest.DesiredRevision,
 		ManagedServices: []model.ManagedServiceV1{fixture.ServiceManifest},
 	}
-	reconciler.setCurrentAuthority(manifest)
-	if _, err := reconciler.reconcileManagedServices(context.Background(), manifest); err != nil {
-		t.Fatalf("DeepSeek managed-service start refused: %v", err)
+	return &deepSeekManagedJourney{reconciler: reconciler, manifest: manifest, desired: fixture.ServiceManifest, store: store}
+}
+
+// reconcile runs one production managed-service reconciliation pass for the
+// requested desired state and returns the durable row.
+func (journey *deepSeekManagedJourney) reconcile(t *testing.T, desiredState string) *state.LocalManagedService {
+	t.Helper()
+	desired := journey.desired
+	if desired.DesiredState != desiredState {
+		// Every lifecycle intent the backend issues carries a fresh action
+		// revision; the store refuses a same-revision manifest change.
+		desired.DesiredState = desiredState
+		desired.ActionRevision++
+		desired.DesiredRevision++
 	}
-	local, err := store.ManagedService(context.Background(), fixture.ServiceManifest.Identity.ServiceRegistrationID)
-	if err != nil || local == nil || local.Phase != "ready" || local.ErrorCode != "" ||
+	journey.desired = desired
+	journey.manifest.DesiredRevision = desired.DesiredRevision
+	journey.manifest.ManagedServices = []model.ManagedServiceV1{desired}
+	journey.reconciler.setCurrentAuthority(journey.manifest)
+	if _, err := journey.reconciler.reconcileManagedServices(context.Background(), journey.manifest); err != nil {
+		t.Fatalf("DeepSeek managed-service %s reconcile refused: %v", desiredState, err)
+	}
+	local, err := journey.store.ManagedService(context.Background(), desired.Identity.ServiceRegistrationID)
+	if err != nil || local == nil {
+		t.Fatalf("DeepSeek managed-service %s durable row = %#v, %v", desiredState, local, err)
+	}
+	return local
+}
+
+// runDeepSeekManagedServiceJourney seeds one ready profile/project and runs the
+// production managed-service reconciliation for the DeepSeek manager.
+func runDeepSeekManagedServiceJourney(t *testing.T, fixture producerFixture, runtime *deepSeekManagedRuntime) *state.Store {
+	t.Helper()
+	journey := newDeepSeekManagedJourney(t, fixture, runtime)
+	local := journey.reconcile(t, "active")
+	if local.Phase != "ready" || local.ErrorCode != "" ||
 		local.Report.ObservedState != "ready" || local.Report.NativeRegistration == nil {
-		t.Fatalf("DeepSeek managed-service durable report = %#v, %v", local, err)
+		t.Fatalf("DeepSeek managed-service durable report = %#v", local)
 	}
 	raw := runtime.returned[containers.ManagedSupervisorStart]
 	var started managedSupervisorReceipt
@@ -283,7 +323,7 @@ func runDeepSeekManagedServiceJourney(t *testing.T, fixture producerFixture, run
 		local.Report.NativeRegistration.NativeLocationDigest != started.NativeLocationDigest {
 		t.Fatalf("DeepSeek managed-service native registration = %#v, start = %#v", local.Report.NativeRegistration, started)
 	}
-	return store
+	return journey.store
 }
 
 func TestDeepSeekManagedServiceStartResolvesCapabilityWithoutPlugin(t *testing.T) {
@@ -397,8 +437,6 @@ func TestDeepSeekManagedServiceActualSandboxReceipts(t *testing.T) {
 	t.Cleanup(func() { _ = deepSeekMakeWritable(root) })
 
 	fixture := deepSeekManagerFixture(t)
-	desired := fixture.ServiceManifest
-	desired.Identity.Instance = "default"
 	instruction := fixture.InstructionResponse
 
 	// The managed enrollment exchange is a real signed loopback HTTPS exchange;
@@ -406,28 +444,32 @@ func TestDeepSeekManagedServiceActualSandboxReceipts(t *testing.T) {
 	enrollment := fixture.EnrollmentResponse
 	enrollment.EnrollmentToken = "ten_" + strings.Repeat("a", 32)
 	enrollment.EnrollmentExpiresAt = time.Now().UTC().Add(time.Minute)
-	exchange := newDeepSeekEnrollmentExchange(t, desired.Identity.Role)
+	exchange := newDeepSeekEnrollmentExchange(t, fixture.ServiceManifest.Identity.Role)
 	env := append(os.Environ(), "SSL_CERT_FILE="+exchange.certPath, "WM_FAKE_ACP_SESSIONS="+os.Getenv("WM_FAKE_ACP_SESSIONS"))
-	enrollPayload, err := json.Marshal(managedEnrollmentRequest(desired, enrollment, model.ManagedServiceProcessInstance(desired.Identity.Instance, desired.Identity.ExpectedServiceGeneration), exchange.endpoint))
-	if err != nil {
-		t.Fatal(err)
+
+	// The production journey owns the catalog-resolved desired manifest. Drive
+	// the Sandbox with exactly that value so every actual receipt is a byte the
+	// production reconciliation accepts.
+	runtime := &deepSeekManagedRuntime{}
+	journey := newDeepSeekManagedJourney(t, fixture, runtime)
+	desired := journey.desired
+	if desired.Profile.ProfileID != "deepseek" {
+		t.Fatalf("managed journey profile = %q", desired.Profile.ProfileID)
 	}
-	enrollRaw, enrollExit := runDeepSeekContractSupervisor(t, python, supervisor, root, launcher, env, containers.ManagedSupervisorEnroll, enrollPayload)
-	if enrollExit != 0 {
-		// The receipt is the contract; the shipped supervisor currently exits
-		// nonzero for a successful "enrolled" status (EXIT_OK does not list it).
-		// The Runtime's podman boundary reports that exit as enrollment_failed,
-		// so this is a Sandbox-side gap, recorded instead of hidden.
-		t.Logf("sandbox enroll exited %d with a valid %s receipt", enrollExit, "enrolled")
-	}
+	processInstance := model.ManagedServiceProcessInstance(desired.Identity.Instance, desired.Identity.ExpectedServiceGeneration)
+
+	enrollRaw, enrollExit := runDeepSeekContractSupervisor(t, python, supervisor, root, launcher, env, containers.ManagedSupervisorEnroll,
+		deepSeekMustJSON(t, managedEnrollmentRequest(desired, enrollment, processInstance, exchange.endpoint)))
 	var enrolled managedSupervisorReceipt
 	if err := decodeManagedSupervisorReceipt(enrollRaw, &enrolled); err != nil {
 		t.Fatalf("actual Sandbox enroll receipt refused by the Runtime decoder: %v\n%s", err, enrollRaw)
 	}
-	if enrolled.SchemaVersion != 1 || enrolled.Command != "enroll" || enrolled.Status != "enrolled" ||
+	assertDeepSeekReceiptClosed(t, "enroll", enrollRaw)
+	if enrollExit != 0 || enrolled.SchemaVersion != 1 || enrolled.Command != "enroll" ||
+		(enrolled.Status != "enrolled" && enrolled.Status != "refreshed") ||
 		!enrolled.Stored || !enrolled.LeaseTokenPresent || enrolled.LeaseExpired ||
 		enrolled.LeaseRole != desired.Identity.Role || enrolled.Generation != desired.Identity.SandboxGeneration {
-		t.Fatalf("actual Sandbox enroll receipt = %#v", enrolled)
+		t.Fatalf("actual Sandbox enroll receipt (exit %d) = %#v", enrollExit, enrolled)
 	}
 	if len(exchange.requests) != 1 || exchange.requests[0] != "/internal/runtime/agent-teams/enrollments/exchange" {
 		t.Fatalf("actual Sandbox enrollment exchange requests = %#v", exchange.requests)
@@ -444,6 +486,7 @@ func TestDeepSeekManagedServiceActualSandboxReceipts(t *testing.T) {
 	if err := decodeManagedSupervisorReceipt(rebindRaw, &rebound); err != nil {
 		t.Fatalf("actual Sandbox rebind receipt refused by the Runtime decoder: %v", err)
 	}
+	assertDeepSeekReceiptClosed(t, "rebind", rebindRaw)
 	if rebound.Command != "rebind" || rebound.Status != "applied" || !rebound.Applied || rebound.Restarted {
 		t.Fatalf("actual Sandbox rebind receipt = %#v", rebound)
 	}
@@ -458,9 +501,8 @@ func TestDeepSeekManagedServiceActualSandboxReceipts(t *testing.T) {
 	}
 
 	stop := func() {
-		_, _ = runDeepSeekContractSupervisor(t, python, supervisor, root, launcher, env, containers.ManagedSupervisorStop, deepSeekMustJSON(t, map[string]any{
-			"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance, "profileId": "deepseek",
-		}))
+		_, _ = runDeepSeekContractSupervisor(t, python, supervisor, root, launcher, env, containers.ManagedSupervisorStop,
+			deepSeekMustJSON(t, managedLifecycleRequest(desired)))
 	}
 	defer stop()
 
@@ -479,6 +521,7 @@ func TestDeepSeekManagedServiceActualSandboxReceipts(t *testing.T) {
 	if err := decodeManagedSupervisorReceipt(startRaw, &started); err != nil {
 		t.Fatalf("actual Sandbox start receipt refused by the Runtime decoder: %v\n%s", err, startRaw)
 	}
+	assertDeepSeekReceiptClosed(t, "start", startRaw)
 	if startExit != 0 || started.SchemaVersion != 1 || started.Command != "start" ||
 		(started.Status != "ready" && started.Status != "already_running") || !started.Ready || started.Phase != "running" ||
 		started.Instance != desired.Identity.Instance || started.SandboxID != desired.Identity.SandboxID ||
@@ -496,6 +539,7 @@ func TestDeepSeekManagedServiceActualSandboxReceipts(t *testing.T) {
 	if err := decodeManagedSupervisorReceipt(statusRaw, &current); err != nil {
 		t.Fatalf("actual Sandbox status receipt refused by the Runtime decoder: %v\n%s", err, statusRaw)
 	}
+	assertDeepSeekReceiptClosed(t, "status", statusRaw)
 	if statusExit != 0 || current.Command != "status" || current.Status != "running" || !current.Ready ||
 		current.SessionID != started.SessionID || current.NativeProjectID != started.NativeProjectID ||
 		current.NativeLocationDigest != started.NativeLocationDigest ||
@@ -504,23 +548,94 @@ func TestDeepSeekManagedServiceActualSandboxReceipts(t *testing.T) {
 		t.Fatalf("actual Sandbox DeepSeek status receipt = %#v", current)
 	}
 
+	// The managed-service source registration is the Runtime's closed
+	// formatVersion 1 document, bound by the Sandbox to the running native
+	// process and the live lease.
+	registerRaw, registerExit := runDeepSeekContractSupervisor(t, python, supervisor, root, launcher, env, containers.ManagedSupervisorRegisterSource,
+		deepSeekMustJSON(t, managedSourceRegistrationRequest(desired, managedSourceID(desired.Identity.ServiceRegistrationID), started, instruction)))
+	var registered managedSourceRegistrationReceipt
+	if err := decodeManagedReceipt(registerRaw, &registered, true); err != nil {
+		t.Fatalf("actual Sandbox register-source receipt refused by the Runtime decoder: %v\n%s", err, registerRaw)
+	}
+	assertDeepSeekReceiptClosed(t, "register-source", registerRaw)
+	if registerExit != 0 || registered.SchemaVersion != 1 || registered.Command != "register-source" ||
+		(registered.Status != "registered" && registered.Status != "unchanged") || registered.Ready ||
+		registered.Instance != desired.Identity.Instance || registered.SandboxID != desired.Identity.SandboxID ||
+		registered.ProfileID != "deepseek" || registered.ServiceRegistrationID != desired.Identity.ServiceRegistrationID ||
+		registered.ServiceGeneration != desired.Identity.ExpectedServiceGeneration ||
+		registered.RegisteredSourceID != managedSourceID(desired.Identity.ServiceRegistrationID) ||
+		registered.WorkspaceEpoch != desired.Workspace.WorkspaceEpoch ||
+		registered.NativeSessionID != started.SessionID || registered.NativeProjectID != started.NativeProjectID ||
+		registered.NativeLocationDigest != started.NativeLocationDigest ||
+		registered.ProfileRevision != desired.Profile.ProfileRevision || registered.ProfileDigest != desired.Profile.ProfileDigest ||
+		registered.InstructionRevision != instruction.InstructionRevision || registered.InstructionDigest != instruction.InstructionDigest {
+		t.Fatalf("actual Sandbox register-source receipt = %#v", registered)
+	}
+
+	// Drain keeps the instance resumable; Stop removes it. Both flow through the
+	// production inactive transition payload.
+	drainRaw, drainExit := runDeepSeekContractSupervisor(t, python, supervisor, root, launcher, env, containers.ManagedSupervisorDrain, deepSeekMustJSON(t, managedLifecycleRequest(desired)))
+	var drained managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(drainRaw, &drained); err != nil {
+		t.Fatalf("actual Sandbox drain receipt refused by the Runtime decoder: %v\n%s", err, drainRaw)
+	}
+	assertDeepSeekReceiptClosed(t, "drain", drainRaw)
+	if drainExit != 0 || drained.Command != "drain" || drained.Status != "drained" || drained.Ready || !drained.Drained {
+		t.Fatalf("actual Sandbox drain receipt = %#v", drained)
+	}
+	stopRaw, stopExit := runDeepSeekContractSupervisor(t, python, supervisor, root, launcher, env, containers.ManagedSupervisorStop, deepSeekMustJSON(t, managedLifecycleRequest(desired)))
+	var stopped managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(stopRaw, &stopped); err != nil {
+		t.Fatalf("actual Sandbox stop receipt refused by the Runtime decoder: %v\n%s", err, stopRaw)
+	}
+	assertDeepSeekReceiptClosed(t, "stop", stopRaw)
+	if stopExit != 0 || stopped.Command != "stop" || (stopped.Status != "stopped" && stopped.Status != "not_running") || stopped.Ready {
+		t.Fatalf("actual Sandbox stop receipt = %#v", stopped)
+	}
+
 	// The actual receipts are exactly the bytes the production journey consumes.
-	runtime := &deepSeekManagedRuntime{receipts: map[containers.ManagedSupervisorAction][]byte{
-		containers.ManagedSupervisorEnroll: enrollRaw,
-		containers.ManagedSupervisorRebind: rebindRaw,
-		containers.ManagedSupervisorStart:  startRaw,
-		containers.ManagedSupervisorStatus: statusRaw,
-	}}
-	store := runDeepSeekManagedServiceJourney(t, fixture, runtime)
-	capability, err := store.ManagerCapability(context.Background(), managedSourceID(desired.Identity.ServiceRegistrationID))
+	runtime.receipts = map[containers.ManagedSupervisorAction][]byte{
+		containers.ManagedSupervisorEnroll:         enrollRaw,
+		containers.ManagedSupervisorRebind:         rebindRaw,
+		containers.ManagedSupervisorStart:          startRaw,
+		containers.ManagedSupervisorStatus:         statusRaw,
+		containers.ManagedSupervisorRegisterSource: registerRaw,
+		containers.ManagedSupervisorDrain:          drainRaw,
+		containers.ManagedSupervisorStop:           stopRaw,
+	}
+	local := journey.reconcile(t, "active")
+	if local.Phase != "ready" || local.ErrorCode != "" || local.Report.ObservedState != "ready" ||
+		local.Report.ProfileStatus != "ready" || local.Report.EnrollmentStatus != "ready" || local.Report.NativeRegistration == nil ||
+		local.Report.NativeRegistration.NativeSessionID != started.SessionID ||
+		local.Report.NativeRegistration.NativeProjectID != started.NativeProjectID ||
+		local.Report.NativeRegistration.NativeLocationDigest != started.NativeLocationDigest {
+		t.Fatalf("actual Sandbox DeepSeek durable ready report = %#v", local)
+	}
+	capability, err := journey.store.ManagerCapability(context.Background(), managedSourceID(desired.Identity.ServiceRegistrationID))
 	if err != nil || capability == nil {
 		t.Fatalf("DeepSeek manager capability = %#v, %v", capability, err)
 	}
 	if capability.ManagerPluginDigest != "" || capability.ManagerProfile != (model.InsightsManagerProfileV1{}) ||
-		capability.Available || capability.ProviderID != providerpolicy.Flash().ProviderID ||
-		capability.ModelID != providerpolicy.Flash().ModelID {
+		len(capability.RecipeIDs) != 0 || capability.Available || capability.Reason != "" ||
+		capability.Protocol != deepSeekManagerProtocol ||
+		capability.NativeProtocol != providerpolicy.Flash().Transport.Protocol ||
+		capability.ProviderID != providerpolicy.Flash().ProviderID ||
+		capability.ModelID != providerpolicy.Flash().ModelID ||
+		!setupReceiptDigestPattern.MatchString(capability.ProviderRouteDigest) ||
+		capability.NativeSourceRevision != "" {
 		t.Fatalf("actual Sandbox DeepSeek manager capability = %#v", capability)
 	}
+
+	// The production inactive transitions consume the actual drain/stop receipts.
+	if paused := journey.reconcile(t, "paused"); paused.Phase != "paused" || paused.ErrorCode != "" ||
+		paused.Report.ObservedState != "paused" || paused.Report.WorkerStatus != "paused" {
+		t.Fatalf("actual Sandbox DeepSeek paused report = %#v", paused)
+	}
+	if ended := journey.reconcile(t, "stopped"); ended.Phase != "stopped" || ended.ErrorCode != "" ||
+		ended.Report.ObservedState != "stopped" || ended.Report.WorkerStatus != "stopped" {
+		t.Fatalf("actual Sandbox DeepSeek stopped report = %#v", ended)
+	}
+
 	// A real receipt that omits the runtime-pinned profile revision is refused,
 	// proving success above depended on the exact launch tuple.
 	withoutRevision := make(map[string]any, len(startRequest))
@@ -536,6 +651,21 @@ func TestDeepSeekManagedServiceActualSandboxReceipts(t *testing.T) {
 	}
 	if legacy.ProfileRevision == desired.Profile.ProfileRevision {
 		t.Fatalf("revision-less Sandbox start receipt unexpectedly proved the requested profile: %#v", legacy)
+	}
+}
+
+// assertDeepSeekReceiptClosed proves the actual Sandbox receipt carries only
+// fields the Runtime's closed managed-supervisor decoder accepts.
+func assertDeepSeekReceiptClosed(t *testing.T, name string, raw []byte) {
+	t.Helper()
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatalf("%s receipt is not a JSON object: %v", name, err)
+	}
+	for field := range fields {
+		if !managedSupervisorReceiptFields[field] {
+			t.Fatalf("%s receipt has unknown field %q", name, field)
+		}
 	}
 }
 

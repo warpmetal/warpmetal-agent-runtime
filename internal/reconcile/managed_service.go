@@ -373,6 +373,16 @@ func managedStatusRequest(desired model.ManagedServiceV1) map[string]any {
 	return request
 }
 
+// managedLifecycleRequest is the single closed inactive transition (Drain/Stop)
+// request the Runtime emits. The grace window is the Runtime's fixed bound; the
+// Sandbox supervisor owns the actual signal escalation.
+func managedLifecycleRequest(desired model.ManagedServiceV1) map[string]any {
+	return map[string]any{
+		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
+		"profileId": desired.Profile.ProfileID, "graceSeconds": 15,
+	}
+}
+
 // managedStartupMonitorIntent resolves the explicit monitor intent for one
 // actual spawn from the current authenticated policy read. Startup permission
 // is the fresh per-sandbox entry plus the pinned retained source/session.
@@ -1104,8 +1114,11 @@ func verifyCellManagerRoute(observed managedSupervisorReceipt, binding managedMa
 	return nil
 }
 
-func (r *Reconciler) registerManagedSource(ctx context.Context, desired model.ManagedServiceV1, registeredSourceID string, native managedSupervisorReceipt, instruction model.ManagedServiceInstructionV1) ([]byte, error) {
-	request := map[string]any{
+// managedSourceRegistrationRequest is the single closed managed-service source
+// registration request the Runtime emits. The shipped Sandbox supervisors bind
+// every advertised fact back to the running native process before accepting it.
+func managedSourceRegistrationRequest(desired model.ManagedServiceV1, registeredSourceID string, native managedSupervisorReceipt, instruction model.ManagedServiceInstructionV1) map[string]any {
+	return map[string]any{
 		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
 		"profileId": desired.Profile.ProfileID,
 		"registration": map[string]any{
@@ -1125,6 +1138,10 @@ func (r *Reconciler) registerManagedSource(ctx context.Context, desired model.Ma
 			},
 		},
 	}
+}
+
+func (r *Reconciler) registerManagedSource(ctx context.Context, desired model.ManagedServiceV1, registeredSourceID string, native managedSupervisorReceipt, instruction model.ManagedServiceInstructionV1) ([]byte, error) {
+	request := managedSourceRegistrationRequest(desired, registeredSourceID, native, instruction)
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return nil, err
@@ -1205,7 +1222,7 @@ func (r *Reconciler) reconcileManagedServiceInactive(ctx context.Context, desire
 		action = containers.ManagedSupervisorStop
 		expectedStatus = "stopped"
 	}
-	payload, _ := json.Marshal(map[string]any{"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance, "profileId": desired.Profile.ProfileID, "graceSeconds": 15})
+	payload, _ := json.Marshal(managedLifecycleRequest(desired))
 	receipt, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, desired.Identity.SandboxID, action, payload)
 	if err != nil {
 		return r.failManagedService(ctx, desired, "lifecycle_action_failed", err)
