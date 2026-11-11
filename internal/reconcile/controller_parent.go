@@ -466,7 +466,7 @@ func (r *Reconciler) reconcileControllerParent(ctx context.Context, manifest mod
 	if parent.Role == "orchestrator" {
 		port = 18445
 	}
-	request := managedLaunchComposition{SandboxID: parent.Owner.SandboxID, Instance: parent.Instance, ProfileID: parent.Profile.ProfileID, ProfileDigest: parent.Profile.ProfileDigest, Version: installed.Materializer.Bin.Version, Port: port, ProjectRoot: project.ContainerRoot, SessionMode: mode, InstructionText: instruction.Content, InstructionDigest: instruction.InstructionDigest, InstructionRevision: instruction.InstructionRevision, RuntimeContractVersion: parent.RuntimeContractVersion}.request()
+	request := managedLaunchComposition{SandboxID: parent.Owner.SandboxID, Instance: parent.Instance, ProfileID: parent.Profile.ProfileID, ProfileDigest: parent.Profile.ProfileDigest, ProfileRevision: parent.Profile.ProfileRevision, Version: installed.Materializer.Bin.Version, Port: port, ProjectRoot: project.ContainerRoot, SessionMode: mode, InstructionText: instruction.Content, InstructionDigest: instruction.InstructionDigest, InstructionRevision: instruction.InstructionRevision, RuntimeContractVersion: parent.RuntimeContractVersion}.request()
 	request["controllerParent"] = parent
 	request["roleProjection"] = dependency.Projection
 	request["materializerDigest"] = materializer

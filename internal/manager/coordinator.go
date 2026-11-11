@@ -390,6 +390,14 @@ func (c *Coordinator) policyReport(ctx context.Context, policy model.InsightsMan
 		if capability.SandboxID != policy.SandboxID || capability.SandboxGeneration != policy.SandboxGeneration {
 			continue
 		}
+		// The recommend-capability wire contract is the OpenCode manager plugin
+		// envelope (protocol, manager profile and recipes are all required). A
+		// DeepSeek/ACP manager owns none of that proof, so it is never published
+		// as a recommend capability; its local capability stays explicitly
+		// unavailable and every consumer already fails closed on Available.
+		if !reportableManagerCapability(capability) {
+			continue
+		}
 		source, sourceErr := c.Store.ContinuitySource(ctx, capability.RegisteredSourceID)
 		currentSource := sourceErr == nil && source != nil && source.Lifecycle == "running" && source.Report.Availability == "available" &&
 			source.Report.SandboxGeneration == policy.SandboxGeneration && source.Report.ServiceGeneration == capability.ServiceGeneration &&
@@ -451,6 +459,15 @@ func (c *Coordinator) policyReport(ctx context.Context, policy model.InsightsMan
 	report := model.InsightsManagerPolicyReportV1{FormatVersion: 1, SandboxID: policy.SandboxID, SandboxGeneration: policy.SandboxGeneration, PolicyRevision: policy.PolicyRevision, RunGeneration: policy.RunGeneration, Status: status, Recommend: c.policyRollup(policy, reports), RecommendCapabilities: reports}
 	report.ReceiptDigest = digestJSON(report)
 	return report, nil
+}
+
+// reportableManagerCapability reports whether one local capability can be
+// represented by the closed InsightsManagerRecommendCapabilityV1 wire contract.
+// That contract carries the OpenCode manager plugin protocol, profile and
+// recipes. A DeepSeek/ACP manager deliberately owns none of that plugin proof,
+// so publishing it as a recommend capability would fabricate it.
+func reportableManagerCapability(value state.LocalManagerCapability) bool {
+	return value.Protocol == "opencode-supervisor/1"
 }
 
 // policyRollup derives the policy-level recommend capability from the exact

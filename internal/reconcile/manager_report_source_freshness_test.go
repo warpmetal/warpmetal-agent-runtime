@@ -220,3 +220,63 @@ func TestReconcileReportPreservesFreshSourceAvailability(t *testing.T) {
 		})
 	}
 }
+
+// TestReconcileReportOmitsDeepSeekManagerCapability pins the closed wire
+// boundary of the policy report: the recommend-capability contract carries the
+// OpenCode manager plugin proof (protocol, manager profile and recipes). A
+// DeepSeek/ACP capability owns none of that proof and is explicitly
+// unavailable, so it is never published as a recommend capability; the
+// OpenCode capability in the same sandbox is still reported unchanged.
+func TestReconcileReportOmitsDeepSeekManagerCapability(t *testing.T) {
+	journey := newManagerPolicyJourney(t)
+	ctx := context.Background()
+	openCode, err := journey.store.ManagerCapability(ctx, managerPolicySourceID)
+	if err != nil || openCode == nil || openCode.Protocol != "opencode-supervisor/1" {
+		t.Fatalf("seeded OpenCode manager capability = %#v, %v", openCode, err)
+	}
+	deepSeek := *openCode
+	deepSeek.RegisteredSourceID = "source_managerpolicy_ds0001"
+	deepSeek.ServiceRegistrationID = "service_managerpolicy_ds0001"
+	deepSeek.Protocol = deepSeekManagerProtocol
+	deepSeek.ManagerPluginDigest = ""
+	deepSeek.ManagerProfile = model.InsightsManagerProfileV1{}
+	deepSeek.RecipeIDs = nil
+	deepSeek.Available = false
+	deepSeek.Reason = ""
+	if err := journey.store.PutManagerCapability(ctx, deepSeek); err != nil {
+		t.Fatal(err)
+	}
+	// Give the DeepSeek capability its own current continuity source so the
+	// report's ordinary source projection would otherwise retain it.
+	source := journey.storedSource(t)
+	source.Report.RegisteredSourceID = deepSeek.RegisteredSourceID
+	source.Report.ServiceRegistrationID = deepSeek.ServiceRegistrationID
+	source.Report.WorkspaceEpoch = deepSeek.WorkspaceEpoch
+	source.Report.NativeSessionID = deepSeek.NativeSessionID
+	source.Report.Availability = "available"
+	source.Report.Reason = nil
+	source.Report.LastObservedAt = journey.reconciler.Now()
+	source.Lifecycle = "running"
+	if err := journey.store.PutContinuitySource(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	journey.control.enrollErr = errors.New("managed workspace is unavailable")
+	if err := journey.reconciler.Reconcile(ctx, journey.manifest); err == nil {
+		t.Fatal("ordinary pass unexpectedly completed")
+	}
+	report, err := journey.reconciler.Report(ctx, journey.reconciler.ServerID, "test")
+	if err != nil {
+		t.Fatalf("report construction failed: %v", err)
+	}
+	if len(report.InsightsManagerPolicies) != 1 {
+		t.Fatalf("manager policy reports = %#v", report.InsightsManagerPolicies)
+	}
+	for _, item := range report.InsightsManagerPolicies[0].RecommendCapabilities {
+		if item.Source.RegisteredSourceID == deepSeek.RegisteredSourceID {
+			t.Fatalf("DeepSeek manager capability was published as an OpenCode recommend capability: %#v", item)
+		}
+	}
+	if capability := managerCapabilityItem(t, report, managerPolicySourceID); capability.Protocol != "opencode-supervisor/1" {
+		t.Fatalf("OpenCode capability was not preserved: %#v", capability)
+	}
+}

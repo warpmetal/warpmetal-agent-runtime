@@ -16,6 +16,7 @@ import (
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/providerpolicy"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/workspacecatalog"
 )
@@ -301,6 +302,7 @@ type managedLaunchComposition struct {
 	Instance               string
 	ProfileID              string
 	ProfileDigest          string
+	ProfileRevision        int64
 	Version                string
 	Port                   int
 	ProjectRoot            string
@@ -331,11 +333,54 @@ func (composition managedLaunchComposition) request() map[string]any {
 	if composition.RuntimeContractVersion != "" {
 		request["runtimeContractVersion"] = composition.RuntimeContractVersion
 	}
+	// The DeepSeek/ACP supervisor addresses the launch by profile revision and
+	// fails closed without a positive value. The OpenCode supervisor rejects
+	// unknown launch fields, so the OpenCode envelope stays byte-identical.
+	if composition.ProfileID == "deepseek" {
+		request["profileRevision"] = composition.ProfileRevision
+	}
 	if composition.Monitor.Enabled {
 		request["monitorSourceInstanceId"] = composition.Monitor.SourceInstanceID
 		request["monitorWorkspaceEpoch"] = composition.Monitor.WorkspaceEpoch
 	}
 	return request
+}
+
+// managedEnrollmentRequest is the single closed enrollment exchange request the
+// Runtime emits. The shipped Sandbox supervisor validates exactly this shape.
+func managedEnrollmentRequest(desired model.ManagedServiceV1, enrollment model.ManagedServiceEnrollmentV1, processInstance, endpoint string) map[string]any {
+	return map[string]any{
+		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
+		"profileId": desired.Profile.ProfileID, "endpoint": endpoint,
+		"enrollmentToken": enrollment.EnrollmentToken, "serverId": desired.Identity.ServerID,
+		"teamId": desired.Identity.TeamID, "memberId": desired.Identity.MemberID,
+		"generation": desired.Identity.SandboxGeneration, "processInstance": processInstance,
+		"allowInsecureLoopback": false, "requestTimeoutSeconds": 30,
+	}
+}
+
+// managedStatusRequest is the single closed ready probe the Runtime emits after
+// start. It negotiates the contract version exactly when the start request did.
+func managedStatusRequest(desired model.ManagedServiceV1) map[string]any {
+	request := map[string]any{
+		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
+		"profileId": desired.Profile.ProfileID, "profileDigest": desired.Profile.ProfileDigest,
+		"probe": true, "requestTimeoutSeconds": 30,
+	}
+	if version := desired.RuntimeContractVersion; version != "" {
+		request["runtimeContractVersion"] = version
+	}
+	return request
+}
+
+// managedLifecycleRequest is the single closed inactive transition (Drain/Stop)
+// request the Runtime emits. The grace window is the Runtime's fixed bound; the
+// Sandbox supervisor owns the actual signal escalation.
+func managedLifecycleRequest(desired model.ManagedServiceV1) map[string]any {
+	return map[string]any{
+		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
+		"profileId": desired.Profile.ProfileID, "graceSeconds": 15,
+	}
 }
 
 // managedStartupMonitorIntent resolves the explicit monitor intent for one
@@ -497,6 +542,7 @@ func (r *Reconciler) reestablishManagedMonitorIntent(
 		Instance:               desired.Identity.Instance,
 		ProfileID:              desired.Profile.ProfileID,
 		ProfileDigest:          desired.Profile.ProfileDigest,
+		ProfileRevision:        desired.Profile.ProfileRevision,
 		Version:                version,
 		Port:                   managedServicePort,
 		ProjectRoot:            project.ContainerRoot,
@@ -606,14 +652,7 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 		!validateManagedInstruction(instruction.Content, instruction.InstructionDigest) {
 		return r.failManagedService(ctx, desired, "invalid_instruction", errors.New("node instruction tuple is invalid"))
 	}
-	enrollRequest := map[string]any{
-		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
-		"profileId": desired.Profile.ProfileID, "endpoint": r.ManagedControl.ManagedServiceEndpoint(),
-		"enrollmentToken": enrollment.EnrollmentToken, "serverId": desired.Identity.ServerID,
-		"teamId": desired.Identity.TeamID, "memberId": desired.Identity.MemberID,
-		"generation": desired.Identity.SandboxGeneration, "processInstance": processInstance,
-		"allowInsecureLoopback": false, "requestTimeoutSeconds": 30,
-	}
+	enrollRequest := managedEnrollmentRequest(desired, enrollment, processInstance, r.ManagedControl.ManagedServiceEndpoint())
 	enrollPayload, _ := json.Marshal(enrollRequest)
 	enrollReceipt, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, desired.Identity.SandboxID, containers.ManagedSupervisorEnroll, enrollPayload)
 	if err != nil {
@@ -665,6 +704,7 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 		Instance:               desired.Identity.Instance,
 		ProfileID:              desired.Profile.ProfileID,
 		ProfileDigest:          desired.Profile.ProfileDigest,
+		ProfileRevision:        desired.Profile.ProfileRevision,
 		Version:                version,
 		Port:                   managedServicePort,
 		ProjectRoot:            project.ContainerRoot,
@@ -723,16 +763,9 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 	if pinnedSource != nil && pinnedSource.Report.NativeSessionID != "" && startReceipt.SessionID != pinnedSource.Report.NativeSessionID {
 		return r.failManagedService(ctx, desired, "native_session_changed", errors.New("managed start did not preserve the retained native session"))
 	}
-	statusRequest := map[string]any{
-		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
-		"profileId": desired.Profile.ProfileID, "profileDigest": desired.Profile.ProfileDigest,
-		"probe": true, "requestTimeoutSeconds": 30,
-	}
 	// The capability consumer compares the start and status receipts, so the
 	// status probe negotiates exactly when the start request did.
-	if version := desired.RuntimeContractVersion; version != "" {
-		statusRequest["runtimeContractVersion"] = version
-	}
+	statusRequest := managedStatusRequest(desired)
 	statusPayload, _ := json.Marshal(statusRequest)
 	statusReceiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, desired.Identity.SandboxID, containers.ManagedSupervisorStatus, statusPayload)
 	if err != nil {
@@ -1081,8 +1114,11 @@ func verifyCellManagerRoute(observed managedSupervisorReceipt, binding managedMa
 	return nil
 }
 
-func (r *Reconciler) registerManagedSource(ctx context.Context, desired model.ManagedServiceV1, registeredSourceID string, native managedSupervisorReceipt, instruction model.ManagedServiceInstructionV1) ([]byte, error) {
-	request := map[string]any{
+// managedSourceRegistrationRequest is the single closed managed-service source
+// registration request the Runtime emits. The shipped Sandbox supervisors bind
+// every advertised fact back to the running native process before accepting it.
+func managedSourceRegistrationRequest(desired model.ManagedServiceV1, registeredSourceID string, native managedSupervisorReceipt, instruction model.ManagedServiceInstructionV1) map[string]any {
+	return map[string]any{
 		"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
 		"profileId": desired.Profile.ProfileID,
 		"registration": map[string]any{
@@ -1102,6 +1138,10 @@ func (r *Reconciler) registerManagedSource(ctx context.Context, desired model.Ma
 			},
 		},
 	}
+}
+
+func (r *Reconciler) registerManagedSource(ctx context.Context, desired model.ManagedServiceV1, registeredSourceID string, native managedSupervisorReceipt, instruction model.ManagedServiceInstructionV1) ([]byte, error) {
+	request := managedSourceRegistrationRequest(desired, registeredSourceID, native, instruction)
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return nil, err
@@ -1182,7 +1222,7 @@ func (r *Reconciler) reconcileManagedServiceInactive(ctx context.Context, desire
 		action = containers.ManagedSupervisorStop
 		expectedStatus = "stopped"
 	}
-	payload, _ := json.Marshal(map[string]any{"schemaVersion": 1, "sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance, "profileId": desired.Profile.ProfileID, "graceSeconds": 15})
+	payload, _ := json.Marshal(managedLifecycleRequest(desired))
 	receipt, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, desired.Identity.SandboxID, action, payload)
 	if err != nil {
 		return r.failManagedService(ctx, desired, "lifecycle_action_failed", err)
@@ -1737,6 +1777,9 @@ var managedSupervisorReceiptFields = func() map[string]bool {
 }()
 
 func managedManagerCapability(desired model.ManagedServiceV1, sourceID string, start, status managedSupervisorReceipt) (state.LocalManagerCapability, error) {
+	if desired.Profile.ProfileID == "deepseek" {
+		return deepSeekManagedManagerCapability(desired, sourceID, start, status)
+	}
 	if start.ManagerPluginDigest == "" || !setupReceiptDigestPattern.MatchString(start.ManagerPluginDigest) || !start.ManagerPluginLoaded ||
 		start.ManagerProfile.ProfileID != "warpmetal-insights-manager" || start.ManagerProfile.ProfileRevision < 1 ||
 		!setupReceiptDigestPattern.MatchString(start.ManagerProfile.ProfileDigest) ||
@@ -1818,6 +1861,111 @@ func managedManagerCapability(desired model.ManagedServiceV1, sourceID string, s
 		ToolsAllowed: false, MediaAllowed: false, HardOutputTokenLimit: true,
 		Available: start.ManagerRecommendAvailable, Reason: reason,
 	}, nil
+}
+
+// deepSeekManagerProtocol is the closed native protocol identity the Runtime
+// records for a DeepSeek/ACP managed manager. It never claims the OpenCode
+// supervisor or its insights-manager plugin.
+const deepSeekManagerProtocol = "deepseek-supervisor/1"
+
+// deepSeekManagedManagerCapability resolves the manager capability of a
+// DeepSeek/ACP managed service. The DeepSeek supervisor owns no insights-manager
+// plugin, manager profile or recipe set (the OpenCode plugin is a closed
+// vendor-specific contract), so the capability is derived from the already
+// verified native, instruction and registry-authority facts and is recorded as
+// explicitly unavailable. Nothing here grants, widens or bypasses an
+// authorization: every capability consumer already fails closed unless
+// Available is true, and the deliberately empty plugin/profile/recipe fields
+// cannot be mistaken for OpenCode manager proof.
+func deepSeekManagedManagerCapability(desired model.ManagedServiceV1, sourceID string, start, status managedSupervisorReceipt) (state.LocalManagerCapability, error) {
+	// The shipped DeepSeek/ACP supervisor has no manager plugin. A receipt that
+	// claims plugin, profile, recipe or recommendation authority is not a
+	// DeepSeek managed-service receipt and must fail closed rather than be
+	// trusted through an OpenCode-shaped capability.
+	for _, receipt := range []managedSupervisorReceipt{start, status} {
+		if receipt.ManagerPluginDigest != "" || receipt.ManagerPluginLoaded ||
+			receipt.ManagerProfile != (model.InsightsManagerProfileV1{}) ||
+			len(receipt.ManagerRecipeIDs) != 0 || receipt.ManagerRecommendAvailable ||
+			receipt.ManagerCapabilityReason != nil || receipt.ManagerProviderID != "" ||
+			receipt.ManagerModelID != "" || receipt.ManagerNativeProtocol != "" ||
+			receipt.ManagerProviderRouteDigest != "" {
+			return state.LocalManagerCapability{}, errors.New("deepseek supervisor reported an opencode manager capability it cannot own")
+		}
+	}
+	// The two ready probes must prove the same closed native and instruction
+	// identity. The caller has already validated each receipt envelope.
+	if start.SessionID == "" || start.SessionID != status.SessionID ||
+		start.NativeProjectID == "" || start.NativeProjectID != status.NativeProjectID ||
+		start.NativeLocationDigest == "" || start.NativeLocationDigest != status.NativeLocationDigest ||
+		start.InstructionRevision != status.InstructionRevision ||
+		start.InstructionDigest != status.InstructionDigest ||
+		!start.InstructionApplied || !status.InstructionApplied {
+		return state.LocalManagerCapability{}, errors.New("deepseek ready receipts did not prove the same native and instruction identity")
+	}
+	if !reflect.DeepEqual(start.NativeGuard, status.NativeGuard) {
+		return state.LocalManagerCapability{}, errors.New("deepseek manager native guard changed between ready probes")
+	}
+	if start.NativeGuard != nil {
+		guard := start.NativeGuard
+		if guard.GuardVersion != "warpmetal.atomic-input.v1" || guard.CustomVersion == "" || guard.SourceRevision == "" ||
+			guard.PatchDigest == "" || guard.ArtifactSHA256 == "" || guard.BinarySHA256 == "" {
+			return state.LocalManagerCapability{}, errors.New("deepseek manager reported invalid native guard")
+		}
+	}
+	authority, modelID, authMode, complete := completeManagedServiceAuthority(desired)
+	if authority != nil && !complete {
+		return state.LocalManagerCapability{}, errors.New("deepseek manager authority tuple is incomplete")
+	}
+	providerID, normalizedModelID, protocol := "", "", ""
+	if complete {
+		flash := providerpolicy.Flash()
+		normalizedModelID = normalizedManagedModelID(authority.ProviderID, modelID)
+		if authority.ProviderID != flash.ProviderID || authMode != flash.AuthMode || normalizedModelID != flash.ModelID {
+			return state.LocalManagerCapability{}, errors.New("deepseek manager authority is not the pinned DeepSeek Flash route")
+		}
+		providerID, protocol = authority.ProviderID, flash.Transport.Protocol
+	}
+	routeDigest, err := deepSeekManagerRouteDigest(desired, start, providerID, normalizedModelID, authMode, protocol)
+	if err != nil {
+		return state.LocalManagerCapability{}, err
+	}
+	return state.LocalManagerCapability{
+		RegisteredSourceID: sourceID, ServiceRegistrationID: desired.Identity.ServiceRegistrationID,
+		ServiceGeneration: desired.Identity.ExpectedServiceGeneration, WorkspaceEpoch: desired.Workspace.WorkspaceEpoch,
+		NativeSessionID: start.SessionID, SandboxID: desired.Identity.SandboxID, SandboxGeneration: desired.Identity.SandboxGeneration,
+		ProfileRevision: desired.Profile.ProfileRevision, InstructionRevision: desired.Instructions.InstructionRevision,
+		NativeVersion: start.Version, NativeSourceRevision: "", Protocol: deepSeekManagerProtocol,
+		NativeProtocol: protocol, ProviderID: providerID, ModelID: normalizedModelID,
+		ProviderRouteDigest: routeDigest, RecipeIDs: nil,
+		ManagerPluginDigest: "", ManagerProfile: model.InsightsManagerProfileV1{}, NativeGuard: start.NativeGuard,
+		MaxInputTokens: 0, MaxOutputTokens: 0, FinalRequestMaxBytes: 0,
+		ToolsAllowed: false, MediaAllowed: false, HardOutputTokenLimit: false,
+		Available: false, Reason: "",
+	}, nil
+}
+
+// deepSeekManagerRouteDigest derives the deterministic provider-route identity
+// of one DeepSeek manager from facts the caller has already verified: the
+// service identity, the native session/project/location readback, the applied
+// instruction and, when the manifest carries one, the Team-issued authority
+// tuple. It is route metadata, never plugin proof and never a credential.
+func deepSeekManagerRouteDigest(desired model.ManagedServiceV1, start managedSupervisorReceipt, providerID, modelID, authMode, protocol string) (string, error) {
+	payload, err := model.WorkspaceCanonicalJSON(map[string]any{
+		"formatVersion": 1, "kind": "deepseek-manager-route",
+		"providerId": providerID, "modelId": modelID, "authMode": authMode, "nativeProtocol": protocol,
+		"sandboxId": desired.Identity.SandboxID, "sandboxGeneration": desired.Identity.SandboxGeneration,
+		"serviceRegistrationId": desired.Identity.ServiceRegistrationID,
+		"serviceGeneration":     desired.Identity.ExpectedServiceGeneration,
+		"profileId":             desired.Profile.ProfileID, "profileRevision": desired.Profile.ProfileRevision,
+		"profileDigest":       desired.Profile.ProfileDigest,
+		"instructionRevision": start.InstructionRevision, "instructionDigest": start.InstructionDigest,
+		"nativeSessionId": start.SessionID, "nativeProjectId": start.NativeProjectID,
+		"nativeLocationDigest": start.NativeLocationDigest,
+	})
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("sha256:%x", sha256.Sum256(payload)), nil
 }
 
 func digestManagedReceipts(enroll, start []byte, worker [][]byte) string {
@@ -2481,6 +2629,7 @@ func (r *Reconciler) ensureCellNativeServerRunning(ctx context.Context, entry mo
 		Instance:               entry.Instance,
 		ProfileID:              entry.Profile.ProfileID,
 		ProfileDigest:          entry.Profile.ProfileDigest,
+		ProfileRevision:        entry.Profile.ProfileRevision,
 		Version:                version,
 		Port:                   managedServicePort,
 		ProjectRoot:            projectRoot,
