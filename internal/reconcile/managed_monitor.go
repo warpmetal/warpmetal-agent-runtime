@@ -133,6 +133,7 @@ func (r *Reconciler) applyInsightMonitorSource(ctx context.Context, policy model
 		Instance:               local.Manifest.Identity.Instance,
 		ProfileID:              local.Manifest.Profile.ProfileID,
 		ProfileDigest:          local.Manifest.Profile.ProfileDigest,
+		ProfileRevision:        local.Manifest.Profile.ProfileRevision,
 		Version:                version,
 		Port:                   managedServicePort,
 		ProjectRoot:            project.ContainerRoot,
