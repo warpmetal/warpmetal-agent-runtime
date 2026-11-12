@@ -297,7 +297,7 @@ func (r *cellTestRuntime) ExecManagedSupervisor(_ context.Context, _ string, act
 	return r.result, nil, nil
 }
 
-func (r *cellTestRuntime) ExecManagedWorker(context.Context, string, containers.ManagedWorkerAction, []byte) ([]byte, []byte, error) {
+func (r *cellTestRuntime) ExecManagedWorker(context.Context, string, containers.ManagedWorkerAction, string, []byte) ([]byte, []byte, error) {
 	return nil, nil, errors.New("unexpected worker action")
 }
 

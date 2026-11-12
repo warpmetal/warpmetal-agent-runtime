@@ -15,7 +15,7 @@ func TestManagedServiceExecutionUsesOnlyPackagedSupervisorAndWorker(t *testing.T
 	if _, _, err := (Podman{}).ExecManagedSupervisor(context.Background(), "sbx_test12345", ManagedSupervisorAction("shell"), []byte(`{}`)); err == nil {
 		t.Fatal("arbitrary supervisor action was accepted")
 	}
-	if _, _, err := (Podman{}).ExecManagedWorker(context.Background(), "sbx_test12345", ManagedWorkerAction("shell"), []byte(`{}`)); err == nil {
+	if _, _, err := (Podman{}).ExecManagedWorker(context.Background(), "sbx_test12345", ManagedWorkerAction("shell"), "opencode", []byte(`{}`)); err == nil {
 		t.Fatal("arbitrary worker action was accepted")
 	}
 
@@ -30,7 +30,7 @@ func TestManagedServiceExecutionUsesOnlyPackagedSupervisorAndWorker(t *testing.T
 	var literals []string
 	for _, declaration := range parsed.Decls {
 		function, ok := declaration.(*ast.FuncDecl)
-		if !ok || (function.Recv == nil && function.Name.Name != "managedSupervisorLauncher") ||
+		if !ok || (function.Recv == nil && function.Name.Name != "managedSupervisorLauncher" && function.Name.Name != "ManagedWorkerInvocation") ||
 			(function.Recv != nil && function.Name.Name != "ExecManagedSupervisor" && function.Name.Name != "ExecManagedWorker") {
 			continue
 		}
@@ -45,7 +45,7 @@ func TestManagedServiceExecutionUsesOnlyPackagedSupervisorAndWorker(t *testing.T
 		})
 	}
 	joined := " " + strings.Join(literals, " ") + " "
-	for _, required := range []string{" /usr/local/bin/warpmetal-opencode-supervisor ", " /usr/local/bin/warpmetal-deepseek-supervisor ", " /usr/bin/python3 ", " /usr/local/libexec/warpmetal-agent-teams/warpmetal_team_worker.py "} {
+	for _, required := range []string{" /usr/local/bin/warpmetal-opencode-supervisor ", " /usr/local/bin/warpmetal-deepseek-supervisor ", " /usr/bin/python3 ", " /usr/local/libexec/warpmetal-agent-teams/warpmetal_team_worker.py ", " /usr/local/libexec/warpmetal-agent-teams/warpmetal_deepseek_team_worker.py "} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("managed execution is missing fixed target %q: %#v", strings.TrimSpace(required), literals)
 		}

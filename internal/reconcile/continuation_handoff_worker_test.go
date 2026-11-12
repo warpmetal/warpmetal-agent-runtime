@@ -32,7 +32,7 @@ func (r *blockingHandoffWorkerRuntime) ExecManagedSupervisor(context.Context, st
 	panic("targeted worker scheduling must not invoke the supervisor")
 }
 
-func (r *blockingHandoffWorkerRuntime) ExecManagedWorker(ctx context.Context, _ string, action containers.ManagedWorkerAction, payload []byte) ([]byte, []byte, error) {
+func (r *blockingHandoffWorkerRuntime) ExecManagedWorker(ctx context.Context, _ string, action containers.ManagedWorkerAction, _ string, payload []byte) ([]byte, []byte, error) {
 	if action != containers.ManagedWorkerExecute {
 		panic("targeted worker scheduling must only invoke execute")
 	}

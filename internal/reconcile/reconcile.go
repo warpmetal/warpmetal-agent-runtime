@@ -116,7 +116,7 @@ type legacyCellCredentialControl interface {
 
 type ManagedSandboxRuntime interface {
 	ExecManagedSupervisor(context.Context, string, containers.ManagedSupervisorAction, []byte) ([]byte, []byte, error)
-	ExecManagedWorker(context.Context, string, containers.ManagedWorkerAction, []byte) ([]byte, []byte, error)
+	ExecManagedWorker(context.Context, string, containers.ManagedWorkerAction, string, []byte) ([]byte, []byte, error)
 }
 
 type InsightCollector interface {

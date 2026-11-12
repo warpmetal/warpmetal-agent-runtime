@@ -105,8 +105,13 @@ For an active service, Runtime performs this sequence:
 The fixed container executor accepts closed action enums. Supervisor actions
 run `/usr/local/bin/warpmetal-opencode-supervisor`; worker actions run
 `/usr/bin/python3` with the image-owned
-`/usr/local/libexec/warpmetal-agent-teams/warpmetal_team_worker.py`. Neither
-seam accepts an executable, argv, shell, host path, or arbitrary action.
+`/usr/local/libexec/warpmetal-agent-teams/warpmetal_team_worker.py`. A
+`deepseek` managed profile selects the image-owned
+`/usr/local/libexec/warpmetal-agent-teams/warpmetal_deepseek_team_worker.py`
+and adds the closed `profileId:"deepseek"` field to the worker request; every
+other profile keeps the OpenCode worker command and request bytes unchanged.
+Neither seam accepts an executable, argv, shell, host path, or arbitrary
+action.
 
 ## Fresh startup monitor intent
 
