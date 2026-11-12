@@ -114,6 +114,15 @@ type legacyCellCredentialControl interface {
 	LegacyCellCredential(context.Context, string) (api.CellCredentialResult, error)
 }
 
+// managedServiceCredentialControl is the optional ManagedServiceControl
+// extension the DeepSeek managed profile uses to resolve the account-owned
+// provider credential it delivers to the packaged supervisor BEFORE the DSH
+// child is spawned. Control implementations without it keep the OpenCode
+// adapter-owned credential path byte-identical.
+type managedServiceCredentialControl interface {
+	ManagedServiceCredential(context.Context, string) (api.ManagedCredentialResult, error)
+}
+
 type ManagedSandboxRuntime interface {
 	ExecManagedSupervisor(context.Context, string, containers.ManagedSupervisorAction, []byte) ([]byte, []byte, error)
 	ExecManagedWorker(context.Context, string, containers.ManagedWorkerAction, string, []byte) ([]byte, []byte, error)
@@ -139,6 +148,7 @@ type ManagerControl interface {
 }
 
 type managedWorkerExecution struct {
+	ctx    context.Context
 	cancel context.CancelFunc
 	done   chan struct{}
 	mu     sync.Mutex
@@ -168,6 +178,10 @@ type Reconciler struct {
 	// context. Worker one-shots may outlive one control-plane poll but are
 	// cancelled by daemon shutdown and explicit pause/stop policy.
 	ManagedExecutionContext context.Context
+	// ManagedWorkerRearmBackoff is the idle re-arm delay for the DeepSeek
+	// worker/reviewer execution. Zero selects the default; tests inject a
+	// short deterministic value.
+	ManagedWorkerRearmBackoff time.Duration
 
 	mu                        sync.Mutex
 	authorityMu               sync.Mutex

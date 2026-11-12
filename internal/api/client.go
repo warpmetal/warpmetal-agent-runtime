@@ -249,6 +249,47 @@ func (c Client) fetchCellCredential(ctx context.Context, serviceRegistrationID s
 	return result, nil
 }
 
+// ManagedCredentialResult carries the account-owned provider connection
+// credential a DeepSeek managed service delivers to the packaged supervisor's
+// protected DSH credential file before its child is spawned. The plaintext key
+// is transient: the caller forwards it once over the supervisor's closed
+// one-shot credential command and never journals, reports or re-reads it.
+// ConnectionID/ConnectionRevision identify the exact account connection and
+// KeyFingerprint is safe diagnostic evidence only, never the key.
+type ManagedCredentialResult struct {
+	CredentialID       string `json:"credentialId"`
+	APIKey             string `json:"apiKey"`
+	ConnectionID       string `json:"connectionId"`
+	ConnectionRevision int64  `json:"connectionRevision"`
+	ProviderID         string `json:"providerId,omitempty"`
+	ModelID            string `json:"modelId,omitempty"`
+	AuthMode           string `json:"authMode,omitempty"`
+	KeyFingerprint     string `json:"keyFingerprint,omitempty"`
+}
+
+// ManagedServiceCredential resolves one managed service's account-provider
+// credential over the authenticated control-plane transport. A missing
+// provider connection is the control plane's provider_credential_missing
+// response (404); callers map it to the service's stable failure code.
+func (c Client) ManagedServiceCredential(ctx context.Context, serviceRegistrationID string) (ManagedCredentialResult, error) {
+	var result ManagedCredentialResult
+	if err := c.request(
+		ctx,
+		http.MethodPost,
+		"/internal/runtime/managed-credential",
+		c.NodeToken,
+		map[string]string{"serviceRegistrationId": serviceRegistrationID},
+		&result,
+		false,
+	); err != nil {
+		return ManagedCredentialResult{}, err
+	}
+	if result.CredentialID == "" || result.APIKey == "" || result.ConnectionID == "" || result.ConnectionRevision < 1 {
+		return ManagedCredentialResult{}, errors.New("managed credential response is incomplete")
+	}
+	return result, nil
+}
+
 func (c Client) InsightPolicies(ctx context.Context) (model.InsightPolicyEnvelopeV1, error) {
 	var result model.InsightPolicyEnvelopeV1
 	err := c.request(ctx, http.MethodGet, "/internal/runtime/insights/policies", c.NodeToken, nil, &result, true)
