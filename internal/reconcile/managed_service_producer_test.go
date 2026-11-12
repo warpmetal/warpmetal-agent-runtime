@@ -617,6 +617,12 @@ func TestManagedServicePersistsInitialIntentAndRecoversLookupOnlyBeforePublishin
 			allInvocations := append(firstInvocations, secondInvocations...)
 			allInvocations = append(allInvocations, runtime.invocations...)
 			for index, invocation := range allInvocations {
+				if invocation.action == string(containers.ManagedSupervisorCredential) {
+					// The supervisor credential command is the closed DeepSeek-only
+					// delivery. The OpenCode profile keeps its adapter-owned credential
+					// path and must never gain this action or a reordered predecessor.
+					t.Fatalf("opencode managed service dispatched the deepseek-only credential action: %#v", allInvocations)
+				}
 				if invocation.action == string(containers.ManagedSupervisorEnroll) {
 					if invocation.request["generation"] != float64(2) || invocation.request["processInstance"] != "wmsup-default-0001" {
 						t.Fatalf("enrollment conflated sandbox and service generations: %#v", invocation.request)

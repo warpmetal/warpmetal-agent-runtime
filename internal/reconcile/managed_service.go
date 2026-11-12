@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/api"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/providerpolicy"
@@ -64,6 +65,7 @@ type managedSupervisorReceipt struct {
 	SessionMode                string                          `json:"sessionMode"`
 	NativeProjectID            string                          `json:"nativeProjectId"`
 	NativeLocationDigest       string                          `json:"nativeLocationDigest"`
+	CredentialFile             string                          `json:"credentialFile,omitempty"`
 	InstructionRevision        int64                           `json:"instructionRevision"`
 	InstructionDigest          string                          `json:"instructionDigest"`
 	InstructionApplied         bool                            `json:"instructionApplied"`
@@ -652,6 +654,22 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 		!validateManagedInstruction(instruction.Content, instruction.InstructionDigest) {
 		return r.failManagedService(ctx, desired, "invalid_instruction", errors.New("node instruction tuple is invalid"))
 	}
+	// The DeepSeek supervisor spawns the DSH child at start and its launcher
+	// reads /home/agent/.deepseek-harness/api-key at that spawn. Deliver the
+	// account-owned provider key through the closed one-shot credential command
+	// BEFORE the enroll/rebind/start sequence. A missing provider connection
+	// fails closed with its own stable code and never reaches start. The
+	// OpenCode adapter keeps its existing credential path unchanged.
+	if desired.Profile.ProfileID == "deepseek" {
+		if err := r.deliverDeepSeekManagedCredential(ctx, desired); err != nil {
+			code := "credential_unavailable"
+			var failure *managedProviderCredentialFailure
+			if errors.As(err, &failure) && failure.code != "" {
+				code = failure.code
+			}
+			return r.failManagedService(ctx, desired, code, err)
+		}
+	}
 	enrollRequest := managedEnrollmentRequest(desired, enrollment, processInstance, r.ManagedControl.ManagedServiceEndpoint())
 	enrollPayload, _ := json.Marshal(enrollRequest)
 	enrollReceipt, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, desired.Identity.SandboxID, containers.ManagedSupervisorEnroll, enrollPayload)
@@ -858,6 +876,88 @@ func (r *Reconciler) reconcileManagedService(ctx context.Context, desired model.
 		r.promoteIdleManagedExecution(ctx, desired, execution)
 	}
 	return r.Store.UpdateManagedService(ctx, desired.Identity.ServiceRegistrationID, "ready", &report, "")
+}
+
+// managedProviderCredentialFailure is the closed reason a DeepSeek managed
+// service could not receive its account-provider credential before the DSH
+// child was spawned. It carries only the stable service error code and a
+// credential-free cause; plaintext key material never enters its message.
+type managedProviderCredentialFailure struct {
+	code string
+	err  error
+}
+
+func (failure *managedProviderCredentialFailure) Error() string {
+	return fmt.Sprintf("managed provider credential %s: %v", failure.code, failure.err)
+}
+
+func (failure *managedProviderCredentialFailure) Unwrap() error { return failure.err }
+
+// managedProviderCredentialMissing reports the control plane's closed missing
+// connection outcome: the documented 404 provider_credential_missing response.
+func managedProviderCredentialMissing(cause error) bool {
+	var response *api.ResponseError
+	if errors.As(cause, &response) {
+		return response.Status == 404 || response.Code == "provider_credential_missing"
+	}
+	return api.ErrorCode(cause) == "provider_credential_missing"
+}
+
+// deliverDeepSeekManagedCredential resolves the account-provider credential
+// and writes it through the packaged supervisor's closed one-shot credential
+// command. The supervisor only materializes the agent-only credential file
+// (0600); the Runtime never journals, reports or stores the plaintext key, and
+// the ready receipt is validated before any enroll/rebind/start effect.
+func (r *Reconciler) deliverDeepSeekManagedCredential(ctx context.Context, desired model.ManagedServiceV1) error {
+	control, ok := r.ManagedControl.(managedServiceCredentialControl)
+	if !ok {
+		return &managedProviderCredentialFailure{
+			code: "credential_unavailable", err: errors.New("managed credential control is unavailable"),
+		}
+	}
+	credential, err := control.ManagedServiceCredential(ctx, desired.Identity.ServiceRegistrationID)
+	if err != nil {
+		code := "credential_unavailable"
+		if managedProviderCredentialMissing(err) {
+			code = "provider_credential_missing"
+		}
+		return &managedProviderCredentialFailure{code: code, err: err}
+	}
+	// Defense in depth for custom control implementations: the API client
+	// validates the same tuple, but the delivery boundary never forwards a
+	// partial credential.
+	if credential.CredentialID == "" || credential.APIKey == "" || credential.ConnectionID == "" ||
+		credential.ConnectionRevision < 1 {
+		return &managedProviderCredentialFailure{
+			code: "credential_unavailable", err: errors.New("managed credential response is incomplete"),
+		}
+	}
+	request := map[string]any{
+		"schemaVersion": 1,
+		"command":       string(containers.ManagedSupervisorCredential),
+		"sandboxId":     desired.Identity.SandboxID,
+		"instance":      desired.Identity.Instance,
+		"profileId":     "deepseek",
+		"apiKey":        credential.APIKey,
+	}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return &managedProviderCredentialFailure{code: "credential_unavailable", err: err}
+	}
+	receiptJSON, _, err := r.ManagedRuntime.ExecManagedSupervisor(ctx, desired.Identity.SandboxID, containers.ManagedSupervisorCredential, payload)
+	if err != nil {
+		return &managedProviderCredentialFailure{
+			code: "credential_unavailable", err: fmt.Errorf("deliver managed credential: %w", err),
+		}
+	}
+	receipt, err := validateManagedSupervisorReceipt(receiptJSON, string(containers.ManagedSupervisorCredential), "ready")
+	if err == nil && (receipt.ProfileID != "deepseek" || receipt.CredentialFile == "") {
+		err = errors.New("managed credential receipt did not prove the protected DSH credential file")
+	}
+	if err != nil {
+		return &managedProviderCredentialFailure{code: "invalid_credential_receipt", err: err}
+	}
+	return nil
 }
 
 func (r *Reconciler) rebindManagedServiceAuthority(ctx context.Context, desired model.ManagedServiceV1) ([]byte, error) {
@@ -1400,6 +1500,16 @@ func (r *Reconciler) ensureManagedWorkerExecution(desired model.ManagedServiceV1
 		r.managedWorkerMu.Unlock()
 		return execution
 	}
+	execution := r.registerManagedWorkerExecutionLocked(serviceID)
+	r.managedWorkerMu.Unlock()
+	go r.runManagedWorkerExecution(desired, project, execution, 0)
+	return execution
+}
+
+// registerManagedWorkerExecutionLocked binds one execute attempt to the daemon
+// lifecycle and registers it as the member's active execution. Caller holds
+// managedWorkerMu.
+func (r *Reconciler) registerManagedWorkerExecutionLocked(serviceID string) *managedWorkerExecution {
 	if r.managedExecutions == nil {
 		r.managedExecutions = make(map[string]*managedWorkerExecution)
 	}
@@ -1408,36 +1518,123 @@ func (r *Reconciler) ensureManagedWorkerExecution(desired model.ManagedServiceV1
 		lifecycle = context.Background()
 	}
 	executionContext, cancel := context.WithTimeout(lifecycle, 35*time.Minute)
-	execution := &managedWorkerExecution{cancel: cancel, done: make(chan struct{})}
+	execution := &managedWorkerExecution{ctx: executionContext, cancel: cancel, done: make(chan struct{})}
 	r.managedExecutions[serviceID] = execution
-	r.managedWorkerMu.Unlock()
+	return execution
+}
 
-	request, _ := json.Marshal(map[string]any{
-		"schemaVersion": 1, "command": string(containers.ManagedWorkerExecute), "instance": desired.Identity.Instance,
-		"root": "/home/agent", "projectPath": project.ContainerRoot,
-		"allowInsecureLoopback": false, "requestTimeoutSeconds": 30,
-	})
-	go func() {
-		defer cancel()
+// runManagedWorkerExecution runs exactly one bounded execute attempt. A
+// non-zero delay is the idle re-arm backoff: the attempt is already registered,
+// so an explicit pause/stop cancels it before it touches the worker, and the
+// authority is re-read after the backoff. Only an idle attempt from an eligible
+// DeepSeek worker/reviewer is re-armed; every other profile keeps the
+// established one-shot-per-service-start behavior.
+func (r *Reconciler) runManagedWorkerExecution(desired model.ManagedServiceV1, project workspacecatalog.RegisteredProject, execution *managedWorkerExecution, delay time.Duration) {
+	executionContext := execution.ctx
+	defer execution.cancel()
+	if delay > 0 {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-executionContext.Done():
+		case <-timer.C:
+		}
+	}
+	idle := false
+	permitted := executionContext.Err() == nil
+	if permitted && delay > 0 {
+		permitted = r.managedWorkerRearmEligible(executionContext, desired)
+	}
+	if permitted {
+		request, _ := json.Marshal(map[string]any{
+			"schemaVersion": 1, "command": string(containers.ManagedWorkerExecute), "instance": desired.Identity.Instance,
+			"root": "/home/agent", "projectPath": project.ContainerRoot,
+			"allowInsecureLoopback": false, "requestTimeoutSeconds": 30,
+		})
 		receiptJSON, _, err := r.ManagedRuntime.ExecManagedWorker(executionContext, desired.Identity.SandboxID, containers.ManagedWorkerExecute, desired.Profile.ProfileID, request)
-		idle := false
 		if err == nil {
 			if receipt, validateErr := validateManagedWorkerReceipt(receiptJSON, string(containers.ManagedWorkerExecute)); validateErr == nil {
 				idle = receipt.Status == "idle"
 			}
 		}
-		execution.mu.Lock()
-		execution.idle = idle
-		execution.mu.Unlock()
-		close(execution.done)
-		r.promoteIdleManagedExecution(context.Background(), desired, execution)
-		r.managedWorkerMu.Lock()
-		if r.managedExecutions[serviceID] == execution {
-			delete(r.managedExecutions, serviceID)
+	}
+	execution.mu.Lock()
+	execution.idle = idle
+	execution.mu.Unlock()
+	close(execution.done)
+	r.promoteIdleManagedExecution(context.Background(), desired, execution)
+	r.completeManagedWorkerExecution(desired, project, execution, idle)
+}
+
+// completeManagedWorkerExecution retires the finished attempt and, only for an
+// eligible idle DeepSeek worker/reviewer, registers exactly one delayed
+// replacement. The final authority check and the registration share the
+// execution lock: an explicit pause/stop either observes and cancels the
+// replacement or prevents it from being registered at all, so no re-arm loop
+// survives pause, stop or retire.
+func (r *Reconciler) completeManagedWorkerExecution(desired model.ManagedServiceV1, project workspacecatalog.RegisteredProject, execution *managedWorkerExecution, idle bool) {
+	serviceID := desired.Identity.ServiceRegistrationID
+	r.managedWorkerMu.Lock()
+	if r.managedExecutions[serviceID] == execution {
+		delete(r.managedExecutions, serviceID)
+	}
+	var rearm *managedWorkerExecution
+	if idle && r.managedWorkerRearmEligible(context.Background(), desired) {
+		rearm = r.registerManagedWorkerExecutionLocked(serviceID)
+	}
+	r.managedWorkerMu.Unlock()
+	if rearm != nil {
+		go r.runManagedWorkerExecution(desired, project, rearm, r.managedWorkerRearmDelay())
+	}
+}
+
+const managedWorkerRearmDefaultBackoff = 1500 * time.Millisecond
+
+func (r *Reconciler) managedWorkerRearmDelay() time.Duration {
+	if r.ManagedWorkerRearmBackoff > 0 {
+		return r.ManagedWorkerRearmBackoff
+	}
+	return managedWorkerRearmDefaultBackoff
+}
+
+// managedWorkerRearmEligible reports whether an idle execution may be replaced
+// with a new attempt. Only the closed DeepSeek profile re-arms, and only a
+// worker/reviewer whose exact active intent still names this service; the
+// OpenCode worker keeps its established one-shot semantics unchanged.
+func (r *Reconciler) managedWorkerRearmEligible(ctx context.Context, desired model.ManagedServiceV1) bool {
+	if desired.Profile.ProfileID != "deepseek" || desired.DesiredState != "active" {
+		return false
+	}
+	if desired.Identity.Role != "worker" && desired.Identity.Role != "reviewer" {
+		return false
+	}
+	if r.Store == nil || r.ManagedRuntime == nil {
+		return false
+	}
+	local, err := r.Store.ManagedService(ctx, desired.Identity.ServiceRegistrationID)
+	if err != nil || local == nil {
+		return false
+	}
+	switch local.Phase {
+	case "paused", "stopped", "retired", "failed", "recovery_required":
+		return false
+	}
+	if local.Manifest.DesiredState != "active" || local.Manifest.Identity != desired.Identity ||
+		local.Manifest.ActionRevision != desired.ActionRevision || local.Manifest.ConfigDigest != desired.ConfigDigest {
+		return false
+	}
+	// The last fully validated manifest must still carry this exact active
+	// intent. A newer revision already in flight (pause/stop/upgrade) is never
+	// raced with new work; an empty authority is only the unit-level case.
+	authority := r.currentAuthorityManifest()
+	for _, current := range authority.ManagedServices {
+		if current.Identity.ServiceRegistrationID != desired.Identity.ServiceRegistrationID {
+			continue
 		}
-		r.managedWorkerMu.Unlock()
-	}()
-	return execution
+		return current.DesiredState == "active" && current.ActionRevision == desired.ActionRevision &&
+			current.ConfigDigest == desired.ConfigDigest
+	}
+	return len(authority.ManagedServices) == 0
 }
 
 // ScheduleContinuationHandoff starts the one targeted broker worker for an
@@ -1510,17 +1707,9 @@ func (r *Reconciler) ScheduleContinuationHandoff(
 		r.managedWorkerMu.Unlock()
 		return nil
 	}
-	if r.managedExecutions == nil {
-		r.managedExecutions = make(map[string]*managedWorkerExecution)
-	}
-	lifecycle := r.ManagedExecutionContext
-	if lifecycle == nil {
-		lifecycle = context.Background()
-	}
-	executionContext, cancel := context.WithTimeout(lifecycle, 35*time.Minute)
-	execution := &managedWorkerExecution{cancel: cancel, done: make(chan struct{})}
-	r.managedExecutions[serviceID] = execution
+	execution := r.registerManagedWorkerExecutionLocked(serviceID)
 	r.managedWorkerMu.Unlock()
+	executionContext := execution.ctx
 
 	request, _ := json.Marshal(map[string]any{
 		"schemaVersion": 1, "command": string(containers.ManagedWorkerExecute),
@@ -1529,7 +1718,7 @@ func (r *Reconciler) ScheduleContinuationHandoff(
 		"allowInsecureLoopback": false, "requestTimeoutSeconds": 30,
 	})
 	go func() {
-		defer cancel()
+		defer execution.cancel()
 		_, _, _ = r.ManagedRuntime.ExecManagedWorker(executionContext, manifest.TargetPolicy.SandboxID, containers.ManagedWorkerExecute, service.Manifest.Profile.ProfileID, request)
 		close(execution.done)
 		r.managedWorkerMu.Lock()
@@ -1761,6 +1950,7 @@ var managedSupervisorReceiptFields = func() map[string]bool {
 		"leaseTokenPresent", "leaseRole", "leaseOperations", "leaseExpiresAt", "leaseExpired", "secondsRemaining",
 		"clockSkewSeconds", "endpointHost", "stored", "enrolledAt", "sessionId", "sessionCreated", "sessionReused",
 		"sessionCreatedCount", "conversationCount", "sessionMode", "nativeProjectId", "nativeLocationDigest",
+		"credentialFile",
 		"instructionRevision", "instructionDigest", "instructionApplied", "receiptDigest",
 		"managerPluginDigest", "managerPluginLoaded", "managerProfile", "managerProviderId", "managerModelId",
 		"managerNativeProtocol", "managerProviderRouteDigest", "managerRecommendAvailable", "managerCapabilityReason", "managerRecipeIds",

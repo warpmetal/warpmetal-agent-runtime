@@ -31,6 +31,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/api"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/providerpolicy"
@@ -67,14 +68,45 @@ func deepSeekManagerFixture(t *testing.T) producerFixture {
 }
 
 // deepSeekManagedControl answers the managed-service fetch with the fixture's
-// enrollment and instruction tuples and exposes the test loopback endpoint.
+// enrollment and instruction tuples and exposes the test loopback endpoint. It
+// also owns the optional DeepSeek credential extension: the account provider
+// credential the Runtime delivers to the supervisor before the DSH child is
+// spawned.
 type deepSeekManagedControl struct {
 	*fakeManagedControl
-	endpoint string
+	endpoint        string
+	credential      api.ManagedCredentialResult
+	credentialErr   error
+	credentialCalls []string
 }
 
 func (control *deepSeekManagedControl) ManagedServiceEndpoint() string {
 	return control.endpoint
+}
+
+// credentialFixture is the transient account provider credential the DeepSeek
+// control resolves. It is deliberately distinctive so every report/receipt can
+// be checked for accidental key material.
+const deepSeekCredentialAPIKey = "sk-deepseek-managed-credential-000000000000"
+
+func deepSeekCredentialResult() api.ManagedCredentialResult {
+	return api.ManagedCredentialResult{
+		CredentialID: "cred_deepseek_managed0001", APIKey: deepSeekCredentialAPIKey,
+		ConnectionID: "connection_deepseek0001", ConnectionRevision: 7,
+		ProviderID: providerpolicy.Flash().ProviderID, ModelID: providerpolicy.Flash().ModelID,
+		AuthMode: providerpolicy.Flash().AuthMode, KeyFingerprint: "sha256:credentialfingerprint",
+	}
+}
+
+func (control *deepSeekManagedControl) ManagedServiceCredential(_ context.Context, serviceRegistrationID string) (api.ManagedCredentialResult, error) {
+	control.credentialCalls = append(control.credentialCalls, serviceRegistrationID)
+	if control.credentialErr != nil {
+		return api.ManagedCredentialResult{}, control.credentialErr
+	}
+	if control.credential.CredentialID == "" {
+		control.credential = deepSeekCredentialResult()
+	}
+	return control.credential, nil
 }
 
 // deepSeekSupervisor receipts use closed, deterministic native identities so the
@@ -101,6 +133,10 @@ type deepSeekManagedRuntime struct {
 	returned         map[containers.ManagedSupervisorAction][]byte
 	invocations      []managedInvocation
 	workerProfileIDs []string
+	// credentialReceipt overrides the synthesized DeepSeek credential receipt,
+	// so a test can prove the Runtime refuses a receipt that does not name the
+	// protected DSH credential file.
+	credentialReceipt []byte
 }
 
 func (runtime *deepSeekManagedRuntime) record(action containers.ManagedSupervisorAction, receipt []byte) {
@@ -164,6 +200,20 @@ func (runtime *deepSeekManagedRuntime) ExecManagedSupervisor(_ context.Context, 
 		})
 		runtime.record(action, receipt)
 		return receipt, nil, err
+	case containers.ManagedSupervisorCredential:
+		// The shipped DeepSeek supervisor's one-shot credential command writes
+		// <root>/.deepseek-harness/api-key 0600 and returns only the protected
+		// file path; the key itself never appears in the receipt.
+		if len(runtime.credentialReceipt) != 0 {
+			runtime.record(action, runtime.credentialReceipt)
+			return append([]byte(nil), runtime.credentialReceipt...), nil, nil
+		}
+		receipt, err := json.Marshal(map[string]any{
+			"schemaVersion": 1, "command": "credential", "profileId": "deepseek",
+			"status": "ready", "credentialFile": "/home/agent/.deepseek-harness/api-key",
+		})
+		runtime.record(action, receipt)
+		return receipt, nil, err
 	case containers.ManagedSupervisorStatus:
 		receipt, err := json.Marshal(map[string]any{
 			"schemaVersion": 1, "command": "status", "profileId": "deepseek",
@@ -183,6 +233,22 @@ func (runtime *deepSeekManagedRuntime) ExecManagedSupervisor(_ context.Context, 
 			runtime.record(action, receipt)
 		}
 		return receipt, diagnostic, err
+	case containers.ManagedSupervisorDrain, containers.ManagedSupervisorStop:
+		status := "drained"
+		extra := map[string]any{"drained": true}
+		if action == containers.ManagedSupervisorStop {
+			status, extra = "stopped", map[string]any{"phase": "stopped"}
+		}
+		receipt := map[string]any{
+			"schemaVersion": 1, "command": string(action), "profileId": "deepseek", "status": status,
+			"instance": request["instance"], "sandboxId": request["sandboxId"], "ready": false,
+		}
+		for key, value := range extra {
+			receipt[key] = value
+		}
+		receiptJSON, err := json.Marshal(receipt)
+		runtime.record(action, receiptJSON)
+		return receiptJSON, nil, err
 	default:
 		return nil, nil, fmt.Errorf("%s is not supported by the DeepSeek managed-service contract", action)
 	}
@@ -215,10 +281,16 @@ func (runtime *deepSeekManagedRuntime) ExecManagedWorker(_ context.Context, _ st
 		return nil, nil, err
 	}
 	runtime.invocations = append(runtime.invocations, managedInvocation{string(action), request})
-	if action != containers.ManagedWorkerStatus {
+	switch action {
+	case containers.ManagedWorkerStatus:
+		return []byte(deepSeekWorkerStatusOK), nil, nil
+	case containers.ManagedWorkerReconcile:
+		return []byte(`{"schemaVersion":1,"command":"reconcile","status":"idle","taskId":null,"messageId":null,"attempt":null,"outcome":null,"deduped":false}`), nil, nil
+	case containers.ManagedWorkerExecute:
+		return []byte(`{"schemaVersion":1,"command":"execute","status":"idle","instance":"default"}`), nil, nil
+	default:
 		return nil, nil, fmt.Errorf("%s is not supported by the DeepSeek managed-service contract", action)
 	}
-	return []byte(deepSeekWorkerStatusOK), nil, nil
 }
 
 func (runtime *deepSeekManagedRuntime) startInvocation(t *testing.T) managedInvocation {
@@ -243,8 +315,17 @@ type deepSeekManagedJourney struct {
 }
 
 // newDeepSeekManagedJourney seeds one ready profile/project and builds the
-// production reconciler for the DeepSeek manager.
+// production reconciler for the DeepSeek manager with the default managed
+// control.
 func newDeepSeekManagedJourney(t *testing.T, fixture producerFixture, runtime *deepSeekManagedRuntime) *deepSeekManagedJourney {
+	t.Helper()
+	return newDeepSeekManagedJourneyWithControl(t, fixture, runtime, nil)
+}
+
+// newDeepSeekManagedJourneyWithControl is the same journey boundary with an
+// explicit managed control, so a test can change the credential response
+// without replacing the production credential delivery path.
+func newDeepSeekManagedJourneyWithControl(t *testing.T, fixture producerFixture, runtime *deepSeekManagedRuntime, control *deepSeekManagedControl) *deepSeekManagedJourney {
 	t.Helper()
 	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
 	if err != nil {
@@ -269,7 +350,9 @@ func newDeepSeekManagedJourney(t *testing.T, fixture producerFixture, runtime *d
 	fixture.ServiceManifest.Workspace.ProjectID = workspace.Report.ProjectID
 	fixture.ServiceManifest.Workspace.WorkspaceEpoch = workspace.Report.WorkspaceEpoch
 	fixture.ServiceManifest.Workspace.RootAttestation = workspace.Report.RootAttestation
-	control := &deepSeekManagedControl{fakeManagedControl: &fakeManagedControl{fixture: fixture}, endpoint: "https://api.warpmetal.example"}
+	if control == nil {
+		control = &deepSeekManagedControl{fakeManagedControl: &fakeManagedControl{fixture: fixture}, endpoint: "https://api.warpmetal.example"}
+	}
 	runtime.fixture = fixture
 	reconciler := &Reconciler{Store: store, ManagedCatalog: catalog, ManagedControl: control, ManagedRuntime: runtime, Now: fixedNow}
 	manifest := model.Manifest{
@@ -465,6 +548,33 @@ func TestDeepSeekManagedServiceActualSandboxReceipts(t *testing.T) {
 	}
 	processInstance := model.ManagedServiceProcessInstance(desired.Identity.Instance, desired.Identity.ExpectedServiceGeneration)
 
+	// The production DeepSeek start path delivers the account-provider
+	// credential through the supervisor's closed one-shot credential command
+	// BEFORE the spawn sequence. Drive the actual Sandbox command with the
+	// exact Runtime key and require the actual ready receipt, the protected
+	// credential file and its 0600 mode.
+	credentialRequest := map[string]any{
+		"schemaVersion": 1, "command": "credential",
+		"sandboxId": desired.Identity.SandboxID, "instance": desired.Identity.Instance,
+		"profileId": "deepseek", "apiKey": deepSeekCredentialAPIKey,
+	}
+	credentialRaw, credentialExit := runDeepSeekContractSupervisor(t, python, supervisor, root, launcher, env, containers.ManagedSupervisorCredential, deepSeekMustJSON(t, credentialRequest))
+	var credential managedSupervisorReceipt
+	if err := decodeManagedSupervisorReceipt(credentialRaw, &credential); err != nil {
+		t.Fatalf("actual Sandbox credential receipt refused by the Runtime decoder: %v\n%s", err, credentialRaw)
+	}
+	assertDeepSeekReceiptClosed(t, "credential", credentialRaw)
+	if credentialExit != 0 || credential.SchemaVersion != 1 || credential.Command != "credential" ||
+		credential.ProfileID != "deepseek" || credential.Status != "ready" || credential.CredentialFile == "" {
+		t.Fatalf("actual Sandbox DeepSeek credential receipt (exit %d) = %#v", credentialExit, credential)
+	}
+	if content, err := os.ReadFile(credential.CredentialFile); err != nil || string(content) != deepSeekCredentialAPIKey {
+		t.Fatalf("actual Sandbox DSH credential file = %q, %v", content, err)
+	}
+	if info, err := os.Stat(credential.CredentialFile); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("actual Sandbox DSH credential file mode = %#v, %v", info, err)
+	}
+
 	enrollRaw, enrollExit := runDeepSeekContractSupervisor(t, python, supervisor, root, launcher, env, containers.ManagedSupervisorEnroll,
 		deepSeekMustJSON(t, managedEnrollmentRequest(desired, enrollment, processInstance, exchange.endpoint)))
 	var enrolled managedSupervisorReceipt
@@ -602,6 +712,7 @@ func TestDeepSeekManagedServiceActualSandboxReceipts(t *testing.T) {
 
 	// The actual receipts are exactly the bytes the production journey consumes.
 	runtime.receipts = map[containers.ManagedSupervisorAction][]byte{
+		containers.ManagedSupervisorCredential:     credentialRaw,
 		containers.ManagedSupervisorEnroll:         enrollRaw,
 		containers.ManagedSupervisorRebind:         rebindRaw,
 		containers.ManagedSupervisorStart:          startRaw,
@@ -617,6 +728,25 @@ func TestDeepSeekManagedServiceActualSandboxReceipts(t *testing.T) {
 		local.Report.NativeRegistration.NativeProjectID != started.NativeProjectID ||
 		local.Report.NativeRegistration.NativeLocationDigest != started.NativeLocationDigest {
 		t.Fatalf("actual Sandbox DeepSeek durable ready report = %#v", local)
+	}
+	// The production path consumed the actual credential receipt, sent the
+	// closed credential request before enrolling, and never persisted the key.
+	credentialIndex := managedInvocationIndex(runtime.invocations, string(containers.ManagedSupervisorCredential))
+	enrollIndex := managedInvocationIndex(runtime.invocations, string(containers.ManagedSupervisorEnroll))
+	startIndex := managedInvocationIndex(runtime.invocations, string(containers.ManagedSupervisorStart))
+	if credentialIndex < 0 || enrollIndex < 0 || startIndex < 0 || credentialIndex > enrollIndex || credentialIndex > startIndex {
+		t.Fatalf("production credential/spawn order = %#v", runtime.invocations)
+	}
+	if sent := runtime.invocations[credentialIndex].request; sent["profileId"] != "deepseek" || sent["apiKey"] != deepSeekCredentialAPIKey ||
+		sent["sandboxId"] != desired.Identity.SandboxID || sent["instance"] != desired.Identity.Instance || sent["command"] != "credential" {
+		t.Fatalf("production credential request = %#v", sent)
+	}
+	if !bytes.Equal(runtime.returned[containers.ManagedSupervisorCredential], credentialRaw) {
+		t.Fatalf("production journey did not consume the actual Sandbox credential receipt")
+	}
+	reportJSON, err := json.Marshal(local.Report)
+	if err != nil || bytes.Contains(reportJSON, []byte(deepSeekCredentialAPIKey)) {
+		t.Fatalf("actual Sandbox report leaked credential material: %s, %v", reportJSON, err)
 	}
 	capability, err := journey.store.ManagerCapability(context.Background(), managedSourceID(desired.Identity.ServiceRegistrationID))
 	if err != nil || capability == nil {
