@@ -77,12 +77,12 @@ func (runtime *isolatedServiceRuntime) ExecManagedSupervisor(ctx context.Context
 	return inner.ExecManagedSupervisor(ctx, sandboxID, action, payload)
 }
 
-func (runtime *isolatedServiceRuntime) ExecManagedWorker(ctx context.Context, sandboxID string, action containers.ManagedWorkerAction, payload []byte) ([]byte, []byte, error) {
+func (runtime *isolatedServiceRuntime) ExecManagedWorker(ctx context.Context, sandboxID string, action containers.ManagedWorkerAction, profileID string, payload []byte) ([]byte, []byte, error) {
 	inner, ok := runtime.bySandbox[sandboxID]
 	if !ok {
 		return nil, nil, errors.New("unexpected managed sandbox worker call")
 	}
-	return inner.ExecManagedWorker(ctx, sandboxID, action, payload)
+	return inner.ExecManagedWorker(ctx, sandboxID, action, profileID, payload)
 }
 
 // independentActiveServiceFixture derives a second, fully valid active service

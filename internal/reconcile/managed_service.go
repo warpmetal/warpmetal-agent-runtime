@@ -1294,7 +1294,7 @@ func (r *Reconciler) runManagedWorkerBoundary(ctx context.Context, desired model
 			"root": "/home/agent", "allowInsecureLoopback": false, "requestTimeoutSeconds": 30,
 		}
 		payload, _ := json.Marshal(request)
-		receiptJSON, _, err := r.ManagedRuntime.ExecManagedWorker(ctx, desired.Identity.SandboxID, action, payload)
+		receiptJSON, _, err := r.ManagedRuntime.ExecManagedWorker(ctx, desired.Identity.SandboxID, action, desired.Profile.ProfileID, payload)
 		if err != nil {
 			return receipts, err
 		}
@@ -1419,7 +1419,7 @@ func (r *Reconciler) ensureManagedWorkerExecution(desired model.ManagedServiceV1
 	})
 	go func() {
 		defer cancel()
-		receiptJSON, _, err := r.ManagedRuntime.ExecManagedWorker(executionContext, desired.Identity.SandboxID, containers.ManagedWorkerExecute, request)
+		receiptJSON, _, err := r.ManagedRuntime.ExecManagedWorker(executionContext, desired.Identity.SandboxID, containers.ManagedWorkerExecute, desired.Profile.ProfileID, request)
 		idle := false
 		if err == nil {
 			if receipt, validateErr := validateManagedWorkerReceipt(receiptJSON, string(containers.ManagedWorkerExecute)); validateErr == nil {
@@ -1530,7 +1530,7 @@ func (r *Reconciler) ScheduleContinuationHandoff(
 	})
 	go func() {
 		defer cancel()
-		_, _, _ = r.ManagedRuntime.ExecManagedWorker(executionContext, manifest.TargetPolicy.SandboxID, containers.ManagedWorkerExecute, request)
+		_, _, _ = r.ManagedRuntime.ExecManagedWorker(executionContext, manifest.TargetPolicy.SandboxID, containers.ManagedWorkerExecute, service.Manifest.Profile.ProfileID, request)
 		close(execution.done)
 		r.managedWorkerMu.Lock()
 		if r.managedExecutions[serviceID] == execution {

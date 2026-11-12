@@ -118,7 +118,7 @@ func (s *parentSourceRuntime) AttestWorkspaceApplication(_ context.Context, read
 	return model.WorkspaceApplicationEnvelope{Payload: payload, KeyID: op.Producer.KeyID, Signature: base64.StdEncoding.EncodeToString(signature)}, err
 }
 
-func (s *parentSourceRuntime) ExecManagedWorker(context.Context, string, containers.ManagedWorkerAction, []byte) ([]byte, []byte, error) {
+func (s *parentSourceRuntime) ExecManagedWorker(context.Context, string, containers.ManagedWorkerAction, string, []byte) ([]byte, []byte, error) {
 	s.t.Fatal("parent dispatched worker")
 	return nil, nil, nil
 }

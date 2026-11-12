@@ -325,6 +325,7 @@ const (
 	nestedPreflightTimeout       = 30 * time.Second
 	nestedSandboxPreflightMarker = "warpmetal-nested-sandbox-preflight-v1"
 	capabilityLauncherPath       = "/usr/local/libexec/warpmetal-capability-launcher"
+	managedWorkerRequestMaximum  = 256 * 1024
 )
 
 // New images own the launcher on the read-only root. Legacy pinned images keep
@@ -1072,11 +1073,32 @@ func (p Podman) ExecManagedSupervisor(ctx context.Context, id string, action Man
 	return receipt.Bytes(), diagnostic.Bytes(), nil
 }
 
-func (p Podman) ExecManagedWorker(ctx context.Context, id string, action ManagedWorkerAction, request []byte) ([]byte, []byte, error) {
+// ManagedWorkerInvocation selects the packaged worker for one managed-service
+// profile and returns the fixed launcher argv plus the stdin document. Only the
+// closed deepseek profile selects the DeepSeek team worker, and only that
+// worker accepts the additive profileId field; every other profile keeps the
+// exact OpenCode argv and request bytes its worker validates strictly.
+func ManagedWorkerInvocation(profileID string, request []byte) ([]string, []byte, error) {
+	if profileID != "deepseek" {
+		return []string{"/usr/bin/python3", "/usr/local/libexec/warpmetal-agent-teams/warpmetal_team_worker.py"}, request, nil
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(request, &document); err != nil {
+		return nil, nil, errors.New("managed worker request is invalid")
+	}
+	document["profileId"] = json.RawMessage(`"deepseek"`)
+	payload, err := json.Marshal(document)
+	if err != nil || len(payload) > managedWorkerRequestMaximum {
+		return nil, nil, errors.New("managed worker request is invalid")
+	}
+	return []string{"/usr/bin/python3", "/usr/local/libexec/warpmetal-agent-teams/warpmetal_deepseek_team_worker.py"}, payload, nil
+}
+
+func (p Podman) ExecManagedWorker(ctx context.Context, id string, action ManagedWorkerAction, profileID string, request []byte) ([]byte, []byte, error) {
 	var envelope struct {
 		Command string `json:"command"`
 	}
-	if len(request) == 0 || len(request) > 256*1024 || json.Unmarshal(request, &envelope) != nil || envelope.Command != string(action) {
+	if len(request) == 0 || len(request) > managedWorkerRequestMaximum || json.Unmarshal(request, &envelope) != nil || envelope.Command != string(action) {
 		return nil, nil, errors.New("managed worker request is invalid")
 	}
 	var timeout time.Duration
@@ -1088,12 +1110,16 @@ func (p Podman) ExecManagedWorker(ctx context.Context, id string, action Managed
 	default:
 		return nil, nil, errors.New("unsupported managed worker action")
 	}
+	launcherCommand, payload, err := ManagedWorkerInvocation(profileID, request)
+	if err != nil {
+		return nil, nil, err
+	}
 	executionContext, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	receipt := &boundedBuffer{maximum: 64 * 1024}
 	diagnostic := &boundedBuffer{maximum: 16 * 1024}
-	args := []string{"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent", containerName(id), "/usr/local/libexec/warpmetal-capability-launcher", "/usr/bin/python3", "/usr/local/libexec/warpmetal-agent-teams/warpmetal_team_worker.py"}
-	err := p.runRemoteStreams(executionContext, bytes.NewReader(request), receipt, diagnostic, args...)
+	args := append([]string{"exec", "-i", "--user", "1000:1000", "--workdir", "/home/agent", containerName(id), capabilityLauncherPath}, launcherCommand...)
+	err = p.runRemoteStreams(executionContext, bytes.NewReader(payload), receipt, diagnostic, args...)
 	if receipt.overflow || diagnostic.overflow {
 		err = errors.Join(err, errors.New("managed worker output exceeds the allowed size"))
 	}

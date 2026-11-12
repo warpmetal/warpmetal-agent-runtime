@@ -96,10 +96,11 @@ func deepSeekNativeLocation() string {
 // supervisor's managed-service responses, including its profileRevision
 // default when the launch tuple omits the field.
 type deepSeekManagedRuntime struct {
-	fixture     producerFixture
-	receipts    map[containers.ManagedSupervisorAction][]byte
-	returned    map[containers.ManagedSupervisorAction][]byte
-	invocations []managedInvocation
+	fixture          producerFixture
+	receipts         map[containers.ManagedSupervisorAction][]byte
+	returned         map[containers.ManagedSupervisorAction][]byte
+	invocations      []managedInvocation
+	workerProfileIDs []string
 }
 
 func (runtime *deepSeekManagedRuntime) record(action containers.ManagedSupervisorAction, receipt []byte) {
@@ -207,7 +208,8 @@ func deepSeekManagedRegistrationReceipt(request map[string]any) ([]byte, []byte,
 	return receipt, nil, err
 }
 
-func (runtime *deepSeekManagedRuntime) ExecManagedWorker(_ context.Context, _ string, action containers.ManagedWorkerAction, payload []byte) ([]byte, []byte, error) {
+func (runtime *deepSeekManagedRuntime) ExecManagedWorker(_ context.Context, _ string, action containers.ManagedWorkerAction, profileID string, payload []byte) ([]byte, []byte, error) {
+	runtime.workerProfileIDs = append(runtime.workerProfileIDs, profileID)
 	var request map[string]any
 	if err := json.Unmarshal(payload, &request); err != nil {
 		return nil, nil, err
@@ -337,6 +339,11 @@ func TestDeepSeekManagedServiceStartResolvesCapabilityWithoutPlugin(t *testing.T
 	start := runtime.startInvocation(t)
 	if start.request["profileRevision"] != float64(2) {
 		t.Fatalf("DeepSeek start request profileRevision = %#v", start.request["profileRevision"])
+	}
+	// The worker seam selects the DeepSeek worker from the same desired
+	// profile; the OpenCode request bytes never carry this selector.
+	if len(runtime.workerProfileIDs) != 1 || runtime.workerProfileIDs[0] != "deepseek" {
+		t.Fatalf("DeepSeek worker boundary profiles = %#v", runtime.workerProfileIDs)
 	}
 	if start.request["profileId"] != "deepseek" || start.request["version"] != "" {
 		t.Fatalf("DeepSeek start request = %#v", start.request)
@@ -689,7 +696,7 @@ func (runtime *deepSeekExecSupervisor) ExecManagedSupervisor(_ context.Context, 
 	return stdout.Bytes(), stderr.Bytes(), nil
 }
 
-func (runtime *deepSeekExecSupervisor) ExecManagedWorker(context.Context, string, containers.ManagedWorkerAction, []byte) ([]byte, []byte, error) {
+func (runtime *deepSeekExecSupervisor) ExecManagedWorker(context.Context, string, containers.ManagedWorkerAction, string, []byte) ([]byte, []byte, error) {
 	return nil, nil, fmt.Errorf("worker boundary is covered by the managed-service journey stub")
 }
 
@@ -779,4 +786,177 @@ func newDeepSeekEnrollmentExchange(t *testing.T, role string) *deepSeekEnrollmen
 	// The Sandbox helper builds its own default SSL context, which honours
 	// SSL_CERT_FILE; the loopback origin is exactly this test server.
 	return exchange
+}
+
+// deepSeekWorkerExecRuntime is the fake exec seam for the cross-repo DeepSeek
+// worker journey. It runs the unmodified Sandbox worker with the production
+// closed request document; only the opaque container root is remapped to a host
+// workspace. An idle status/reconcile never reaches the broker transport: the
+// seeded lease and the running-supervisor state are the only test state the
+// worker reads before returning its open receipt.
+type deepSeekWorkerExecRuntime struct {
+	python   string
+	worker   string
+	root     string
+	profiles []string
+	launcher [][]string
+	requests []map[string]any
+}
+
+func (runtime *deepSeekWorkerExecRuntime) ExecManagedSupervisor(context.Context, string, containers.ManagedSupervisorAction, []byte) ([]byte, []byte, error) {
+	return nil, nil, errors.New("worker boundary journey must not invoke the supervisor")
+}
+
+func (runtime *deepSeekWorkerExecRuntime) ExecManagedWorker(_ context.Context, _ string, action containers.ManagedWorkerAction, profileID string, payload []byte) ([]byte, []byte, error) {
+	runtime.profiles = append(runtime.profiles, profileID)
+	launcher, document, err := containers.ManagedWorkerInvocation(profileID, payload)
+	if err != nil {
+		return nil, nil, err
+	}
+	runtime.launcher = append(runtime.launcher, launcher)
+	var request map[string]any
+	if err := json.Unmarshal(document, &request); err != nil {
+		return nil, nil, err
+	}
+	runtime.requests = append(runtime.requests, request)
+	request["root"] = runtime.root
+	remapped, err := json.Marshal(request)
+	if err != nil {
+		return nil, nil, err
+	}
+	command := exec.Command(runtime.python, runtime.worker)
+	command.Stdin = bytes.NewReader(remapped)
+	var stdout, stderr bytes.Buffer
+	command.Stdout, command.Stderr = &stdout, &stderr
+	if err := command.Run(); err != nil {
+		return stdout.Bytes(), stderr.Bytes(), fmt.Errorf("sandbox deepseek worker %s: %w: %s", action, err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.Bytes(), stderr.Bytes(), nil
+}
+
+// deepSeekWorkerLease is the enrolled lease an idle worker reads before any
+// broker work. It is never sent to a broker by this journey.
+func deepSeekWorkerLease(t *testing.T, desired model.ManagedServiceV1) []byte {
+	t.Helper()
+	issued := time.Now().UTC().Truncate(time.Second)
+	stamp := func(value time.Time) string { return value.Format("2006-01-02T15:04:05Z") }
+	payload, err := json.Marshal(map[string]any{
+		"schemaVersion": 1, "leaseId": "tel_" + strings.Repeat("0", 12), "leaseToken": "tls_" + strings.Repeat("1", 32),
+		"audience": "warpmetal-agent-team", "serverId": desired.Identity.ServerID,
+		"teamId": desired.Identity.TeamID, "memberId": desired.Identity.MemberID,
+		"sandboxId": desired.Identity.SandboxID, "generation": desired.Identity.SandboxGeneration,
+		"processInstance":   model.ManagedServiceProcessInstance(desired.Identity.Instance, desired.Identity.ExpectedServiceGeneration),
+		"role":              desired.Identity.Role,
+		"allowedOperations": []string{"task.claim", "task.delegate", "task.status", "message.send"},
+		"teamRevision":      17, "policyRevision": 3,
+		"issuedAt": stamp(issued), "expiresAt": stamp(issued.Add(300 * time.Second)),
+		"ttlSeconds": 300, "serverTime": stamp(issued),
+		"endpoint": "127.0.0.1:18443", "enrolledAt": stamp(issued),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
+
+// deepSeekWorkerState is the supervisor state the packaged worker probes for
+// liveness before publishing task authority. The pid is this test process, so
+// the state is coherent without starting a real managed serve.
+func deepSeekWorkerState(t *testing.T, desired model.ManagedServiceV1) []byte {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{
+		"instance":  desired.Identity.Instance,
+		"phase":     "running",
+		"pid":       os.Getpid(),
+		"port":      deepSeekManagedPort,
+		"password":  "test-supervisor-password",
+		"sessionId": deepSeekSessionID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
+
+// TestDeepSeekManagedServiceActualSandboxWorkerReceipts runs the production
+// runManagedWorkerBoundary for a DeepSeek worker against the unmodified Sandbox
+// DeepSeek team worker, requires both actual receipts to decode through the
+// Runtime's closed worker decoder, and proves the request that reached the real
+// worker carried the additive profileId selector.
+func TestDeepSeekManagedServiceActualSandboxWorkerReceipts(t *testing.T) {
+	sandbox := os.Getenv("WARP_METAL_SANDBOX_SOURCE")
+	if sandbox == "" {
+		t.Skip("WARP_METAL_SANDBOX_SOURCE is not set")
+	}
+	worker := filepath.Join(sandbox, "runner", "warpmetal_deepseek_team_worker.py")
+	if _, err := os.Stat(worker); err != nil {
+		t.Fatalf("Sandbox DeepSeek team worker unavailable: %v", err)
+	}
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	fixture := deepSeekManagerFixture(t)
+	desired := fixture.ServiceManifest
+	desired.Identity.Role = "worker"
+	// The worker reads its lease and the running supervisor state from its own
+	// packaged instance directory. Both are test state only: the idle status
+	// never opens the loopback plane, and reconcile never reaches the broker.
+	directory := filepath.Join(root, ".warpmetal", "deepseek-supervisor", desired.Identity.Instance)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "lease.json"), deepSeekWorkerLease(t, desired), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "state.json"), deepSeekWorkerState(t, desired), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := state.Open(filepath.Join(t.TempDir(), "runtime.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	runtime := &deepSeekWorkerExecRuntime{python: python, worker: worker, root: root}
+	reconciler := &Reconciler{Store: store, ManagedRuntime: runtime, Now: func() time.Time { return time.Now().UTC() }}
+	receipts, err := reconciler.runManagedWorkerBoundary(context.Background(), desired)
+	if err != nil {
+		t.Fatalf("actual Sandbox DeepSeek worker boundary refused: %v", err)
+	}
+	if len(receipts) != 2 {
+		t.Fatalf("DeepSeek worker boundary receipts = %d", len(receipts))
+	}
+	for index, action := range []containers.ManagedWorkerAction{containers.ManagedWorkerReconcile, containers.ManagedWorkerStatus} {
+		receipt, err := validateManagedWorkerReceipt(receipts[index], string(action))
+		if err != nil {
+			t.Fatalf("actual Sandbox DeepSeek %s receipt refused by the Runtime decoder: %v\n%s", action, err, receipts[index])
+		}
+		if action == containers.ManagedWorkerStatus && receipt.Instance != desired.Identity.Instance {
+			t.Fatalf("actual Sandbox DeepSeek status receipt instance = %#v", receipt)
+		}
+	}
+	var status managedWorkerReceipt
+	if err := decodeManagedReceipt(receipts[1], &status, false); err != nil {
+		t.Fatalf("actual Sandbox DeepSeek status receipt = %s, %v", receipts[1], err)
+	}
+	if status.Busy || !bytes.Equal(bytes.TrimSpace(status.ActiveTask), []byte("null")) {
+		t.Fatalf("actual Sandbox DeepSeek idle status = %s", receipts[1])
+	}
+	if len(runtime.profiles) != 2 || runtime.profiles[0] != "deepseek" || runtime.profiles[1] != "deepseek" {
+		t.Fatalf("DeepSeek worker boundary profiles = %#v", runtime.profiles)
+	}
+	for index, request := range runtime.requests {
+		if request["profileId"] != "deepseek" {
+			t.Fatalf("DeepSeek worker request %d omitted profileId: %#v", index, request)
+		}
+		if request["command"] != string([]containers.ManagedWorkerAction{containers.ManagedWorkerReconcile, containers.ManagedWorkerStatus}[index]) {
+			t.Fatalf("DeepSeek worker request %d command = %#v", index, request["command"])
+		}
+	}
+	for _, launcher := range runtime.launcher {
+		if len(launcher) != 2 || launcher[1] != "/usr/local/libexec/warpmetal-agent-teams/warpmetal_deepseek_team_worker.py" {
+			t.Fatalf("DeepSeek worker launcher = %#v", launcher)
+		}
+	}
 }

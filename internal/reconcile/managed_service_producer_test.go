@@ -126,9 +126,9 @@ func (runtime *controlledManagedRuntime) ExecManagedSupervisor(ctx context.Conte
 	return runtime.base.ExecManagedSupervisor(ctx, sandboxID, action, payload)
 }
 
-func (runtime *controlledManagedRuntime) ExecManagedWorker(ctx context.Context, sandboxID string, action containers.ManagedWorkerAction, payload []byte) ([]byte, []byte, error) {
+func (runtime *controlledManagedRuntime) ExecManagedWorker(ctx context.Context, sandboxID string, action containers.ManagedWorkerAction, profileID string, payload []byte) ([]byte, []byte, error) {
 	if action != containers.ManagedWorkerExecute {
-		return runtime.base.ExecManagedWorker(ctx, sandboxID, action, payload)
+		return runtime.base.ExecManagedWorker(ctx, sandboxID, action, profileID, payload)
 	}
 	runtime.mu.Lock()
 	runtime.executeCalls++
@@ -163,6 +163,7 @@ type fakeManagedRuntime struct {
 	actualRebindReceipt        bool
 	sourceRegistrationMismatch bool
 	workerStatusReceipt        []byte
+	workerProfileIDs           []string
 	// startMismatchOnce answers the next start with failed/
 	// monitor_configuration_mismatch, modelling a live process whose monitor
 	// tuple differs from the fresh intent.
@@ -337,7 +338,8 @@ func (runtime *fakeManagedRuntime) ExecManagedSupervisor(_ context.Context, _ st
 	}
 }
 
-func (runtime *fakeManagedRuntime) ExecManagedWorker(_ context.Context, _ string, action containers.ManagedWorkerAction, payload []byte) ([]byte, []byte, error) {
+func (runtime *fakeManagedRuntime) ExecManagedWorker(_ context.Context, _ string, action containers.ManagedWorkerAction, profileID string, payload []byte) ([]byte, []byte, error) {
+	runtime.workerProfileIDs = append(runtime.workerProfileIDs, profileID)
 	var request map[string]any
 	if err := json.Unmarshal(payload, &request); err != nil {
 		return nil, nil, err
@@ -1281,11 +1283,11 @@ func (runtime *wireContractConsumerRuntime) validateSupervisorRegisterSource(pay
 	return nil
 }
 
-func (runtime *wireContractConsumerRuntime) ExecManagedWorker(ctx context.Context, sandboxID string, action containers.ManagedWorkerAction, payload []byte) ([]byte, []byte, error) {
+func (runtime *wireContractConsumerRuntime) ExecManagedWorker(ctx context.Context, sandboxID string, action containers.ManagedWorkerAction, profileID string, payload []byte) ([]byte, []byte, error) {
 	if err := runtime.validateWorkerPayload(string(action), payload); err != nil {
 		return nil, nil, err
 	}
-	return runtime.fakeManagedRuntime.ExecManagedWorker(ctx, sandboxID, action, payload)
+	return runtime.fakeManagedRuntime.ExecManagedWorker(ctx, sandboxID, action, profileID, payload)
 }
 
 func (runtime *wireContractConsumerRuntime) ExecManagedSupervisor(ctx context.Context, sandboxID string, action containers.ManagedSupervisorAction, payload []byte) ([]byte, []byte, error) {

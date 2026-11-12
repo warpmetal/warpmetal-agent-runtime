@@ -29,7 +29,7 @@ func (r *agentKitRuntime) ExecManagedSupervisor(_ context.Context, _ string, act
 	return r.envelope, nil, r.err
 }
 
-func (r *agentKitRuntime) ExecManagedWorker(context.Context, string, containers.ManagedWorkerAction, []byte) ([]byte, []byte, error) {
+func (r *agentKitRuntime) ExecManagedWorker(context.Context, string, containers.ManagedWorkerAction, string, []byte) ([]byte, []byte, error) {
 	return nil, nil, errAgentKitFixture("unexpected worker exec")
 }
 
