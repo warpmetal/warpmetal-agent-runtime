@@ -20,6 +20,7 @@ import (
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/continuity"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/providergateway"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/qualification"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/workspacecatalog"
@@ -174,6 +175,15 @@ type Reconciler struct {
 	Insights            InsightCollector
 	ContinuityLifecycle CheckpointLifecycle
 	Manager             ManagerControl
+	// ProviderGateways, ProviderCredentials and ProviderExecutor are the
+	// additive P2d provider gateway wiring. The runtime main configures all
+	// three only when the opt-in Box credential bridge is enabled; nil means
+	// the feature is not enabled and a manifest that declares provider gateways
+	// fails the pass closed before the sandbox is claimed ready. The executor is
+	// deliberately nil in P2d: no real provider calls are made.
+	ProviderGateways    ProviderGatewayManager
+	ProviderCredentials ProviderCredentialOpener
+	ProviderExecutor    providergateway.Executor
 	// ManagedExecutionContext is the daemon lifecycle, not a poll/reconcile
 	// context. Worker one-shots may outlive one control-plane poll but are
 	// cancelled by daemon shutdown and explicit pause/stop policy.
@@ -192,6 +202,13 @@ type Reconciler struct {
 	sourceHarness             *ownedSourceHarness
 	firstTaskAuthority        *controllerFirstTaskAuthority
 	firstTaskManagerAuthority *controllerFirstTaskAuthority
+	// providerGatewayMu guards the process-local map of running scoped
+	// provider gateways retained by this reconciler. The gateways themselves
+	// are owned by the manager; this map only retains the run ids so stale or
+	// replaced requirements can be closed without closing unrelated gateways.
+	providerGatewayMu          sync.Mutex
+	providerGateways           map[string]map[string]ProviderGatewayHandle
+	providerGatewayGenerations map[string]int64
 }
 
 // FeedbackManager is the narrow post-Report-ACK automatic manager boundary.
@@ -1373,6 +1390,12 @@ func (r *Reconciler) reconcileSandbox(
 			ObservedGeneration: 0,
 		}
 	}
+	// The requirements persisted by the previous pass are the authoritative
+	// record of the gateways this reconciler may have started. Capture them
+	// before the current manifest list replaces the stored one, so a removed or
+	// replaced requirement can be closed instead of leaking its credential.
+	previousProviderGateways := cloneProviderGatewayRequirements(local.ProviderGateways)
+	local.ProviderGateways = cloneProviderGatewayRequirements(desired.ProviderGateways)
 	local.Name = desired.Name
 	local.DesiredState = desired.DesiredState
 	local.Generation = desired.Generation
@@ -1434,6 +1457,12 @@ func (r *Reconciler) reconcileSandbox(
 	case "deleted":
 		return r.removeSandbox(ctx, local)
 	case "stopped":
+		// A stopped sandbox never exposes provider gateways. Close them before
+		// any stop/restart work, and require a completed teardown before the
+		// sandbox leaves the running incarnation.
+		if err := r.closeSandboxProviderGateways(ctx, local.ID); err != nil {
+			return r.failSandbox(ctx, local, providerGatewayErrorCode(err), err)
+		}
 		if refreshImage {
 			workspace, err := r.Workspaces.Ensure(
 				ctx,
@@ -1485,6 +1514,19 @@ func (r *Reconciler) reconcileSandbox(
 		workspace, err := r.Workspaces.Ensure(ctx, local.ID, local.Resources.WorkspaceDiskGiB)
 		if err != nil {
 			return r.failSandbox(ctx, local, "workspace_create_failed", err)
+		}
+		// A generation change creates a new sandbox incarnation. The previous
+		// incarnation's gateways must be closed before the transition; the
+		// current manifest's requirements are started only after the running
+		// container and its workspace anchor are observed. The transition is
+		// recorded so a retried pass continues with the gateways it already
+		// started instead of closing and reopening them.
+		if local.ObservedGeneration != local.Generation &&
+			r.providerGatewayTrackedGeneration(local.ID) != local.Generation {
+			if err := r.closeSandboxProviderGateways(ctx, local.ID); err != nil {
+				return r.failSandbox(ctx, local, providerGatewayErrorCode(err), err)
+			}
+			r.setProviderGatewayTrackedGeneration(local.ID, local.Generation)
 		}
 		// A witness result already observed on this pass (the adopt path below)
 		// is reused by the common observation step instead of exec'ing twice.
@@ -1611,6 +1653,16 @@ func (r *Reconciler) reconcileSandbox(
 					errors.Join(err, stopErr),
 				)
 			}
+		}
+		// The running container and its workspace anchor now exist. Start one
+		// scoped gateway per requirement before the sandbox is claimed ready: a
+		// requirement that cannot start fails the pass closed and keeps the
+		// sandbox unready rather than reporting a running sandbox without its
+		// declared provider surfaces.
+		if err := r.reconcileProviderGateways(
+			ctx, local, previousProviderGateways, local.ProviderGateways, workspace,
+		); err != nil {
+			return r.failSandbox(ctx, local, providerGatewayErrorCode(err), err)
 		}
 		started := r.now()
 		if local.StartedAt == nil {
@@ -1739,6 +1791,12 @@ func (r *Reconciler) sandboxActiveWorkReason(ctx context.Context, sandboxID stri
 func (r *Reconciler) removeSandbox(ctx context.Context, local *state.LocalSandbox) error {
 	if local.ObservedState == "deleted" {
 		return nil
+	}
+	// Every gateway lives inside the sandbox workspace, so it must be closed and
+	// its credential destroyed before the container and workspace are removed.
+	// A teardown failure keeps the sandbox undeleted and is retried next pass.
+	if err := r.closeSandboxProviderGateways(ctx, local.ID); err != nil {
+		return r.failSandbox(ctx, local, providerGatewayErrorCode(err), err)
 	}
 	local.ObservedState = "deleting"
 	if err := r.Store.PutSandbox(ctx, *local); err != nil {

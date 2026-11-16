@@ -266,6 +266,21 @@ func (m *Manager) CloseSandbox(ctx context.Context, sandboxID string) error {
 	return m.closeHandles(ctx, func(handle *Handle) bool { return handle.sandboxID == sandboxID })
 }
 
+// Has reports whether a gateway is currently running for the exact
+// (SandboxID, RunID) pair. It is the reconciler's idempotency probe: a retried
+// reconcile pass must skip Start for a pair that is already running instead of
+// turning the duplicate-start refusal into a failed pass. Empty identifiers,
+// unknown pairs and gateways that have already detached all report false.
+func (m *Manager) Has(sandboxID, runID string) bool {
+	if sandboxID == "" || runID == "" {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	handle, ok := m.handles[gatewayKey(sandboxID, runID)]
+	return ok && handle != nil
+}
+
 // Close marks the manager closed, waits for in-flight Start calls to finish and
 // closes every gateway. After Close returns, Start fails with ErrManagerClosed.
 // Close is idempotent.
@@ -277,12 +292,18 @@ func (m *Manager) Close(ctx context.Context) error {
 	return m.closeHandles(ctx, nil)
 }
 
+// gatewayKey is the manager's exact (SandboxID, RunID) tracking key. The NUL
+// separator can never appear in either validated identifier.
+func gatewayKey(sandboxID, runID string) string {
+	return sandboxID + "\x00" + runID
+}
+
 // reserve validates the request against the manager state, prepares the owned
 // gateway directory and inserts a starting handle. It runs under the manager
 // lock so the duplicate check, the directory ownership bookkeeping and the
 // Start WaitGroup accounting are atomic with respect to Manager.Close.
 func (m *Manager) reserve(request Request) (*Handle, error) {
-	key := request.SandboxID + "\x00" + request.RunID
+	key := gatewayKey(request.SandboxID, request.RunID)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {

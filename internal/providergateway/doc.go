@@ -60,10 +60,16 @@
 // owned socket directory down. When the Start context is cancelled or the
 // server exits on its own, the handle runs the same cleanup and detaches itself.
 //
-// Phase scope. There are no real provider calls yet and nothing wires this
-// package into the sandbox, the Runtime serve loop or a control plane: Executor
-// implementations are supplied by the caller (tests use a fake provider that
-// exposes fake_read and fake_write), and Manager is not yet started by the
-// runtime reconciler. An Executor must be safe for concurrent use because
-// connections are served concurrently.
+// Reconciler wiring. Phase P2d wires Manager into the runtime reconciler: a
+// running sandbox whose manifest declares providerGateways starts exactly one
+// Manager.Start per requirement inside that sandbox's workspace, using a Box
+// credential opened by the credential bridge, and Manager.CloseSandbox tears
+// them down on stop/delete/generation change. Manager.Has is the idempotency
+// probe the reconciler uses so a retried pass never starts a duplicate pair.
+//
+// Phase scope. There are still no real provider calls: Executor implementations
+// are supplied by the caller (tests use a fake provider that exposes fake_read
+// and fake_write), production P2d passes a nil executor, and a manifest that
+// requires gateways without one fails the reconcile pass closed. An Executor
+// must be safe for concurrent use because connections are served concurrently.
 package providergateway
