@@ -111,6 +111,22 @@ func (k *Key) GoString() string {
 	return k.String()
 }
 
+// openDataKey unwraps one RSA-OAEP-SHA256 sealed AES data key with the Box
+// private key. The returned bytes are secret: the caller must zero them after
+// the envelope is opened and must never log, persist or return them. Keeping
+// the operation unexported means no caller can obtain or serialize the private
+// key half from outside this package.
+func (k *Key) openDataKey(wrappedKey []byte) ([]byte, error) {
+	if k == nil || k.private == nil {
+		return nil, errors.New("box encryption key is unavailable")
+	}
+	dataKey, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, k.private, wrappedKey, nil)
+	if err != nil {
+		return nil, errors.New("box encryption key cannot unwrap the envelope data key")
+	}
+	return dataKey, nil
+}
+
 func (k *Key) marshalPrivateKey() ([]byte, error) {
 	der, err := x509.MarshalPKCS8PrivateKey(k.private)
 	if err != nil {
@@ -163,6 +179,13 @@ func (s *keyStore) ensureDirectory() error {
 		return fmt.Errorf("prepare box credential state directory: %w", err)
 	}
 	return nil
+}
+
+// load returns the already-persisted Box key. Unlike loadOrCreate it never
+// generates a key, so opening a credential fails closed instead of silently
+// adopting a new Box identity.
+func (s *keyStore) load() (*Key, error) {
+	return loadKey(s.privateKeyPath())
 }
 
 // loadOrCreate returns the existing Box key, or generates and persists exactly
