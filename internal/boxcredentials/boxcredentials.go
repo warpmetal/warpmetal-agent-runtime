@@ -1,14 +1,17 @@
-// Package boxcredentials implements Phase P1 of the Runtime Box credential
-// bridge (docs RUNTIME_BOX_CREDENTIAL_BRIDGE.md sections 2, 3 and 8).
+// Package boxcredentials implements the Runtime Box credential bridge
+// (docs RUNTIME_BOX_CREDENTIAL_BRIDGE.md sections 2, 3, 4 and 8).
 //
-// The bridge generates one RSA-OAEP-256 keypair on first use, keeps the private
+// Phase P1 generates one RSA-OAEP-256 keypair on first use, keeps the private
 // key root-only under the Runtime state directory, registers only the public JWK
 // with the existing node token, and periodically pulls the platform's active set
 // of sealed tool-provider credential envelopes into a root-only local file.
 //
-// It never decrypts an envelope, injects a credential or executes a provider
-// tool; those are later phases. It is inert unless explicitly enabled, so an
-// existing production Runtime keeps its exact current behavior.
+// Phase P2 adds the opening primitive (OpenEnvelope and Manager.OpenCredential):
+// it verifies every envelope binding and authenticity property and returns a
+// short-lived Credential in memory. It never injects a credential into a tool
+// process, never executes a provider tool, and never persists or logs plaintext.
+// The bridge is inert unless explicitly enabled, so an existing production
+// Runtime keeps its exact current behavior.
 package boxcredentials
 
 import (
