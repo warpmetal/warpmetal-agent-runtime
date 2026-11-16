@@ -54,6 +54,11 @@ type LocalSandbox struct {
 	// applies the SA9 witness hook (a same-generation, same-image enable must
 	// not be silently left not-ready forever).
 	Cell bool
+	// ProviderGateways is the additive P2d contract persisted from the manifest
+	// for this sandbox. It carries the non-secret requirements the reconciler
+	// uses to start, skip and close scoped provider gateways. Empty means none.
+	// No credential material, envelope or ciphertext is ever stored here.
+	ProviderGateways []model.ProviderGatewayRequirement
 }
 
 type LocalGrant struct {
@@ -411,6 +416,7 @@ CREATE TABLE IF NOT EXISTS sandboxes (
   error_message TEXT NOT NULL DEFAULT '',
   cell_ready INTEGER NOT NULL DEFAULT 0,
   cell INTEGER NOT NULL DEFAULT 0,
+  provider_gateways TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS sandboxes_expiry_idx ON sandboxes(expires_at);
@@ -807,6 +813,9 @@ CREATE TABLE IF NOT EXISTS insight_outbox_retirements (
 	if err := s.ensureCellSchema(ctx); err != nil {
 		return fmt.Errorf("upgrade cell readiness schema: %w", err)
 	}
+	if err := s.ensureProviderGatewaySchema(ctx); err != nil {
+		return fmt.Errorf("upgrade provider gateway schema: %w", err)
+	}
 	if err := s.ensureManagedProjectIdentitySchema(ctx); err != nil {
 		return fmt.Errorf("upgrade managed project identity schema: %w", err)
 	}
@@ -855,6 +864,40 @@ func (s *Store) ensureCellSchema(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// ensureProviderGatewaySchema adds the additive `provider_gateways` JSON column
+// to an existing sandboxes table. It is a no-op on a fresh database (the column
+// is in the base CREATE TABLE) and on a database that already carries it. The
+// column stores the non-secret P2d requirement list as JSON; an empty string
+// means the sandbox declares no provider gateways.
+func (s *Store) ensureProviderGatewaySchema(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(sandboxes)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, kind string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "provider_gateways" {
+			found = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx,
+		`ALTER TABLE sandboxes ADD COLUMN provider_gateways TEXT NOT NULL DEFAULT ''`)
+	return err
 }
 
 // ensureAgentKitWorkspaceScopeSchema rebuilds the legacy single-key agent-kit
@@ -1111,7 +1154,7 @@ func (s *Store) Sandbox(ctx context.Context, id string) (*LocalSandbox, error) {
 const sandboxSelect = `SELECT id, name, desired_state, observed_state, generation,
 observed_generation, lifetime, expires_in_seconds, started_at, expires_at,
 cpu_millicores, memory_mib, workspace_disk_gib, pids_limit, image_digest,
-error_code, error_message, cell_ready, cell FROM sandboxes`
+error_code, error_message, cell_ready, cell, provider_gateways FROM sandboxes`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -1121,6 +1164,7 @@ func scanSandbox(row scanner) (*LocalSandbox, error) {
 	var value LocalSandbox
 	var expiresSeconds sql.NullInt64
 	var started, expires sql.NullString
+	var providerGateways sql.NullString
 	var cellReady, cell int
 	err := row.Scan(
 		&value.ID,
@@ -1142,12 +1186,17 @@ func scanSandbox(row scanner) (*LocalSandbox, error) {
 		&value.ErrorMessage,
 		&cellReady,
 		&cell,
+		&providerGateways,
 	)
 	if err != nil {
 		return nil, err
 	}
 	value.CellReady = cellReady == 1
 	value.Cell = cell == 1
+	value.ProviderGateways, err = decodeProviderGateways(providerGateways)
+	if err != nil {
+		return nil, err
+	}
 	if expiresSeconds.Valid {
 		seconds := int(expiresSeconds.Int64)
 		value.ExpiresInSeconds = &seconds
@@ -1181,14 +1230,18 @@ func (s *Store) Sandboxes(ctx context.Context) ([]LocalSandbox, error) {
 }
 
 func (s *Store) PutSandbox(ctx context.Context, value LocalSandbox) error {
-	_, err := s.db.ExecContext(
+	providerGateways, err := encodeProviderGateways(value.ProviderGateways)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(
 		ctx,
 		`INSERT INTO sandboxes(
 id, name, desired_state, observed_state, generation, observed_generation,
 lifetime, expires_in_seconds, started_at, expires_at, cpu_millicores,
 memory_mib, workspace_disk_gib, pids_limit, image_digest, error_code,
-error_message, cell_ready, cell, updated_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+error_message, cell_ready, cell, provider_gateways, updated_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
 name=excluded.name, desired_state=excluded.desired_state,
 observed_state=excluded.observed_state, generation=excluded.generation,
@@ -1199,6 +1252,7 @@ memory_mib=excluded.memory_mib, workspace_disk_gib=excluded.workspace_disk_gib,
 pids_limit=excluded.pids_limit, image_digest=excluded.image_digest,
 error_code=excluded.error_code, error_message=excluded.error_message,
 cell_ready=excluded.cell_ready, cell=excluded.cell,
+provider_gateways=excluded.provider_gateways,
 updated_at=excluded.updated_at`,
 		value.ID,
 		value.Name,
@@ -1219,9 +1273,50 @@ updated_at=excluded.updated_at`,
 		value.ErrorMessage,
 		boolInt(value.CellReady),
 		boolInt(value.Cell),
+		providerGateways,
 		time.Now().UTC().Format(time.RFC3339Nano),
 	)
 	return err
+}
+
+// encodeProviderGateways renders the persisted P2d requirement list. The empty
+// string is the canonical "no requirements" value so existing rows (and
+// manifests without the field) stay unchanged.
+func encodeProviderGateways(requirements []model.ProviderGatewayRequirement) (string, error) {
+	if len(requirements) == 0 {
+		return "", nil
+	}
+	if err := model.ValidateProviderGatewayRequirements(requirements); err != nil {
+		return "", fmt.Errorf("encode provider gateways: %w", err)
+	}
+	payload, err := json.Marshal(requirements)
+	if err != nil {
+		return "", fmt.Errorf("encode provider gateways: %w", err)
+	}
+	return string(payload), nil
+}
+
+// decodeProviderGateways parses one stored requirement list, failing closed on
+// any shape the strict manifest validation would not accept. A tampered local
+// row can therefore never introduce a requirement the manifest contract
+// rejects.
+func decodeProviderGateways(raw sql.NullString) ([]model.ProviderGatewayRequirement, error) {
+	if !raw.Valid || raw.String == "" {
+		return nil, nil
+	}
+	decoder := json.NewDecoder(strings.NewReader(raw.String))
+	decoder.DisallowUnknownFields()
+	var requirements []model.ProviderGatewayRequirement
+	if err := decoder.Decode(&requirements); err != nil {
+		return nil, fmt.Errorf("decode stored provider gateways: %w", err)
+	}
+	if len(requirements) == 0 {
+		return nil, nil
+	}
+	if err := model.ValidateProviderGatewayRequirements(requirements); err != nil {
+		return nil, fmt.Errorf("validate stored provider gateways: %w", err)
+	}
+	return requirements, nil
 }
 
 func (s *Store) PutGrant(ctx context.Context, value LocalGrant) error {

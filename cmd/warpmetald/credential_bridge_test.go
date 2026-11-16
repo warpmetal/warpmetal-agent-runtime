@@ -36,9 +36,12 @@ func TestToolCredentialBridgeDisabledConfigIsInert(t *testing.T) {
 				ToolCredentialBridge: test.bridge,
 			}
 			client := control.Client{Origin: server.URL, NodeToken: settings.NodeToken, HTTP: server.Client()}
-			stop, err := startToolCredentialBridge(context.Background(), settings, client, stateRoot)
+			bridge, stop, err := startToolCredentialBridge(context.Background(), settings, client, stateRoot)
 			if err != nil {
 				t.Fatalf("startToolCredentialBridge() error = %v", err)
+			}
+			if bridge != nil {
+				t.Fatal("disabled credential bridge constructed a manager")
 			}
 			time.Sleep(50 * time.Millisecond)
 			stop()
@@ -64,7 +67,7 @@ func TestToolCredentialBridgeEnabledConfigRequiresUsableOptions(t *testing.T) {
 		ToolCredentialBridge: &config.ToolCredentialBridgeConfig{Enabled: true},
 	}
 	client := control.Client{Origin: "https://api.example.com", NodeToken: settings.NodeToken}
-	if _, err := startToolCredentialBridge(context.Background(), settings, client, ""); err == nil {
+	if _, _, err := startToolCredentialBridge(context.Background(), settings, client, ""); err == nil {
 		t.Fatal("enabled credential bridge accepted an empty state directory")
 	}
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/manager"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/physicalgate"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/providergateway"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/reconcile"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/storage"
@@ -228,12 +229,19 @@ func serve(arguments []string) error {
 	// The sealed tool-provider credential bridge is opt-in (Phase P1). With the
 	// field absent or disabled this starts nothing: no key is generated and no
 	// credential HTTP call is made, so production behavior is unchanged.
-	stopCredentialBridge, err := startToolCredentialBridge(ctx, settings, client, *stateRoot)
+	credentialBridge, stopCredentialBridge, err := startToolCredentialBridge(ctx, settings, client, *stateRoot)
 	if err != nil {
 		return err
 	}
 	defer stopCredentialBridge()
 	reconciler := newRuntimeReconciler(store, engine, *workspaceRoot, *accessPath, gateway, hostCapacity, settings.ServerID, *stateRoot, client, ctx)
+	// Phase P2d: wire the scoped provider gateway lifecycle only when the opt-in
+	// credential bridge is enabled (the credential opener). The executor stays
+	// nil: no production provider execution is enabled, so a manifest that
+	// declares providerGateways fails the pass closed instead of making real
+	// provider calls. With the bridge disabled nothing is constructed.
+	stopProviderGateways := configureProviderGateways(reconciler, credentialBridge, nil)
+	defer stopProviderGateways()
 	if physicalListener != nil {
 		gate := physicalgate.Server{Store: store, Authority: physicalgate.RuntimeAuthority{Processes: processes, Access: engine.PhysicalAccess, Resolve: reconciler.AuthorizePhysicalRequest, CommitProviderSettlement: reconciler.CommitProviderPhysicalSettlement}}
 		go func() { physicalErrors <- gate.Serve(physicalListener) }()
@@ -320,13 +328,14 @@ func controlPlaneHTTPClient() *http.Client {
 }
 
 // startToolCredentialBridge starts the opt-in Runtime Box credential bridge
-// (Phase P1). Disabled configuration is inert by construction: it returns a
-// no-op stop without constructing a manager, touching the state directory or
-// calling the platform. When enabled, shutdown cancels the bridge context and
-// waits a bounded time for its Run loop to finish.
-func startToolCredentialBridge(ctx context.Context, settings config.Config, client control.Client, stateRoot string) (func(), error) {
+// (Phase P1). Disabled configuration is inert by construction: it returns a nil
+// manager and a no-op stop without touching the state directory or calling the
+// platform. When enabled, the returned manager is the Runtime's credential
+// opener for Phase P2d, and shutdown cancels the bridge context and waits a
+// bounded time for its Run loop to finish.
+func startToolCredentialBridge(ctx context.Context, settings config.Config, client control.Client, stateRoot string) (*boxcredentials.Manager, func(), error) {
 	if !settings.ToolCredentialBridgeEnabled() {
-		return func() {}, nil
+		return nil, func() {}, nil
 	}
 	bridge, err := boxcredentials.New(boxcredentials.Options{
 		Enabled:      true,
@@ -336,7 +345,7 @@ func startToolCredentialBridge(ctx context.Context, settings config.Config, clie
 		PollInterval: settings.ToolCredentialBridge.PollInterval(),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("tool credential bridge: %w", err)
+		return nil, nil, fmt.Errorf("tool credential bridge: %w", err)
 	}
 	bridgeContext, cancel := context.WithCancel(ctx)
 	go func() {
@@ -344,7 +353,7 @@ func startToolCredentialBridge(ctx context.Context, settings config.Config, clie
 			log.Printf("tool credential bridge stopped: %s", bounded(err.Error()))
 		}
 	}()
-	return func() {
+	return bridge, func() {
 		cancel()
 		select {
 		case <-bridge.Done():
@@ -352,6 +361,38 @@ func startToolCredentialBridge(ctx context.Context, settings config.Config, clie
 			log.Printf("tool credential bridge did not stop within the shutdown budget")
 		}
 	}, nil
+}
+
+// configureProviderGateways wires the Phase P2d scoped provider gateway
+// lifecycle into the reconciler. It constructs a provider gateway manager only
+// when the opt-in Box credential bridge is enabled, because that manager is the
+// only configured credential opener; with the bridge disabled (nil manager) it
+// constructs nothing and returns a no-op shutdown. The returned function closes
+// every gateway and is safe to call once at daemon shutdown.
+//
+// The executor is supplied by the caller. Phase P2d passes nil: production
+// provider execution is not enabled, so a manifest that declares provider
+// gateways fails the reconcile pass closed with an explicit feature-not-enabled
+// error instead of making real provider calls.
+func configureProviderGateways(
+	runtimeReconciler *reconcile.Reconciler,
+	credentialBridge *boxcredentials.Manager,
+	executor providergateway.Executor,
+) func() {
+	if credentialBridge == nil || runtimeReconciler == nil {
+		return func() {}
+	}
+	gatewayManager := providergateway.NewManager(nil)
+	runtimeReconciler.ProviderGateways = reconcile.ProviderGateways{Manager: gatewayManager}
+	runtimeReconciler.ProviderCredentials = reconcile.BoxCredentialOpener{Manager: credentialBridge}
+	runtimeReconciler.ProviderExecutor = executor
+	return func() {
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := gatewayManager.Close(shutdown); err != nil {
+			log.Printf("provider gateway manager shutdown: %s", bounded(err.Error()))
+		}
+	}
 }
 
 // runtimeFeedbackLoop performs one serial control-loop pass. It is the
