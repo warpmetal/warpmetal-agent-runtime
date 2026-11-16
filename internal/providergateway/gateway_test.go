@@ -99,6 +99,37 @@ func TestProviderGatewayServesDeclaredToolsOverUnixSocket(t *testing.T) {
 		t.Fatalf("executor call count = %d, want 2", calls)
 	}
 
+	// P4a: the gateway hands the executor the non-secret binding metadata and a
+	// per-call credential snapshot, then scrubs that snapshot once the call
+	// returned. The executor therefore sees the token only during the call.
+	recorded := fixture.provider.toolCalls()
+	if recorded[0].ProviderID != fakeProviderID ||
+		recorded[0].ConnectionID != fakeConnectionID ||
+		recorded[0].AccountID != fakeAccountID {
+		t.Fatalf(
+			"tool call metadata = provider %q connection %q account %q",
+			recorded[0].ProviderID, recorded[0].ConnectionID, recorded[0].AccountID,
+		)
+	}
+	if recorded[0].Credential == nil {
+		t.Fatal("tool call carried no credential snapshot")
+	}
+	observed := fixture.provider.lastObservedCredential()
+	if observed == nil {
+		t.Fatal("tool call carried no credential snapshot")
+	}
+	if observed.Kind != fakeCredentialKind {
+		t.Fatalf("credential kind = %q, want %q", observed.Kind, fakeCredentialKind)
+	}
+	if got := observed.Fields["token"]; got != fakeSecret {
+		t.Fatal("credential snapshot did not carry the opened secret field")
+	}
+	// The fake kept the field-map reference; the gateway must have emptied it
+	// before the response reached the client.
+	if fields := fixture.provider.lastCredentialFields(); len(fields) != 0 {
+		t.Fatalf("gateway left the per-call credential snapshot populated: %d fields", len(fields))
+	}
+
 	// Unknown methods and unknown tool names are rejected without reaching the
 	// executor.
 	requireRPCError(t, client.request("tools/delete", nil), codeMethodNotFound)

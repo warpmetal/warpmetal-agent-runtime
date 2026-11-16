@@ -29,6 +29,7 @@ import (
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/manager"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/physicalgate"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/providerexec"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/providergateway"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/reconcile"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/state"
@@ -235,12 +236,17 @@ func serve(arguments []string) error {
 	}
 	defer stopCredentialBridge()
 	reconciler := newRuntimeReconciler(store, engine, *workspaceRoot, *accessPath, gateway, hostCapacity, settings.ServerID, *stateRoot, client, ctx)
-	// Phase P2d: wire the scoped provider gateway lifecycle only when the opt-in
-	// credential bridge is enabled (the credential opener). The executor stays
-	// nil: no production provider execution is enabled, so a manifest that
-	// declares providerGateways fails the pass closed instead of making real
-	// provider calls. With the bridge disabled nothing is constructed.
-	stopProviderGateways := configureProviderGateways(reconciler, credentialBridge, nil)
+	// Phase P4a: construct the optional reviewed external provider executor. When
+	// the opt-in bridge and providerExecutor are absent this returns nil, keeping
+	// the P2d behavior exactly: no production provider execution is enabled and a
+	// manifest that declares providerGateways fails the pass closed. With the
+	// bridge enabled the gateway lifecycle is wired as before, and the executor
+	// (when configured) is the only path that performs real provider calls.
+	providerExecutor, err := newProviderExecutor(settings)
+	if err != nil {
+		return err
+	}
+	stopProviderGateways := configureProviderGateways(reconciler, credentialBridge, providerExecutor)
 	defer stopProviderGateways()
 	if physicalListener != nil {
 		gate := physicalgate.Server{Store: store, Authority: physicalgate.RuntimeAuthority{Processes: processes, Access: engine.PhysicalAccess, Resolve: reconciler.AuthorizePhysicalRequest, CommitProviderSettlement: reconciler.CommitProviderPhysicalSettlement}}
@@ -363,17 +369,36 @@ func startToolCredentialBridge(ctx context.Context, settings config.Config, clie
 	}, nil
 }
 
-// configureProviderGateways wires the Phase P2d scoped provider gateway
-// lifecycle into the reconciler. It constructs a provider gateway manager only
-// when the opt-in Box credential bridge is enabled, because that manager is the
-// only configured credential opener; with the bridge disabled (nil manager) it
-// constructs nothing and returns a no-op shutdown. The returned function closes
-// every gateway and is safe to call once at daemon shutdown.
+// newProviderExecutor constructs the optional reviewed external provider
+// executor (Phase P4a) from the opt-in bridge configuration. It returns a nil
+// executor and no error when the feature is not configured, which is exactly the
+// P2d fail-closed wiring. When configured it validates the executable file at
+// startup, so a bad configuration refuses to start the daemon instead of failing
+// at tool-call time.
+func newProviderExecutor(settings config.Config) (providergateway.Executor, error) {
+	if settings.ToolCredentialBridge == nil ||
+		!settings.ToolCredentialBridge.ProviderExecutorConfigured() {
+		return nil, nil
+	}
+	executor, err := providerexec.New(*settings.ToolCredentialBridge.ProviderExecutor, log.Default())
+	if err != nil {
+		return nil, fmt.Errorf("provider executor: %w", err)
+	}
+	return executor, nil
+}
+
+// configureProviderGateways wires the scoped provider gateway lifecycle into the
+// reconciler. It constructs a provider gateway manager only when the opt-in Box
+// credential bridge is enabled, because that manager is the only configured
+// credential opener; with the bridge disabled (nil manager) it constructs
+// nothing and returns a no-op shutdown. The returned function closes every
+// gateway and is safe to call once at daemon shutdown.
 //
-// The executor is supplied by the caller. Phase P2d passes nil: production
-// provider execution is not enabled, so a manifest that declares provider
-// gateways fails the reconcile pass closed with an explicit feature-not-enabled
-// error instead of making real provider calls.
+// The executor is supplied by the caller. Phase P2d passed nil, leaving
+// production provider execution disabled so a manifest that declares provider
+// gateways failed the reconcile pass closed. Phase P4a supplies the optional
+// reviewed external executor from newProviderExecutor; when it is nil the
+// fail-closed behavior is unchanged.
 func configureProviderGateways(
 	runtimeReconciler *reconcile.Reconciler,
 	credentialBridge *boxcredentials.Manager,

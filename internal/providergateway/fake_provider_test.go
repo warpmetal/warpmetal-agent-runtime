@@ -13,13 +13,15 @@ import (
 // only ever placed in the fake credential; no permitted Executor path can see
 // it, so its absence from responses and logs is the leak assertion.
 const (
-	fakeProviderID    = "github"
-	fakeConnectionID  = "conn_fakeconnection0001"
-	fakeReadToolName  = "fake_read"
-	fakeWriteToolName = "fake_write"
-	fakeSecret        = "pgw-test-secret-canary-6f3a9d"
-	fakeReadMarker    = "fake-read-marker"
-	fakeWriteMarker   = "fake-write-marker"
+	fakeProviderID     = "github"
+	fakeConnectionID   = "conn_fakeconnection0001"
+	fakeAccountID      = "acct_fakeaccount0001"
+	fakeCredentialKind = "oauth2"
+	fakeReadToolName   = "fake_read"
+	fakeWriteToolName  = "fake_write"
+	fakeSecret         = "pgw-test-secret-canary-6f3a9d"
+	fakeReadMarker     = "fake-read-marker"
+	fakeWriteMarker    = "fake-write-marker"
 )
 
 // fakeTools is the declared tool list the fake provider implements: one read
@@ -44,10 +46,11 @@ func fakeTools() []Tool {
 }
 
 // fakeProvider is the test double for a real provider client. It is built from
-// non-secret metadata only and receives no credential from the gateway: the
-// Executor interface has no credential parameter, so a fake_read result can
-// never contain credential material. Its results carry only the provider id,
-// the connection id and a fixed marker.
+// non-secret metadata only; since P4a the gateway additionally hands it a
+// per-call credential snapshot, which it records (without copying) so tests can
+// prove what the gateway passed and that the gateway scrubs the snapshot once
+// the call returns. Its results carry only the provider id, the connection id
+// and a fixed marker.
 type fakeProvider struct {
 	providerID   string
 	connectionID string
@@ -57,8 +60,15 @@ type fakeProvider struct {
 	// provider at all.
 	allowUndeclared bool
 
-	mu    sync.Mutex
-	calls []string
+	mu sync.Mutex
+	// calls records the ToolCall values the gateway handed the executor.
+	calls []ToolCall
+	// observedCredential copies the last per-call credential snapshot exactly as
+	// the executor saw it inside CallTool, before the gateway scrubbed it.
+	observedCredential *ToolCredential
+	// credentialFields aliases the last per-call credential field map without
+	// copying it, so a test can observe the gateway's post-call scrub.
+	credentialFields map[string]string
 }
 
 func newFakeProvider() *fakeProvider {
@@ -68,7 +78,15 @@ func newFakeProvider() *fakeProvider {
 // CallTool implements Executor.
 func (f *fakeProvider) CallTool(ctx context.Context, call ToolCall) (ToolResult, error) {
 	f.mu.Lock()
-	f.calls = append(f.calls, call.Name)
+	f.calls = append(f.calls, call)
+	if call.Credential != nil {
+		fields := make(map[string]string, len(call.Credential.Fields))
+		for name, value := range call.Credential.Fields {
+			fields[name] = value
+		}
+		f.observedCredential = &ToolCredential{Kind: call.Credential.Kind, Fields: fields}
+		f.credentialFields = call.Credential.Fields
+	}
 	f.mu.Unlock()
 
 	if f.readDelay > 0 {
@@ -104,7 +122,37 @@ func (f *fakeProvider) callCount() int {
 func (f *fakeProvider) callNames() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]string(nil), f.calls...)
+	names := make([]string, len(f.calls))
+	for index, call := range f.calls {
+		names[index] = call.Name
+	}
+	return names
+}
+
+// toolCalls returns a copy of the recorded calls. The returned ToolCall values
+// intentionally keep whatever Credential pointer they captured; tests use them
+// to assert the per-call snapshot shape.
+func (f *fakeProvider) toolCalls() []ToolCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]ToolCall(nil), f.calls...)
+}
+
+// lastCredentialFields returns the field map the gateway last handed the
+// executor, without copying it. The gateway must have scrubbed it by the time
+// the call returns.
+func (f *fakeProvider) lastCredentialFields() map[string]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.credentialFields
+}
+
+// lastObservedCredential returns a copy of the credential snapshot the executor
+// saw during the call, taken before the gateway scrubbed it.
+func (f *fakeProvider) lastObservedCredential() *ToolCredential {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.observedCredential
 }
 
 // fakeCredential is the destroy-observable credential double. The real
@@ -128,6 +176,12 @@ func (c *fakeCredential) SecretFields() map[string]string {
 		return map[string]string{}
 	}
 	return map[string]string{"token": c.secret}
+}
+
+// CredentialKind implements CredentialDescription, mirroring the production
+// *boxcredentials.Credential extension.
+func (c *fakeCredential) CredentialKind() string {
+	return fakeCredentialKind
 }
 
 // Destroy implements Credential.

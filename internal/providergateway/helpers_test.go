@@ -35,6 +35,7 @@ func newGatewayFixture(socketPath, rootDir string) *gatewayFixture {
 			RootDir:      rootDir,
 			ProviderID:   fakeProviderID,
 			ConnectionID: fakeConnectionID,
+			AccountID:    fakeAccountID,
 			Tools:        fakeTools(),
 			Executor:     provider,
 			Credential:   credential,

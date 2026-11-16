@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/providerexec"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/qualification"
 )
 
@@ -155,5 +156,158 @@ func TestLoadValidatesEnabledCredentialBridge(t *testing.T) {
 				t.Fatalf("PollInterval() = %s, want %s", got, test.wantPoll)
 			}
 		})
+	}
+}
+
+func TestLoadValidatesProviderExecutorConfiguration(t *testing.T) {
+	validCommand := "/usr/local/lib/warpmetal/provider-exec"
+	tests := []struct {
+		name     string
+		executor *providerexec.Config
+		wantErr  bool
+	}{
+		{
+			name:     "absent executor keeps the P2d fail-closed configuration",
+			executor: nil,
+		},
+		{
+			name:     "valid executor with defaults",
+			executor: &providerexec.Config{Command: validCommand},
+		},
+		{
+			name: "valid executor with explicit bounds",
+			executor: &providerexec.Config{
+				Command:          validCommand,
+				Args:             []string{"--mode", "reviewed"},
+				TimeoutSeconds:   120,
+				MaxResponseBytes: 2 << 20,
+			},
+		},
+		{
+			name:     "relative command",
+			executor: &providerexec.Config{Command: "provider-exec"},
+			wantErr:  true,
+		},
+		{
+			name:     "empty command object",
+			executor: &providerexec.Config{},
+			wantErr:  true,
+		},
+		{
+			name:     "non-clean command path",
+			executor: &providerexec.Config{Command: "/usr/local/../local/bin/provider-exec"},
+			wantErr:  true,
+		},
+		{
+			name:     "command path with control character",
+			executor: &providerexec.Config{Command: "/usr/local/bin/provider\nexec"},
+			wantErr:  true,
+		},
+		{
+			name:     "negative timeout",
+			executor: &providerexec.Config{Command: validCommand, TimeoutSeconds: -1},
+			wantErr:  true,
+		},
+		{
+			name:     "timeout above the bound",
+			executor: &providerexec.Config{Command: validCommand, TimeoutSeconds: int(providerexec.MaxTimeout/time.Second) + 1},
+			wantErr:  true,
+		},
+		{
+			name:     "timeout at the bound",
+			executor: &providerexec.Config{Command: validCommand, TimeoutSeconds: int(providerexec.MaxTimeout / time.Second)},
+		},
+		{
+			name:     "response limit below the bound",
+			executor: &providerexec.Config{Command: validCommand, MaxResponseBytes: providerexec.MinMaxResponseBytes - 1},
+			wantErr:  true,
+		},
+		{
+			name:     "response limit above the bound",
+			executor: &providerexec.Config{Command: validCommand, MaxResponseBytes: providerexec.MaxMaxResponseBytes + 1},
+			wantErr:  true,
+		},
+		{
+			name:     "response limit at the bound",
+			executor: &providerexec.Config{Command: validCommand, MaxResponseBytes: providerexec.MaxMaxResponseBytes},
+		},
+		{
+			name: "too many arguments",
+			executor: &providerexec.Config{
+				Command: validCommand,
+				Args:    make([]string, providerexec.MaxArgs+1),
+			},
+			wantErr: true,
+		},
+		{
+			name: "argument too long",
+			executor: &providerexec.Config{
+				Command: validCommand,
+				Args:    []string{strings.Repeat("a", providerexec.MaxArgBytes+1)},
+			},
+			wantErr: true,
+		},
+		{
+			name: "argument with a control character",
+			executor: &providerexec.Config{
+				Command: validCommand,
+				Args:    []string{"a\x00b"},
+			},
+			wantErr: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			value := validBaseConfig(t)
+			value.ToolCredentialBridge = &ToolCredentialBridgeConfig{
+				Enabled:          true,
+				ProviderExecutor: test.executor,
+			}
+			loaded, err := saveAndLoadConfig(t, value)
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("Load() accepted an invalid provider executor configuration")
+				}
+				if !strings.Contains(err.Error(), "providerExecutor") {
+					t.Fatalf("Load() error = %v, want a providerExecutor validation error", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if test.executor == nil {
+				if loaded.ToolCredentialBridge.ProviderExecutor != nil {
+					t.Fatalf("providerExecutor = %#v, want absent", loaded.ToolCredentialBridge.ProviderExecutor)
+				}
+				if loaded.ToolCredentialBridge.ProviderExecutorConfigured() {
+					t.Fatal("absent provider executor reported as configured")
+				}
+				return
+			}
+			if !loaded.ToolCredentialBridge.ProviderExecutorConfigured() {
+				t.Fatal("valid provider executor was not reported as configured")
+			}
+			if got := loaded.ToolCredentialBridge.ProviderExecutor.Timeout(); got != test.executor.Timeout() {
+				t.Fatalf("Timeout() = %s, want %s", got, test.executor.Timeout())
+			}
+			if got := loaded.ToolCredentialBridge.ProviderExecutor.ResponseLimit(); got != test.executor.ResponseLimit() {
+				t.Fatalf("ResponseLimit() = %d, want %d", got, test.executor.ResponseLimit())
+			}
+		})
+	}
+}
+
+func TestLoadIgnoresProviderExecutorOnDisabledBridge(t *testing.T) {
+	value := validBaseConfig(t)
+	value.ToolCredentialBridge = &ToolCredentialBridgeConfig{
+		Enabled:          false,
+		ProviderExecutor: &providerexec.Config{Command: "relative-and-invalid"},
+	}
+	if _, err := saveAndLoadConfig(t, value); err != nil {
+		t.Fatalf("Load() rejected an executor on a disabled bridge: %v", err)
+	}
+	if value.ToolCredentialBridge.ProviderExecutorConfigured() {
+		t.Fatal("disabled bridge reported a configured provider executor")
 	}
 }

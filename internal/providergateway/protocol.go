@@ -196,7 +196,11 @@ func (g *Gateway) handleToolCall(ctx context.Context, params json.RawMessage) (a
 
 	callCtx, cancel := context.WithTimeout(ctx, g.toolTimeout)
 	defer cancel()
-	result, err := g.invokeExecutor(callCtx, ToolCall{Name: call.Name, Arguments: arguments})
+	toolCall := g.executorToolCall(call.Name, arguments)
+	// The per-call credential snapshot exists only for this invocation; scrub
+	// it as soon as the Executor returned, on every path.
+	defer releaseToolCredential(toolCall.Credential)
+	result, err := g.invokeExecutor(callCtx, toolCall)
 	if err != nil {
 		text := g.describeError(err)
 		g.logger.Printf("provider gateway: tool %q failed: %s", call.Name, logSafe(text))

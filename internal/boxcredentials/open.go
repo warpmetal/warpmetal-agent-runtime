@@ -248,6 +248,16 @@ func (c *Credential) Destroy() {
 	c.destroyed = true
 }
 
+// CredentialKind reports the non-secret credential material kind (for example
+// "oauth2"). It is metadata only and is safe to log, render or hand to an
+// external provider executor. It is the method form of the public Kind field.
+func (c *Credential) CredentialKind() string {
+	if c == nil {
+		return ""
+	}
+	return c.Kind
+}
+
 // String renders metadata only. It never includes a secret value or field name.
 func (c Credential) String() string {
 	expiresAt := "none"

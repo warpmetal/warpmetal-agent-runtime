@@ -196,6 +196,7 @@ func (m *Manager) Start(ctx context.Context, request Request) (handle *Handle, e
 		RootDir:      request.WorkspaceHostRoot,
 		ProviderID:   request.ProviderID,
 		ConnectionID: request.ConnectionID,
+		AccountID:    request.AccountID,
 		Tools:        request.Tools,
 		Executor:     request.Executor,
 		Credential:   request.Credential,
