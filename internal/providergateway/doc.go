@@ -49,9 +49,21 @@
 // credential has been destroyed. Serve may be called at most once. The gateway
 // owns exactly one credential and exactly one socket.
 //
+// Manager is the sandbox-facing lifecycle owner built on top of that surface.
+// Start prepares <workspace host root>/.warpmetal/provider-gateways, starts a
+// Gateway there on <RunID>.sock and returns a Handle exposing the deterministic
+// host path and the container path the agent's socat dials
+// (<ContainerRoot>/.warpmetal/provider-gateways/<RunID>.sock, with ContainerRoot
+// defaulting to /home/agent). Handles are tracked per (SandboxID, RunID), so a
+// duplicate start is refused; Handle.Close, Manager.CloseAll and
+// Manager.CloseSandbox tear the listener, live connections, credential and an
+// owned socket directory down. When the Start context is cancelled or the
+// server exits on its own, the handle runs the same cleanup and detaches itself.
+//
 // Phase scope. There are no real provider calls yet and nothing wires this
-// package into the sandbox, the Runtime serve loop or a control plane:
-// Executor implementations are supplied by the caller (tests use a fake
-// provider that exposes fake_read and fake_write). An Executor must be safe for
-// concurrent use because connections are served concurrently.
+// package into the sandbox, the Runtime serve loop or a control plane: Executor
+// implementations are supplied by the caller (tests use a fake provider that
+// exposes fake_read and fake_write), and Manager is not yet started by the
+// runtime reconciler. An Executor must be safe for concurrent use because
+// connections are served concurrently.
 package providergateway
