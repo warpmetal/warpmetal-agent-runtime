@@ -26,6 +26,68 @@ type Config struct {
 	// enabled it requires an exact-URL allowlist and the Runtime forwards the
 	// gate only to this instance's setup executions.
 	SetupTestSource *setupsource.Config `json:"setupTestSource,omitempty"`
+	// ToolCredentialBridge opts the Runtime into Phase P1 of the sealed
+	// tool-provider credential bridge. Every existing config omits it, so a
+	// production Runtime keeps today's behavior exactly: no Box encryption key
+	// is generated and no credential endpoint is called.
+	ToolCredentialBridge *ToolCredentialBridgeConfig `json:"toolCredentialBridge,omitempty"`
+}
+
+// ToolCredentialBridgeConfig is the explicit opt-in for the Runtime Box
+// credential bridge. The bridge only generates/registers a Box encryption key
+// and stores sealed tool-provider credential envelopes; it does not decrypt,
+// inject or execute provider tools in this phase.
+type ToolCredentialBridgeConfig struct {
+	Enabled bool `json:"enabled"`
+	// PollIntervalSeconds bounds the credential pull cadence. Zero selects
+	// DefaultToolCredentialBridgePollInterval; explicit values must be between
+	// MinToolCredentialBridgePollInterval and MaxToolCredentialBridgePollInterval
+	// so an operator can neither hammer the platform nor leave credentials
+	// undelivered indefinitely.
+	PollIntervalSeconds int `json:"pollIntervalSeconds,omitempty"`
+}
+
+const (
+	// DefaultToolCredentialBridgePollInterval is the pull cadence used when the
+	// operator enables the bridge without choosing an interval.
+	DefaultToolCredentialBridgePollInterval = time.Minute
+	// MinToolCredentialBridgePollInterval bounds how frequently an enabled
+	// Runtime may poll the credential delivery endpoint.
+	MinToolCredentialBridgePollInterval = 10 * time.Second
+	// MaxToolCredentialBridgePollInterval bounds the longest accepted interval.
+	MaxToolCredentialBridgePollInterval = time.Hour
+)
+
+// Validate refuses an enabled bridge with an unbounded or nonsensical poll
+// cadence. A disabled or absent bridge is always valid so existing configs
+// cannot be affected by the new field.
+func (c *ToolCredentialBridgeConfig) Validate() error {
+	if c == nil || !c.Enabled || c.PollIntervalSeconds == 0 {
+		return nil
+	}
+	interval := time.Duration(c.PollIntervalSeconds) * time.Second
+	if interval < MinToolCredentialBridgePollInterval || interval > MaxToolCredentialBridgePollInterval {
+		return fmt.Errorf(
+			"toolCredentialBridge.pollIntervalSeconds must be between %d and %d",
+			int(MinToolCredentialBridgePollInterval/time.Second),
+			int(MaxToolCredentialBridgePollInterval/time.Second),
+		)
+	}
+	return nil
+}
+
+// PollInterval is the effective pull cadence for an enabled bridge. It is
+// nil-safe and applies the documented default for an unset value.
+func (c *ToolCredentialBridgeConfig) PollInterval() time.Duration {
+	if c == nil || c.PollIntervalSeconds == 0 {
+		return DefaultToolCredentialBridgePollInterval
+	}
+	return time.Duration(c.PollIntervalSeconds) * time.Second
+}
+
+// ToolCredentialBridgeEnabled reports whether the opt-in bridge is configured.
+func (c Config) ToolCredentialBridgeEnabled() bool {
+	return c.ToolCredentialBridge != nil && c.ToolCredentialBridge.Enabled
 }
 
 func Load(path string) (Config, error) {
@@ -54,6 +116,11 @@ func Load(path string) (Config, error) {
 	// setup runner's source guard.
 	if err := value.SetupTestSource.Validate(); err != nil {
 		return Config{}, fmt.Errorf("setup test source: %w", err)
+	}
+	// An explicitly enabled credential bridge must have a bounded pull cadence;
+	// an absent/disabled bridge validates exactly like before this field existed.
+	if err := value.ToolCredentialBridge.Validate(); err != nil {
+		return Config{}, fmt.Errorf("tool credential bridge: %w", err)
 	}
 	return value, nil
 }

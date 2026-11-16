@@ -20,6 +20,7 @@ import (
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/access"
 	control "github.com/warpmetal/warpmetal-agent-runtime/internal/api"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/boxcredentials"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/capacity"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/config"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/containers"
@@ -224,6 +225,14 @@ func serve(arguments []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	// The sealed tool-provider credential bridge is opt-in (Phase P1). With the
+	// field absent or disabled this starts nothing: no key is generated and no
+	// credential HTTP call is made, so production behavior is unchanged.
+	stopCredentialBridge, err := startToolCredentialBridge(ctx, settings, client, *stateRoot)
+	if err != nil {
+		return err
+	}
+	defer stopCredentialBridge()
 	reconciler := newRuntimeReconciler(store, engine, *workspaceRoot, *accessPath, gateway, hostCapacity, settings.ServerID, *stateRoot, client, ctx)
 	if physicalListener != nil {
 		gate := physicalgate.Server{Store: store, Authority: physicalgate.RuntimeAuthority{Processes: processes, Access: engine.PhysicalAccess, Resolve: reconciler.AuthorizePhysicalRequest, CommitProviderSettlement: reconciler.CommitProviderPhysicalSettlement}}
@@ -308,6 +317,41 @@ func serve(arguments []string) error {
 // controlPlaneTimeout, and the reconciler's pass context still bounds the rest.
 func controlPlaneHTTPClient() *http.Client {
 	return &http.Client{Timeout: controlPlaneTimeout}
+}
+
+// startToolCredentialBridge starts the opt-in Runtime Box credential bridge
+// (Phase P1). Disabled configuration is inert by construction: it returns a
+// no-op stop without constructing a manager, touching the state directory or
+// calling the platform. When enabled, shutdown cancels the bridge context and
+// waits a bounded time for its Run loop to finish.
+func startToolCredentialBridge(ctx context.Context, settings config.Config, client control.Client, stateRoot string) (func(), error) {
+	if !settings.ToolCredentialBridgeEnabled() {
+		return func() {}, nil
+	}
+	bridge, err := boxcredentials.New(boxcredentials.Options{
+		Enabled:      true,
+		StateDir:     stateRoot,
+		Client:       client,
+		BoxID:        settings.ServerID,
+		PollInterval: settings.ToolCredentialBridge.PollInterval(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("tool credential bridge: %w", err)
+	}
+	bridgeContext, cancel := context.WithCancel(ctx)
+	go func() {
+		if err := bridge.Run(bridgeContext); err != nil {
+			log.Printf("tool credential bridge stopped: %s", bounded(err.Error()))
+		}
+	}()
+	return func() {
+		cancel()
+		select {
+		case <-bridge.Done():
+		case <-time.After(5 * time.Second):
+			log.Printf("tool credential bridge did not stop within the shutdown budget")
+		}
+	}, nil
 }
 
 // runtimeFeedbackLoop performs one serial control-loop pass. It is the
