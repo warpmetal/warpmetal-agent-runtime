@@ -29,13 +29,21 @@
 //
 // Security invariants:
 //
-//   - The opened provider credential is held only in memory. An Executor never
-//     receives it: CallTool sees only the tool name and arguments, so a
-//     provider implementation cannot accidentally return credential material.
-//     The gateway keeps a transient copy of the credential's secret field
-//     values solely to redact them from executor error text and tool result
-//     text, and zeroizes that copy once the gateway has stopped. Credential
-//     material is never logged, and Config is never serialized.
+//   - The opened provider credential is held only in memory. The gateway keeps a
+//     transient copy of the credential's secret field values solely to redact
+//     them from executor error text and tool result text, and zeroizes that copy
+//     once the gateway has stopped. Credential material is never logged, and
+//     Config is never serialized.
+//   - Phase P4a delegates real provider execution to a reviewed external
+//     command (internal/providerexec) that is the provider execution boundary.
+//     For that boundary the gateway hands the Executor a per-call ToolCredential
+//     snapshot (the platform-declared non-secret kind plus the secret field
+//     values) together with non-secret binding metadata. The snapshot is built
+//     immediately before CallTool and scrubbed immediately after it; the
+//     gateway remains the only owner of the opened credential and destroys it
+//     exactly once on teardown. Executors must not log, persist or retain it,
+//     and the external executor passes it only through a bounded stdin JSON
+//     request, never argv, environment or files.
 //   - The Unix socket is created 0600 inside a directory the gateway creates
 //     0700; an existing directory must already be owner-only. The socket file
 //     is removed on close only while it is still the exact socket this gateway
@@ -67,9 +75,11 @@
 // them down on stop/delete/generation change. Manager.Has is the idempotency
 // probe the reconciler uses so a retried pass never starts a duplicate pair.
 //
-// Phase scope. There are still no real provider calls: Executor implementations
-// are supplied by the caller (tests use a fake provider that exposes fake_read
-// and fake_write), production P2d passes a nil executor, and a manifest that
-// requires gateways without one fails the reconcile pass closed. An Executor
-// must be safe for concurrent use because connections are served concurrently.
+// Phase scope. P2/P2d supplied only the gateway surface and lifecycle: no
+// production provider execution was enabled and a manifest that requires
+// gateways without an Executor failed the reconcile pass closed. Phase P4a wires
+// the optional reviewed external provider executor (internal/providerexec)
+// through the same seam; when it is not configured the nil-executor fail-closed
+// behavior is unchanged. An Executor must be safe for concurrent use because
+// connections are served concurrently.
 package providergateway

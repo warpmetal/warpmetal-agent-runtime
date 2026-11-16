@@ -76,13 +76,68 @@ type Tool struct {
 	InputSchema json.RawMessage `json:"inputSchema"`
 }
 
-// ToolCall is one tools/call invocation handed to an Executor. It contains no
-// credential material: the opened credential stays inside the gateway.
+// ToolCall is one tools/call invocation handed to an Executor.
+//
+// It carries the non-secret gateway binding metadata and, when the gateway holds
+// an opened credential, a per-call snapshot of that credential's material. The
+// snapshot exists only for the duration of one CallTool invocation: the gateway
+// builds it immediately before the call and scrubs it when the call returns, so
+// an Executor must copy anything it needs synchronously and must not retain the
+// pointer, its map or its values beyond the call.
 type ToolCall struct {
 	// Name is a declared tool name that has already passed the allowlist.
 	Name string
 	// Arguments is the raw JSON object the agent supplied. It is never logged.
 	Arguments json.RawMessage
+	// ProviderID is the non-secret tool provider identifier of the gateway that
+	// dispatched this call.
+	ProviderID string
+	// ConnectionID is the non-secret platform account connection identifier of
+	// the gateway that dispatched this call.
+	ConnectionID string
+	// AccountID is the optional non-secret owner account binding.
+	AccountID string
+	// Credential is the credential material for this call, or nil when the
+	// gateway was started without an opened credential. It is owned by the
+	// gateway and is invalid once CallTool returns.
+	Credential *ToolCredential
+}
+
+// ToolCredential is one per-call copy of the opened credential material the
+// gateway hands to an Executor: the non-secret material kind the platform
+// declared, plus the secret field name/value pairs the external provider
+// executor needs to perform the provider call.
+//
+// This type exists because Phase P4a delegates real provider execution to a
+// reviewed external command that is the provider execution boundary. The
+// gateway still owns the credential and destroys it exactly once; the values in
+// this snapshot are never logged, persisted, written to a file or placed in
+// process arguments by the gateway, and the gateway scrubs the snapshot after
+// every call. Executors must not log, persist or retain the values.
+type ToolCredential struct {
+	// Kind is the platform-declared credential material kind (metadata only).
+	Kind string
+	// Fields maps credential field name to secret value. Values are never
+	// logged or returned to the agent by the gateway.
+	Fields map[string]string
+}
+
+// CredentialDescription is an optional extension of Credential. A credential
+// implementation that also reports its non-secret material kind lets the
+// gateway attach that kind to every per-call ToolCredential. A Credential that
+// does not implement it yields an empty kind.
+type CredentialDescription interface {
+	// CredentialKind reports the non-secret credential material kind.
+	CredentialKind() string
+}
+
+// ToolTimeoutProvider is an optional Executor extension that reports the
+// per-call bound the executor enforces. The reconciler forwards it as the
+// gateway's own call deadline so a configured external-executor timeout is not
+// silently shortened by the gateway default.
+type ToolTimeoutProvider interface {
+	// ToolTimeout is the per-call bound the executor enforces.
+	ToolTimeout() time.Duration
 }
 
 // ToolResult is an Executor's tool-level outcome. The gateway renders Text as a
@@ -100,11 +155,14 @@ type ToolResult struct {
 // safe for concurrent use and must honor ctx cancellation, because connections
 // are served concurrently and every call is bounded by Config.ToolTimeout.
 //
-// The Executor is the only place provider work happens. It deliberately
-// receives no credential: a provider client is expected to have been built with
-// the opened credential by the caller that also builds the Executor, and the
-// gateway only ever holds the credential for redaction and destruction. That
-// keeps credential material out of the tool result path by construction.
+// The Executor is the only place provider work happens. It receives the tool
+// name, the raw arguments, the gateway's non-secret binding metadata and, when
+// the gateway holds an opened credential, a per-call ToolCredential snapshot.
+// That snapshot is built immediately before the call and scrubbed immediately
+// after it: an Executor must not log, persist or retain it. Production P4a
+// delegates execution to a reviewed external command (internal/providerexec)
+// that is the provider execution boundary; in-process test executors receive
+// the same snapshot shape.
 type Executor interface {
 	CallTool(ctx context.Context, call ToolCall) (ToolResult, error)
 }
@@ -122,8 +180,12 @@ type Credential interface {
 	Destroy()
 }
 
-// The production P2 credential type is exactly this interface.
-var _ Credential = (*boxcredentials.Credential)(nil)
+// The production P2 credential type satisfies the gateway's credential contract,
+// and it also reports the non-secret material kind forwarded to executors.
+var (
+	_ Credential            = (*boxcredentials.Credential)(nil)
+	_ CredentialDescription = (*boxcredentials.Credential)(nil)
+)
 
 // Config configures one Provider Gateway.
 //
@@ -148,6 +210,9 @@ type Config struct {
 	// ConnectionID is the non-secret platform account connection identifier.
 	// Required; used for logs only.
 	ConnectionID string
+	// AccountID is the optional non-secret owner account the credential belongs
+	// to. It is forwarded to the Executor as call metadata only.
+	AccountID string
 	// Tools is the template-declared tool allowlist. Exactly these tools are
 	// advertised and callable. Required, at least one.
 	Tools []Tool
@@ -203,6 +268,11 @@ func (c Config) Validate() error {
 	if err := validateMetadata("connection id", c.ConnectionID); err != nil {
 		return err
 	}
+	if c.AccountID != "" {
+		if err := validateMetadata("account id", c.AccountID); err != nil {
+			return err
+		}
+	}
 	if c.Executor == nil {
 		return errors.New("providergateway: executor is required")
 	}
@@ -246,8 +316,9 @@ func (c Config) String() string {
 		timeout = defaultToolTimeout
 	}
 	return fmt.Sprintf(
-		"providergateway.Config{socketPath=%q rootDir=%q providerId=%q connectionId=%q tools=%d hasCredential=%t toolTimeout=%s}",
-		c.SocketPath, c.RootDir, c.ProviderID, c.ConnectionID, len(c.Tools), c.Credential != nil, timeout,
+		"providergateway.Config{socketPath=%q rootDir=%q providerId=%q connectionId=%q accountId=%q tools=%d hasCredential=%t toolTimeout=%s}",
+		c.SocketPath, c.RootDir, c.ProviderID, c.ConnectionID, c.AccountID,
+		len(c.Tools), c.Credential != nil, timeout,
 	)
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/providerexec"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/qualification"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/setupsource"
 	"os"
@@ -34,9 +35,13 @@ type Config struct {
 }
 
 // ToolCredentialBridgeConfig is the explicit opt-in for the Runtime Box
-// credential bridge. The bridge only generates/registers a Box encryption key
-// and stores sealed tool-provider credential envelopes; it does not decrypt,
-// inject or execute provider tools in this phase.
+// credential bridge. The bridge generates/registers a Box encryption key and
+// stores sealed tool-provider credential envelopes; when the optional external
+// provider executor is configured it also delegates provider execution to that
+// reviewed command through the scoped provider gateway. Without a configured
+// executor the P2d fail-closed behavior is unchanged: a manifest that requires
+// provider gateways fails the reconcile pass with an explicit feature-not-enabled
+// error and no provider call is made.
 type ToolCredentialBridgeConfig struct {
 	Enabled bool `json:"enabled"`
 	// PollIntervalSeconds bounds the credential pull cadence. Zero selects
@@ -45,6 +50,11 @@ type ToolCredentialBridgeConfig struct {
 	// so an operator can neither hammer the platform nor leave credentials
 	// undelivered indefinitely.
 	PollIntervalSeconds int `json:"pollIntervalSeconds,omitempty"`
+	// ProviderExecutor optionally configures the reviewed external command that
+	// performs real provider tool execution (Phase P4a). It is honored only when
+	// the bridge itself is enabled; absent means no provider execution is
+	// configured and the provider gateway keeps failing closed.
+	ProviderExecutor *providerexec.Config `json:"providerExecutor,omitempty"`
 }
 
 const (
@@ -59,21 +69,37 @@ const (
 )
 
 // Validate refuses an enabled bridge with an unbounded or nonsensical poll
-// cadence. A disabled or absent bridge is always valid so existing configs
-// cannot be affected by the new field.
+// cadence or an invalid provider executor configuration. A disabled or absent
+// bridge is always valid so existing configs cannot be affected by the new
+// fields; a disabled bridge's providerExecutor is inert and is not validated.
 func (c *ToolCredentialBridgeConfig) Validate() error {
-	if c == nil || !c.Enabled || c.PollIntervalSeconds == 0 {
+	if c == nil || !c.Enabled {
 		return nil
 	}
-	interval := time.Duration(c.PollIntervalSeconds) * time.Second
-	if interval < MinToolCredentialBridgePollInterval || interval > MaxToolCredentialBridgePollInterval {
-		return fmt.Errorf(
-			"toolCredentialBridge.pollIntervalSeconds must be between %d and %d",
-			int(MinToolCredentialBridgePollInterval/time.Second),
-			int(MaxToolCredentialBridgePollInterval/time.Second),
-		)
+	if c.PollIntervalSeconds != 0 {
+		interval := time.Duration(c.PollIntervalSeconds) * time.Second
+		if interval < MinToolCredentialBridgePollInterval || interval > MaxToolCredentialBridgePollInterval {
+			return fmt.Errorf(
+				"toolCredentialBridge.pollIntervalSeconds must be between %d and %d",
+				int(MinToolCredentialBridgePollInterval/time.Second),
+				int(MaxToolCredentialBridgePollInterval/time.Second),
+			)
+		}
+	}
+	// The provider executor is optional (its absence is the P2d fail-closed
+	// configuration), but when present every bound must be valid before the
+	// daemon starts. Executable-file checks happen at executor construction.
+	if err := c.ProviderExecutor.Validate(); err != nil {
+		return fmt.Errorf("providerExecutor: %w", err)
 	}
 	return nil
+}
+
+// ProviderExecutorConfigured reports whether the optional external provider
+// executor is configured on an enabled bridge. It is nil-safe and false for a
+// disabled bridge, so a disabled configuration stays inert exactly as before.
+func (c *ToolCredentialBridgeConfig) ProviderExecutorConfigured() bool {
+	return c != nil && c.Enabled && c.ProviderExecutor != nil
 }
 
 // PollInterval is the effective pull cadence for an enabled bridge. It is

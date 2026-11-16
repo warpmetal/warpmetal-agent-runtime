@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/boxcredentials"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
@@ -14,13 +15,12 @@ import (
 
 // This file wires the existing scoped provider gateway lifecycle manager
 // (internal/providergateway) and the Box credential opener
-// (internal/boxcredentials) into the reconciler. P2d deliberately contains no
-// provider backend and no real tool execution: the executor is a pluggable
-// interface supplied by the runtime wiring, and when it is absent a manifest
-// that declares provider gateways fails the pass closed with a bounded,
-// explicit "feature not enabled" error. No credential material, envelope,
-// ciphertext, tool argument or tool result is ever persisted, reported or
-// logged here.
+// (internal/boxcredentials) into the reconciler. The runtime wiring supplies the
+// Executor: Phase P2d had none (a manifest that declares provider gateways
+// failed the pass closed), and Phase P4a can supply the reviewed external
+// provider executor (internal/providerexec). When it is absent the fail-closed
+// behavior is unchanged. No credential material, envelope, ciphertext, tool
+// argument or tool result is ever persisted, reported or logged here.
 
 // errProviderGatewayNotEnabled is the fail-closed sentinel returned when the
 // manifest requires provider gateways but the runtime wiring is incomplete.
@@ -324,7 +324,13 @@ func (r *Reconciler) startProviderGateway(
 		ConnectionID:  requirement.EffectiveConnectionID(),
 		Tools:         providerGatewayTools(requirement.Tools),
 		Executor:      r.ProviderExecutor,
-		Credential:    credential,
+		// An executor that declares its own per-call bound (the external
+		// provider executor does) sets the gateway's call deadline to the same
+		// bound, so an operator-configured executor timeout is not silently
+		// shortened by the gateway default. A plain in-process executor keeps
+		// the gateway default.
+		ToolTimeout: providerGatewayToolTimeout(r.ProviderExecutor),
+		Credential:  credential,
 	})
 	if err != nil {
 		// The manager destroys the credential on every failed Start. Destroy is
@@ -334,6 +340,16 @@ func (r *Reconciler) startProviderGateway(
 		return nil, fmt.Errorf("start gateway: %w", err)
 	}
 	return handle, nil
+}
+
+// providerGatewayToolTimeout returns the per-call bound the configured executor
+// enforces, or zero when the executor does not declare one. Zero keeps the
+// gateway's own default.
+func providerGatewayToolTimeout(executor providergateway.Executor) time.Duration {
+	if timeoutProvider, ok := executor.(providergateway.ToolTimeoutProvider); ok {
+		return timeoutProvider.ToolTimeout()
+	}
+	return 0
 }
 
 // providerGatewayTools converts the validated manifest tool declarations into

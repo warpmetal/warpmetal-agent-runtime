@@ -48,12 +48,21 @@ type Gateway struct {
 	rootDir      string
 	providerID   string
 	connectionID string
+	accountID    string
 	tools        []Tool
 	declared     map[string]struct{}
 	executor     Executor
 	credential   Credential
 	logger       *log.Logger
 	toolTimeout  time.Duration
+
+	// credentialKind is the non-secret material kind reported by the optional
+	// CredentialDescription extension. It is immutable after New.
+	credentialKind string
+	// credentialMu serializes credential SecretFields snapshots against the
+	// one-time Destroy in teardown. The credential implementations are not
+	// required to be internally synchronized.
+	credentialMu sync.Mutex
 
 	// secrets holds the credential's secret field values for redaction. It is
 	// immutable while serving and zeroized after every handler has stopped.
@@ -100,6 +109,7 @@ func New(config Config) (*Gateway, error) {
 		declared[tool.Name] = struct{}{}
 	}
 	var secrets [][]byte
+	var credentialKind string
 	if config.Credential != nil {
 		for _, value := range config.Credential.SecretFields() {
 			if value == "" {
@@ -113,21 +123,29 @@ func New(config Config) (*Gateway, error) {
 		sort.Slice(secrets, func(left, right int) bool {
 			return len(secrets[left]) > len(secrets[right])
 		})
+		// The production *boxcredentials.Credential reports its material kind,
+		// which the per-call executor snapshot forwards. The extension is
+		// optional so narrow test doubles stay valid.
+		if description, ok := config.Credential.(CredentialDescription); ok {
+			credentialKind = description.CredentialKind()
+		}
 	}
 	return &Gateway{
-		socketPath:   config.SocketPath,
-		rootDir:      config.RootDir,
-		providerID:   config.ProviderID,
-		connectionID: config.ConnectionID,
-		tools:        tools,
-		declared:     declared,
-		executor:     config.Executor,
-		credential:   config.Credential,
-		logger:       logger,
-		toolTimeout:  toolTimeout,
-		secrets:      secrets,
-		conns:        make(map[net.Conn]struct{}),
-		done:         make(chan struct{}),
+		socketPath:     config.SocketPath,
+		rootDir:        config.RootDir,
+		providerID:     config.ProviderID,
+		connectionID:   config.ConnectionID,
+		accountID:      config.AccountID,
+		tools:          tools,
+		declared:       declared,
+		executor:       config.Executor,
+		credential:     config.Credential,
+		logger:         logger,
+		toolTimeout:    toolTimeout,
+		credentialKind: credentialKind,
+		secrets:        secrets,
+		conns:          make(map[net.Conn]struct{}),
+		done:           make(chan struct{}),
 	}, nil
 }
 
@@ -397,7 +415,13 @@ func (g *Gateway) teardown() {
 		}
 		removeSocketFile(listenPath, socketInfo)
 		if g.credential != nil {
+			// Serialize the one-time Destroy against per-call SecretFields
+			// snapshots: a handler that is still inside an Executor call when
+			// teardown starts must never observe a partially destroyed
+			// credential.
+			g.credentialMu.Lock()
 			g.credential.Destroy()
+			g.credentialMu.Unlock()
 		}
 
 		// Zero the redaction copies only after every connection handler has

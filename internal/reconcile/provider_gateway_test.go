@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/access"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
@@ -340,10 +341,12 @@ func (opener *fakeProviderGatewayOpener) issued(credentialID string) []*fakeProv
 
 // fakeProviderGatewayExecutor is the pluggable P2d executor seam. The
 // reconciler must wire it into every gateway request; production P2d leaves it
-// nil so no provider call is ever made.
+// nil so no provider call is ever made. An optional toolTimeout mirrors the
+// external executor's ToolTimeoutProvider extension.
 type fakeProviderGatewayExecutor struct {
-	mu    sync.Mutex
-	calls int
+	mu          sync.Mutex
+	calls       int
+	toolTimeout time.Duration
 }
 
 func (executor *fakeProviderGatewayExecutor) CallTool(
@@ -354,6 +357,11 @@ func (executor *fakeProviderGatewayExecutor) CallTool(
 	defer executor.mu.Unlock()
 	executor.calls++
 	return providergateway.ToolResult{Text: "unused"}, nil
+}
+
+// ToolTimeout implements providergateway.ToolTimeoutProvider.
+func (executor *fakeProviderGatewayExecutor) ToolTimeout() time.Duration {
+	return executor.toolTimeout
 }
 
 func (executor *fakeProviderGatewayExecutor) callCount() int {
@@ -462,7 +470,7 @@ func TestReconcileStartsOneProviderGatewayPerRequirement(t *testing.T) {
 		"conn_github0000000000000001": providerGatewaySecretSentinel,
 		"conn_google0000000000000002": "google-secret-canary",
 	})
-	executor := &fakeProviderGatewayExecutor{}
+	executor := &fakeProviderGatewayExecutor{toolTimeout: 45 * time.Second}
 	fixture := newProviderGatewayTestReconciler(t, manager, opener, executor)
 	requirements := []model.ProviderGatewayRequirement{
 		providerGatewayTestRequirement(
@@ -493,6 +501,11 @@ func TestReconcileStartsOneProviderGatewayPerRequirement(t *testing.T) {
 	for _, request := range starts {
 		if request.Executor != executor {
 			t.Fatal("gateway request did not carry the configured executor")
+		}
+		// An executor that declares its own per-call bound (the P4a external
+		// provider executor does) sets the gateway's call deadline to it.
+		if request.ToolTimeout != executor.toolTimeout {
+			t.Fatalf("gateway tool timeout = %s, want the executor's %s", request.ToolTimeout, executor.toolTimeout)
 		}
 	}
 	if got := opener.openedIDs(); len(got) != 2 ||
