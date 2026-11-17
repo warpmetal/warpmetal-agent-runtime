@@ -77,6 +77,13 @@ type Sandbox struct {
 	// gates the reviewed SA9 childless-procfs OCI precreate-hook witness so
 	// legacy Team/member sandboxes never receive the hook or the witness mount.
 	Cell bool `json:"cell,omitempty"`
+	// ProviderGateways is the additive P2d contract for scoped sandbox-facing
+	// provider gateways. Each requirement starts exactly one gateway inside
+	// this sandbox's workspace while the sandbox is running. The field is
+	// optional and omitted from the wire when empty, so manifests that never
+	// carried it stay byte-for-byte compatible. It carries non-secret platform
+	// metadata only; the sealed credential is resolved locally by id.
+	ProviderGateways []ProviderGatewayRequirement `json:"providerGateways,omitempty"`
 }
 
 // ContinuityIdentityV1 is the shared immutable fence carried by every local
@@ -1780,6 +1787,12 @@ func ValidateManifest(manifest Manifest, expectedServer string, lastRevision int
 			}
 		} else {
 			return fmt.Errorf("invalid lifetime for %s", sandbox.ID)
+		}
+		// The additive provider gateway contract is validated for every
+		// sandbox, including stopped/deleted entries: only a fully bounded,
+		// secret-free shape may reach the reconciler or local state.
+		if err := ValidateProviderGatewayRequirements(sandbox.ProviderGateways); err != nil {
+			return fmt.Errorf("invalid provider gateways for %s: %w", sandbox.ID, err)
 		}
 		if sandbox.DesiredState != "deleted" {
 			allocated.WorkspaceDiskGiB += sandbox.Resources.WorkspaceDiskGiB

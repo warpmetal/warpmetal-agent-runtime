@@ -1,0 +1,85 @@
+// Package providergateway implements the scoped Provider Gateway for the
+// Runtime Box credential bridge (Phase P2).
+//
+// The gateway is a local-only MCP server that exposes exactly the tool-provider
+// tools a workspace template declared. The sandbox agent reaches it through
+// socat, the same way a stdio MCP server is reached:
+//
+//	socat - UNIX-CONNECT:/run/warpmetal/provider/gateway.sock
+//
+// Wire protocol. The gateway speaks newline-delimited JSON-RPC 2.0 and a small,
+// deliberately closed subset of MCP:
+//
+//   - initialize: negotiates a supported protocol version (a supported
+//     requested version is echoed, anything else gets DefaultProtocolVersion),
+//     advertises only the tools capability, and reports ServerName.
+//   - notifications/initialized: accepted and never answered.
+//   - tools/list: exactly the declared tools, with their input schemas.
+//   - tools/call: only declared tool names reach the Executor; anything else is
+//     a JSON-RPC invalid-params error. Tool-level failures come back as MCP
+//     content with isError=true so the model can see them without the client
+//     treating the whole session as broken.
+//   - ping: an empty result.
+//   - everything else: JSON-RPC method-not-found (-32601).
+//
+// The gateway is intentionally not a general MCP server: it has no resources,
+// prompts, sampling, logging or server-initiated messages, and it advertises no
+// capability besides tools. JSON-RPC batches are not accepted. Requests and
+// responses are bounded, and every executor call has a deadline.
+//
+// Security invariants:
+//
+//   - The opened provider credential is held only in memory. The gateway keeps a
+//     transient copy of the credential's secret field values solely to redact
+//     them from executor error text and tool result text, and zeroizes that copy
+//     once the gateway has stopped. Credential material is never logged, and
+//     Config is never serialized.
+//   - Phase P4a delegates real provider execution to a reviewed external
+//     command (internal/providerexec) that is the provider execution boundary.
+//     For that boundary the gateway hands the Executor a per-call ToolCredential
+//     snapshot (the platform-declared non-secret kind plus the secret field
+//     values) together with non-secret binding metadata. The snapshot is built
+//     immediately before CallTool and scrubbed immediately after it; the
+//     gateway remains the only owner of the opened credential and destroys it
+//     exactly once on teardown. Executors must not log, persist or retain it,
+//     and the external executor passes it only through a bounded stdin JSON
+//     request, never argv, environment or files.
+//   - The Unix socket is created 0600 inside a directory the gateway creates
+//     0700; an existing directory must already be owner-only. The socket file
+//     is removed on close only while it is still the exact socket this gateway
+//     created.
+//   - Error text surfaced to clients and logs is length-bounded, sanitized and
+//     redacted before it leaves the process.
+//
+// Lifecycle. New validates configuration and performs no I/O. Serve prepares
+// the socket, serves until the context is cancelled or Close is called, then
+// tears everything down; on return the gateway is permanently closed and its
+// credential has been destroyed. Serve may be called at most once. The gateway
+// owns exactly one credential and exactly one socket.
+//
+// Manager is the sandbox-facing lifecycle owner built on top of that surface.
+// Start prepares <workspace host root>/.warpmetal/provider-gateways, starts a
+// Gateway there on <RunID>.sock and returns a Handle exposing the deterministic
+// host path and the container path the agent's socat dials
+// (<ContainerRoot>/.warpmetal/provider-gateways/<RunID>.sock, with ContainerRoot
+// defaulting to /home/agent). Handles are tracked per (SandboxID, RunID), so a
+// duplicate start is refused; Handle.Close, Manager.CloseAll and
+// Manager.CloseSandbox tear the listener, live connections, credential and an
+// owned socket directory down. When the Start context is cancelled or the
+// server exits on its own, the handle runs the same cleanup and detaches itself.
+//
+// Reconciler wiring. Phase P2d wires Manager into the runtime reconciler: a
+// running sandbox whose manifest declares providerGateways starts exactly one
+// Manager.Start per requirement inside that sandbox's workspace, using a Box
+// credential opened by the credential bridge, and Manager.CloseSandbox tears
+// them down on stop/delete/generation change. Manager.Has is the idempotency
+// probe the reconciler uses so a retried pass never starts a duplicate pair.
+//
+// Phase scope. P2/P2d supplied only the gateway surface and lifecycle: no
+// production provider execution was enabled and a manifest that requires
+// gateways without an Executor failed the reconcile pass closed. Phase P4a wires
+// the optional reviewed external provider executor (internal/providerexec)
+// through the same seam; when it is not configured the nil-executor fail-closed
+// behavior is unchanged. An Executor must be safe for concurrent use because
+// connections are served concurrently.
+package providergateway

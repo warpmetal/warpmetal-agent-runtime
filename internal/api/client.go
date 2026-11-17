@@ -163,6 +163,98 @@ func (c Client) ReportAck(ctx context.Context, report model.Report) (ReportAck, 
 	return response, nil
 }
 
+// Endpoint-selected wire caps for the Box credential bridge. The generic
+// control-plane cap is deliberately not relied on here: a key registration view
+// is one small public-key document and the credential inventory is a bounded
+// active set, so each call keeps its own explicit size ceiling.
+const (
+	boxEncryptionKeyResponseLimit        = 64 << 10
+	toolProviderCredentialsResponseLimit = 2 << 20
+	maxToolProviderCredentialDeliveries  = 256
+)
+
+// BoxEncryptionKeyRegistrationView is the platform-pinned view of this Box's
+// public encryption key. The command payload carries only the public JWK; the
+// private key never leaves the Runtime.
+type BoxEncryptionKeyRegistrationView struct {
+	BoxID               string         `json:"boxId"`
+	KeyFingerprint      string         `json:"keyFingerprint"`
+	Algorithm           string         `json:"algorithm"`
+	PublicKeyJwk        map[string]any `json:"publicKeyJwk"`
+	PreviousFingerprint string         `json:"previousFingerprint,omitempty"`
+	State               string         `json:"state,omitempty"`
+	Revision            int64          `json:"revision"`
+	RegisteredAt        time.Time      `json:"registeredAt"`
+	RotatedAt           *time.Time     `json:"rotatedAt,omitempty"`
+}
+
+// RegisterBoxEncryptionKey pins this Box's public RSA-OAEP key with the
+// platform. The same key is idempotent; a platform conflict is returned as a
+// ResponseError with code box_key_rotation_required and is intentionally not
+// auto-rotated by the Runtime.
+func (c Client) RegisterBoxEncryptionKey(ctx context.Context, publicKeyJwk map[string]any) (BoxEncryptionKeyRegistrationView, error) {
+	body := struct {
+		PublicKeyJwk map[string]any `json:"publicKeyJwk"`
+	}{PublicKeyJwk: publicKeyJwk}
+	var view BoxEncryptionKeyRegistrationView
+	if err := c.requestWithResponseLimit(
+		ctx,
+		http.MethodPost,
+		"/internal/runtime/box-encryption-key",
+		c.NodeToken,
+		body,
+		&view,
+		false,
+		"",
+		"",
+		boxEncryptionKeyResponseLimit,
+	); err != nil {
+		return BoxEncryptionKeyRegistrationView{}, err
+	}
+	if view.BoxID == "" || view.KeyFingerprint == "" {
+		return BoxEncryptionKeyRegistrationView{}, errors.New("box encryption key response is incomplete")
+	}
+	return view, nil
+}
+
+// ToolProviderCredentialDelivery is one sealed-to-this-Box credential envelope
+// as delivered by the platform. The Runtime never opens it in this phase; the
+// delivery view is validated and persisted verbatim under a root-only file.
+type ToolProviderCredentialDelivery struct {
+	CredentialID   string          `json:"credentialId"`
+	ProviderID     string          `json:"providerId"`
+	KeyFingerprint string          `json:"keyFingerprint"`
+	Envelope       json.RawMessage `json:"envelope"`
+}
+
+// ToolProviderCredentials pulls the current active delivery set for this Box.
+// Only envelopes sealed to the active key are returned, so a response is the
+// complete active set: items absent from it have been revoked or need
+// reconnection and must disappear from the local store.
+func (c Client) ToolProviderCredentials(ctx context.Context) ([]ToolProviderCredentialDelivery, error) {
+	var response struct {
+		Items []ToolProviderCredentialDelivery `json:"items"`
+	}
+	if err := c.requestWithResponseLimit(
+		ctx,
+		http.MethodGet,
+		"/internal/runtime/tool-provider-credentials",
+		c.NodeToken,
+		nil,
+		&response,
+		false,
+		"",
+		"",
+		toolProviderCredentialsResponseLimit,
+	); err != nil {
+		return nil, err
+	}
+	if len(response.Items) > maxToolProviderCredentialDeliveries {
+		return nil, errors.New("tool provider credential response exceeds the delivery count cap")
+	}
+	return response.Items, nil
+}
+
 // CellCredentialResult carries the V3 discriminated material and immutable lease
 // identity, or the retained V2 APIKey envelope. Plaintext is never journaled; the caller
 // forwards it to the native protected store, keyed by CredentialID so a rotated

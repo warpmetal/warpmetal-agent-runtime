@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/model"
@@ -244,5 +245,73 @@ func TestClientRejectsUnknownManifestFields(t *testing.T) {
 				t.Fatal("expected an unknown manifest field to be rejected")
 			}
 		})
+	}
+}
+
+func TestClientBoxCredentialBridgeRoutesAndPayloads(t *testing.T) {
+	t.Parallel()
+	var registrationBody map[string]json.RawMessage
+	var sawCredentialPull bool
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if got := request.Header.Get("Authorization"); got != "Bearer rtn_test" {
+			t.Errorf("authorization = %q, want the node token", got)
+		}
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/internal/runtime/box-encryption-key":
+			if err := json.NewDecoder(request.Body).Decode(&registrationBody); err != nil {
+				t.Errorf("decode registration body: %v", err)
+			}
+			_, _ = fmt.Fprint(writer, `{"boxId":"srv_example123","keyFingerprint":"sha256:`+strings.Repeat("a", 64)+`","algorithm":"RSA-OAEP-256","publicKeyJwk":{"kty":"RSA"},"revision":1,"registeredAt":"2026-11-16T00:00:00Z","rotatedAt":null}`)
+		case request.Method == http.MethodGet && request.URL.Path == "/internal/runtime/tool-provider-credentials":
+			sawCredentialPull = true
+			_, _ = fmt.Fprint(writer, `{"items":[{"credentialId":"conn_aaaaaaaaaaaaaaaaaaaaaaaa","providerId":"github","keyFingerprint":"sha256:`+strings.Repeat("a", 64)+`","envelope":{"formatVersion":1}}]}`)
+		default:
+			t.Errorf("unexpected request %s %s", request.Method, request.URL.Path)
+			http.Error(writer, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client := Client{Origin: server.URL, NodeToken: "rtn_test", HTTP: server.Client()}
+	publicKeyJwk := map[string]any{"kty": "RSA", "n": "AQAB", "e": "AQAB", "alg": "RSA-OAEP-256", "ext": true}
+	view, err := client.RegisterBoxEncryptionKey(context.Background(), publicKeyJwk)
+	if err != nil {
+		t.Fatalf("RegisterBoxEncryptionKey() error = %v", err)
+	}
+	if view.BoxID != "srv_example123" || view.KeyFingerprint != "sha256:"+strings.Repeat("a", 64) {
+		t.Fatalf("registration view = %#v", view)
+	}
+	if len(registrationBody) != 1 {
+		t.Fatalf("registration body keys = %v, want only publicKeyJwk", registrationBody)
+	}
+	var sentJwk map[string]any
+	if err := json.Unmarshal(registrationBody["publicKeyJwk"], &sentJwk); err != nil {
+		t.Fatalf("decode sent JWK: %v", err)
+	}
+	if sentJwk["kty"] != "RSA" || sentJwk["alg"] != "RSA-OAEP-256" {
+		t.Fatalf("sent JWK = %#v", sentJwk)
+	}
+	deliveries, err := client.ToolProviderCredentials(context.Background())
+	if err != nil {
+		t.Fatalf("ToolProviderCredentials() error = %v", err)
+	}
+	if !sawCredentialPull || len(deliveries) != 1 || deliveries[0].CredentialID != "conn_aaaaaaaaaaaaaaaaaaaaaaaa" {
+		t.Fatalf("deliveries = %#v", deliveries)
+	}
+	if string(deliveries[0].Envelope) != `{"formatVersion":1}` {
+		t.Fatalf("envelope bytes = %s, want verbatim wire bytes", deliveries[0].Envelope)
+	}
+}
+
+func TestClientToolProviderCredentialsRejectsOversizedResponse(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(strings.Repeat(" ", toolProviderCredentialsResponseLimit+1)))
+	}))
+	defer server.Close()
+	client := Client{Origin: server.URL, NodeToken: "rtn_test", HTTP: server.Client()}
+	if _, err := client.ToolProviderCredentials(context.Background()); err == nil {
+		t.Fatal("oversized credential delivery response was accepted")
 	}
 }

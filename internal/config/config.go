@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/warpmetal/warpmetal-agent-runtime/internal/providerexec"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/qualification"
 	"github.com/warpmetal/warpmetal-agent-runtime/internal/setupsource"
 	"os"
@@ -26,6 +27,93 @@ type Config struct {
 	// enabled it requires an exact-URL allowlist and the Runtime forwards the
 	// gate only to this instance's setup executions.
 	SetupTestSource *setupsource.Config `json:"setupTestSource,omitempty"`
+	// ToolCredentialBridge opts the Runtime into Phase P1 of the sealed
+	// tool-provider credential bridge. Every existing config omits it, so a
+	// production Runtime keeps today's behavior exactly: no Box encryption key
+	// is generated and no credential endpoint is called.
+	ToolCredentialBridge *ToolCredentialBridgeConfig `json:"toolCredentialBridge,omitempty"`
+}
+
+// ToolCredentialBridgeConfig is the explicit opt-in for the Runtime Box
+// credential bridge. The bridge generates/registers a Box encryption key and
+// stores sealed tool-provider credential envelopes; when the optional external
+// provider executor is configured it also delegates provider execution to that
+// reviewed command through the scoped provider gateway. Without a configured
+// executor the P2d fail-closed behavior is unchanged: a manifest that requires
+// provider gateways fails the reconcile pass with an explicit feature-not-enabled
+// error and no provider call is made.
+type ToolCredentialBridgeConfig struct {
+	Enabled bool `json:"enabled"`
+	// PollIntervalSeconds bounds the credential pull cadence. Zero selects
+	// DefaultToolCredentialBridgePollInterval; explicit values must be between
+	// MinToolCredentialBridgePollInterval and MaxToolCredentialBridgePollInterval
+	// so an operator can neither hammer the platform nor leave credentials
+	// undelivered indefinitely.
+	PollIntervalSeconds int `json:"pollIntervalSeconds,omitempty"`
+	// ProviderExecutor optionally configures the reviewed external command that
+	// performs real provider tool execution (Phase P4a). It is honored only when
+	// the bridge itself is enabled; absent means no provider execution is
+	// configured and the provider gateway keeps failing closed.
+	ProviderExecutor *providerexec.Config `json:"providerExecutor,omitempty"`
+}
+
+const (
+	// DefaultToolCredentialBridgePollInterval is the pull cadence used when the
+	// operator enables the bridge without choosing an interval.
+	DefaultToolCredentialBridgePollInterval = time.Minute
+	// MinToolCredentialBridgePollInterval bounds how frequently an enabled
+	// Runtime may poll the credential delivery endpoint.
+	MinToolCredentialBridgePollInterval = 10 * time.Second
+	// MaxToolCredentialBridgePollInterval bounds the longest accepted interval.
+	MaxToolCredentialBridgePollInterval = time.Hour
+)
+
+// Validate refuses an enabled bridge with an unbounded or nonsensical poll
+// cadence or an invalid provider executor configuration. A disabled or absent
+// bridge is always valid so existing configs cannot be affected by the new
+// fields; a disabled bridge's providerExecutor is inert and is not validated.
+func (c *ToolCredentialBridgeConfig) Validate() error {
+	if c == nil || !c.Enabled {
+		return nil
+	}
+	if c.PollIntervalSeconds != 0 {
+		interval := time.Duration(c.PollIntervalSeconds) * time.Second
+		if interval < MinToolCredentialBridgePollInterval || interval > MaxToolCredentialBridgePollInterval {
+			return fmt.Errorf(
+				"toolCredentialBridge.pollIntervalSeconds must be between %d and %d",
+				int(MinToolCredentialBridgePollInterval/time.Second),
+				int(MaxToolCredentialBridgePollInterval/time.Second),
+			)
+		}
+	}
+	// The provider executor is optional (its absence is the P2d fail-closed
+	// configuration), but when present every bound must be valid before the
+	// daemon starts. Executable-file checks happen at executor construction.
+	if err := c.ProviderExecutor.Validate(); err != nil {
+		return fmt.Errorf("providerExecutor: %w", err)
+	}
+	return nil
+}
+
+// ProviderExecutorConfigured reports whether the optional external provider
+// executor is configured on an enabled bridge. It is nil-safe and false for a
+// disabled bridge, so a disabled configuration stays inert exactly as before.
+func (c *ToolCredentialBridgeConfig) ProviderExecutorConfigured() bool {
+	return c != nil && c.Enabled && c.ProviderExecutor != nil
+}
+
+// PollInterval is the effective pull cadence for an enabled bridge. It is
+// nil-safe and applies the documented default for an unset value.
+func (c *ToolCredentialBridgeConfig) PollInterval() time.Duration {
+	if c == nil || c.PollIntervalSeconds == 0 {
+		return DefaultToolCredentialBridgePollInterval
+	}
+	return time.Duration(c.PollIntervalSeconds) * time.Second
+}
+
+// ToolCredentialBridgeEnabled reports whether the opt-in bridge is configured.
+func (c Config) ToolCredentialBridgeEnabled() bool {
+	return c.ToolCredentialBridge != nil && c.ToolCredentialBridge.Enabled
 }
 
 func Load(path string) (Config, error) {
@@ -54,6 +142,11 @@ func Load(path string) (Config, error) {
 	// setup runner's source guard.
 	if err := value.SetupTestSource.Validate(); err != nil {
 		return Config{}, fmt.Errorf("setup test source: %w", err)
+	}
+	// An explicitly enabled credential bridge must have a bounded pull cadence;
+	// an absent/disabled bridge validates exactly like before this field existed.
+	if err := value.ToolCredentialBridge.Validate(); err != nil {
+		return Config{}, fmt.Errorf("tool credential bridge: %w", err)
 	}
 	return value, nil
 }
