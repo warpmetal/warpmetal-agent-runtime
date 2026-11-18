@@ -86,6 +86,9 @@ type Options struct {
 	BoxID string
 	// PollInterval is the bounded credential pull cadence.
 	PollInterval time.Duration
+	// Verifier optionally checks an owner-requested credential locally. Nil
+	// means the bridge reports verification as unsupported, never as verified.
+	Verifier Verifier
 	// Logger receives secret-free status transitions. Nil uses log.Default().
 	Logger *log.Logger
 
@@ -137,6 +140,7 @@ type Manager struct {
 	requestTimeout  time.Duration
 	keyStore        *keyStore
 	credentials     *credentialStore
+	verifier        Verifier
 	done            chan struct{}
 
 	mu                 sync.Mutex
@@ -194,6 +198,7 @@ func New(options Options) (*Manager, error) {
 	manager.requestTimeout = requestTimeout
 	manager.keyStore = newKeyStore(stateRoot, options.keyBits)
 	manager.credentials = newCredentialStore(stateRoot)
+	manager.verifier = options.Verifier
 	manager.status.State = StateStarting
 	manager.status.BoxID = options.BoxID
 	return manager, nil
@@ -362,6 +367,7 @@ func (m *Manager) pull(ctx context.Context, fingerprint string) bool {
 	activeCount, rejectedCount, reason :=
 		m.status.ActiveEnvelopeCount, m.status.RejectedEnvelopeCount, m.status.Reason
 	m.mu.Unlock()
+	m.verifyDeliveries(ctx, deliveries)
 	if activeCount != m.lastLoggedActive || rejectedCount != m.lastLoggedRejected {
 		m.logger.Printf("box credential bridge: pull activeEnvelopes=%d rejectedEnvelopes=%d reason=%s", activeCount, rejectedCount, reason)
 		m.lastLoggedActive = activeCount

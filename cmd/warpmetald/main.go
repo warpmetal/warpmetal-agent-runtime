@@ -227,25 +227,27 @@ func serve(arguments []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	// Phase P4a: construct the optional reviewed external provider executor. When
+	// the opt-in bridge and providerExecutor are absent this returns nil, keeping
+	// the P2d behavior exactly: no production provider execution is enabled and a
+	// manifest that declares providerGateways fails the pass closed. The same
+	// reviewed executor also performs the Box-side credential status probe, so it
+	// is constructed before the bridge starts.
+	providerExecutor, err := newProviderExecutor(settings)
+	if err != nil {
+		return err
+	}
 	// The sealed tool-provider credential bridge is opt-in (Phase P1). With the
 	// field absent or disabled this starts nothing: no key is generated and no
 	// credential HTTP call is made, so production behavior is unchanged.
-	credentialBridge, stopCredentialBridge, err := startToolCredentialBridge(ctx, settings, client, *stateRoot)
+	credentialBridge, stopCredentialBridge, err := startToolCredentialBridge(
+		ctx, settings, client, *stateRoot, newProviderStatusVerifier(providerExecutor),
+	)
 	if err != nil {
 		return err
 	}
 	defer stopCredentialBridge()
 	reconciler := newRuntimeReconciler(store, engine, *workspaceRoot, *accessPath, gateway, hostCapacity, settings.ServerID, *stateRoot, client, ctx)
-	// Phase P4a: construct the optional reviewed external provider executor. When
-	// the opt-in bridge and providerExecutor are absent this returns nil, keeping
-	// the P2d behavior exactly: no production provider execution is enabled and a
-	// manifest that declares providerGateways fails the pass closed. With the
-	// bridge enabled the gateway lifecycle is wired as before, and the executor
-	// (when configured) is the only path that performs real provider calls.
-	providerExecutor, err := newProviderExecutor(settings)
-	if err != nil {
-		return err
-	}
 	stopProviderGateways := configureProviderGateways(reconciler, credentialBridge, providerExecutor)
 	defer stopProviderGateways()
 	if physicalListener != nil {
@@ -339,7 +341,13 @@ func controlPlaneHTTPClient() *http.Client {
 // platform. When enabled, the returned manager is the Runtime's credential
 // opener for Phase P2d, and shutdown cancels the bridge context and waits a
 // bounded time for its Run loop to finish.
-func startToolCredentialBridge(ctx context.Context, settings config.Config, client control.Client, stateRoot string) (*boxcredentials.Manager, func(), error) {
+func startToolCredentialBridge(
+	ctx context.Context,
+	settings config.Config,
+	client control.Client,
+	stateRoot string,
+	verifier boxcredentials.Verifier,
+) (*boxcredentials.Manager, func(), error) {
 	if !settings.ToolCredentialBridgeEnabled() {
 		return nil, func() {}, nil
 	}
@@ -349,6 +357,7 @@ func startToolCredentialBridge(ctx context.Context, settings config.Config, clie
 		Client:       client,
 		BoxID:        settings.ServerID,
 		PollInterval: settings.ToolCredentialBridge.PollInterval(),
+		Verifier:     verifier,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("tool credential bridge: %w", err)
@@ -367,6 +376,48 @@ func startToolCredentialBridge(ctx context.Context, settings config.Config, clie
 			log.Printf("tool credential bridge did not stop within the shutdown budget")
 		}
 	}, nil
+}
+
+// providerStatusVerifier adapts the reviewed external provider executor to the
+// Box credential bridge's one-shot verification contract. The executor receives
+// a synthetic provider_status tool call; the credential exists only in its stdin
+// request and is zeroed by the bridge immediately after the call returns.
+type providerStatusVerifier struct {
+	executor providergateway.Executor
+}
+
+func newProviderStatusVerifier(executor providergateway.Executor) boxcredentials.Verifier {
+	if executor == nil {
+		return nil
+	}
+	return providerStatusVerifier{executor: executor}
+}
+
+func (v providerStatusVerifier) VerifyCredential(
+	ctx context.Context,
+	credential *boxcredentials.Credential,
+	_ boxcredentials.VerificationRequest,
+) boxcredentials.VerificationResult {
+	if credential == nil || v.executor == nil {
+		return boxcredentials.VerificationResult{Outcome: boxcredentials.VerificationUnsupported, ErrorCode: boxcredentials.ReasonVerifierUnavailable}
+	}
+	result, err := v.executor.CallTool(ctx, providergateway.ToolCall{
+		Name:         "provider_status",
+		ProviderID:   credential.ProviderID,
+		ConnectionID: credential.ConnectionID,
+		AccountID:    credential.AccountID,
+		Credential: &providergateway.ToolCredential{
+			Kind:   credential.Kind,
+			Fields: credential.SecretFields(),
+		},
+	})
+	if err != nil {
+		return boxcredentials.VerificationResult{Outcome: boxcredentials.VerificationUnsupported, ErrorCode: boxcredentials.ReasonVerifierError}
+	}
+	if result.IsError {
+		return boxcredentials.VerificationResult{Outcome: boxcredentials.VerificationRejected, ErrorCode: "provider_status_failed"}
+	}
+	return boxcredentials.VerificationResult{Outcome: boxcredentials.VerificationVerified}
 }
 
 // newProviderExecutor constructs the optional reviewed external provider

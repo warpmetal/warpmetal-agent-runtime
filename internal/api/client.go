@@ -221,10 +221,20 @@ func (c Client) RegisterBoxEncryptionKey(ctx context.Context, publicKeyJwk map[s
 // as delivered by the platform. The Runtime never opens it in this phase; the
 // delivery view is validated and persisted verbatim under a root-only file.
 type ToolProviderCredentialDelivery struct {
-	CredentialID   string          `json:"credentialId"`
-	ProviderID     string          `json:"providerId"`
-	KeyFingerprint string          `json:"keyFingerprint"`
-	Envelope       json.RawMessage `json:"envelope"`
+	CredentialID   string                              `json:"credentialId"`
+	ProviderID     string                              `json:"providerId"`
+	KeyFingerprint string                              `json:"keyFingerprint"`
+	Envelope       json.RawMessage                     `json:"envelope"`
+	Verification   *ToolProviderCredentialVerification `json:"verification,omitempty"`
+}
+
+// ToolProviderCredentialVerification is an owner-requested, Box-side read-only
+// authentication check. The platform reports the request but never sees the
+// credential; the Runtime opens it locally, asks the reviewed provider executor
+// to run the provider's status probe, and posts only the bounded outcome back.
+type ToolProviderCredentialVerification struct {
+	RequestID   string `json:"requestId"`
+	RequestedAt string `json:"requestedAt"`
 }
 
 // ToolProviderCredentials pulls the current active delivery set for this Box.
@@ -253,6 +263,41 @@ func (c Client) ToolProviderCredentials(ctx context.Context) ([]ToolProviderCred
 		return nil, errors.New("tool provider credential response exceeds the delivery count cap")
 	}
 	return response.Items, nil
+}
+
+// ReportToolProviderCredentialVerification posts one bounded result for a
+// verification request delivered with the sealed credential. Only the request
+// id, a closed outcome and an optional safe error code leave the Box.
+func (c Client) ReportToolProviderCredentialVerification(
+	ctx context.Context,
+	credentialID string,
+	verification ToolProviderCredentialVerificationResult,
+) error {
+	body := struct {
+		RequestID string `json:"requestId"`
+		Outcome   string `json:"outcome"`
+		ErrorCode string `json:"errorCode,omitempty"`
+	}{
+		RequestID: verification.RequestID,
+		Outcome:   verification.Outcome,
+		ErrorCode: verification.ErrorCode,
+	}
+	return c.request(
+		ctx,
+		http.MethodPost,
+		"/internal/runtime/tool-provider-credentials/"+url.PathEscape(credentialID)+"/verification",
+		c.NodeToken,
+		body,
+		nil,
+		false,
+	)
+}
+
+// ToolProviderCredentialVerificationResult is the closed verification outcome.
+type ToolProviderCredentialVerificationResult struct {
+	RequestID string
+	Outcome   string
+	ErrorCode string
 }
 
 // CellCredentialResult carries the V3 discriminated material and immutable lease
